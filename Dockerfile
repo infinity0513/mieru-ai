@@ -31,6 +31,7 @@ ENV PYTHONUNBUFFERED=1
 EXPOSE 8000
 
 # Pythonスクリプトでサーバーを起動（環境変数PORTを正しく読み取る）
-# シェル形式で実行して環境変数を確実に展開
-CMD python3 /app/backend/start_server.py
+# ENTRYPOINTとCMDを組み合わせて確実に実行
+ENTRYPOINT ["python3"]
+CMD ["/app/backend/start_server.py"]
 
