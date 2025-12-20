@@ -28,9 +28,11 @@ ENV PYTHONUNBUFFERED=1
 EXPOSE 8000
 
 # 起動スクリプトを作成
-RUN echo '#!/bin/bash\nPORT=${PORT:-8000}\nuvicorn app.main:app --host 0.0.0.0 --port $PORT' > /app/backend/start.sh && \
+RUN echo '#!/bin/sh' > /app/backend/start.sh && \
+    echo 'exec uvicorn app.main:app --host 0.0.0.0 --port "${PORT:-8000}"' >> /app/backend/start.sh && \
     chmod +x /app/backend/start.sh
 
-# 起動スクリプトを実行
-CMD ["/bin/bash", "/app/backend/start.sh"]
+# ENTRYPOINTとCMDを分けて実行
+ENTRYPOINT ["/bin/sh"]
+CMD ["/app/backend/start.sh"]
 
