@@ -20,13 +20,16 @@ COPY backend/ ./backend/
 # 作業ディレクトリをbackendに変更
 WORKDIR /app/backend
 
-# ポート8000を公開
-EXPOSE 8000
+# ポートを環境変数から取得（Railwayが自動設定）
+EXPOSE $PORT
 
 # 環境変数を設定
 ENV PYTHONPATH=/app/backend
 ENV PYTHONUNBUFFERED=1
 
-# uvicornでアプリケーションを起動
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# デフォルトポート（環境変数PORTが設定されていない場合）
+ENV PORT=8000
+
+# uvicornでアプリケーションを起動（環境変数PORTを使用）
+CMD uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}
 
