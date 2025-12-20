@@ -27,12 +27,6 @@ ENV PYTHONUNBUFFERED=1
 # ポートを公開（Railwayが自動設定するポート番号を使用、デフォルトは8000）
 EXPOSE 8000
 
-# 起動スクリプトを作成
-RUN echo '#!/bin/sh' > /app/backend/start.sh && \
-    echo 'exec uvicorn app.main:app --host 0.0.0.0 --port "${PORT:-8000}"' >> /app/backend/start.sh && \
-    chmod +x /app/backend/start.sh
-
-# ENTRYPOINTとCMDを分けて実行
-ENTRYPOINT ["/bin/sh"]
-CMD ["/app/backend/start.sh"]
+# Pythonスクリプトでサーバーを起動（環境変数PORTを正しく読み取る）
+CMD ["python", "start_server.py"]
 
