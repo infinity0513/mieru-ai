@@ -20,6 +20,9 @@ COPY backend/ ./backend/
 # 作業ディレクトリをbackendに変更
 WORKDIR /app/backend
 
+# start_server.pyの実行権限を付与
+RUN chmod +x start_server.py
+
 # 環境変数を設定
 ENV PYTHONPATH=/app/backend
 ENV PYTHONUNBUFFERED=1
