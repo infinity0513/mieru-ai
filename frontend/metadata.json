@@ -1,0 +1,7 @@
+{
+  "name": "Meta Ad Analyzer AI Online",
+  "description": "A SaaS-style dashboard for analyzing Meta (Facebook/Instagram) advertising data with AI-driven insights and improvement recommendations.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}

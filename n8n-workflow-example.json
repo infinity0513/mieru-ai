@@ -1,0 +1,169 @@
+{
+  "name": "Meta API to System Upload",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 24
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "resource": "campaign",
+        "operation": "getInsights",
+        "accountId": "={{ $env.META_ACCOUNT_ID }}",
+        "fields": [
+          "campaign_id",
+          "campaign_name",
+          "date_start",
+          "date_stop",
+          "impressions",
+          "clicks",
+          "spend",
+          "conversions",
+          "ctr",
+          "cpc",
+          "cpm",
+          "reach",
+          "actions"
+        ],
+        "timeRange": {
+          "since": "={{ $now.minus({days: 1}).toFormat('yyyy-MM-dd') }}",
+          "until": "={{ $now.toFormat('yyyy-MM-dd') }}"
+        }
+      },
+      "id": "meta-api",
+      "name": "Meta API",
+      "type": "n8n-nodes-base.meta",
+      "typeVersion": 1,
+      "position": [450, 300],
+      "credentials": {
+        "metaOAuth2Api": {
+          "id": "meta-credentials",
+          "name": "Meta OAuth2 API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Meta APIのデータを本システムのフォーマットに変換\nconst items = $input.all();\n\nreturn items.map(item => {\n  const data = item.json;\n  \n  // 日付をフォーマット\n  const date = data.date_start || data.date_stop || '';\n  \n  // 広告費を数値に変換\n  const spend = parseFloat(data.spend || 0);\n  \n  // インプレッション数を整数に変換\n  const impressions = parseInt(data.impressions || 0);\n  \n  // クリック数を整数に変換\n  const clicks = parseInt(data.clicks || 0);\n  \n  // コンバージョン数を取得（actionsから取得する場合）\n  let conversions = 0;\n  if (data.actions && Array.isArray(data.actions)) {\n    const conversionAction = data.actions.find(action => \n      action.action_type === 'offsite_conversion.fb_pixel_purchase' ||\n      action.action_type === 'purchase'\n    );\n    if (conversionAction) {\n      conversions = parseInt(conversionAction.value || 0);\n    }\n  }\n  \n  // CTRを計算（クリック数 / インプレッション数 * 100）\n  const ctr = impressions > 0 ? (clicks / impressions * 100).toFixed(2) : '0.00';\n  \n  // CPCを計算（広告費 / クリック数）\n  const cpc = clicks > 0 ? (spend / clicks).toFixed(2) : '0.00';\n  \n  // CPMを計算（広告費 / インプレッション数 * 1000）\n  const cpm = impressions > 0 ? (spend / impressions * 1000).toFixed(2) : '0.00';\n  \n  // リーチ数を取得\n  const reach = parseInt(data.reach || 0);\n  \n  // ROASを計算（コンバージョン価値 / 広告費）\n  // 注意: コンバージョン価値はMeta APIから取得する必要があります\n  const conversionValue = parseFloat(data.conversion_value || 0);\n  const roas = spend > 0 ? (conversionValue / spend).toFixed(2) : '0.00';\n  \n  return {\n    json: {\n      日付: date,\n      キャンペーン名: data.campaign_name || '',\n      広告費: spend,\n      インプレッション数: impressions,\n      クリック数: clicks,\n      コンバージョン数: conversions,\n      CTR: parseFloat(ctr),\n      CPC: parseFloat(cpc),\n      CPM: parseFloat(cpm),\n      リーチ数: reach,\n      ROAS: parseFloat(roas)\n    }\n  };\n});"
+      },
+      "id": "transform-data",
+      "name": "Transform Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// CSV形式でデータを生成\nconst items = $input.all();\n\n// CSVヘッダー（本システムの必須カラム）\nconst headers = [\n  '日付',\n  'キャンペーン名',\n  '広告費',\n  'インプレッション数',\n  'クリック数',\n  'コンバージョン数',\n  'CTR',\n  'CPC',\n  'CPM',\n  'リーチ数',\n  'ROAS'\n];\n\n// CSVデータ行\nconst rows = items.map(item => {\n  const data = item.json;\n  return [\n    data.日付 || '',\n    data.キャンペーン名 || '',\n    data.広告費 || 0,\n    data.インプレッション数 || 0,\n    data.クリック数 || 0,\n    data.コンバージョン数 || 0,\n    data.CTR || 0,\n    data.CPC || 0,\n    data.CPM || 0,\n    data.リーチ数 || 0,\n    data.ROAS || 0\n  ].map(val => {\n    // 値を文字列に変換し、ダブルクォートをエスケープ\n    const str = String(val || '');\n    return `\"${str.replace(/\"/g, '\"\"')}\"`;\n  }).join(',');\n});\n\n// CSV全体\nconst csv = [\n  headers.map(h => `\"${h}\"`).join(','),\n  ...rows\n].join('\\n');\n\n// UTF-8 BOM付きCSV（Excel対応）\nconst bom = '\\ufeff';\nconst csvWithBom = bom + csv;\n\n// ファイル名を生成（今日の日付）\nconst today = new Date().toISOString().split('T')[0];\nconst filename = `meta_data_${today}.csv`;\n\nreturn [{\n  json: {\n    csv: csvWithBom,\n    filename: filename,\n    contentType: 'text/csv; charset=utf-8'\n  }\n}];"
+      },
+      "id": "generate-csv",
+      "name": "Generate CSV",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.BACKEND_API_URL }}/api/uploads",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.JWT_TOKEN }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "file",
+              "value": "={{ $json.csv }}"
+            }
+          ]
+        },
+        "options": {
+          "bodyContentType": "multipart/form-data"
+        }
+      },
+      "id": "upload-to-system",
+      "name": "Upload to System",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1050, 300]
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Meta API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Meta API": {
+      "main": [
+        [
+          {
+            "node": "Transform Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Transform Data": {
+      "main": [
+        [
+          {
+            "node": "Generate CSV",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate CSV": {
+      "main": [
+        [
+          {
+            "node": "Upload to System",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 1,
+  "updatedAt": "2025-12-20T15:00:00.000Z",
+  "versionId": "1"
+}
+

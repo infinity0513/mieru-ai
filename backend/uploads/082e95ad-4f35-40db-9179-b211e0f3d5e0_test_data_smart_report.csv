@@ -1,0 +1,32 @@
+日付,キャンペーン名,広告セット名,広告名,インプレッション,クリック数,費用,コンバージョン数,コンバージョン値
+2024-12-01,Spring Sale Campaign,Ad Set 1,Ad Creative A,10000,500,5000.00,50,25000.00
+2024-12-02,Spring Sale Campaign,Ad Set 1,Ad Creative A,12000,600,6000.00,60,30000.00
+2024-12-03,Spring Sale Campaign,Ad Set 2,Ad Creative B,8000,400,4000.00,40,20000.00
+2024-12-04,Summer Promotion,Ad Set 3,Ad Creative C,15000,750,7500.00,75,37500.00
+2024-12-05,Summer Promotion,Ad Set 3,Ad Creative C,18000,900,9000.00,90,45000.00
+2024-12-06,Spring Sale Campaign,Ad Set 1,Ad Creative A,11000,550,5500.00,55,27500.00
+2024-12-07,Summer Promotion,Ad Set 4,Ad Creative D,9000,450,4500.00,45,22500.00
+2024-12-08,Spring Sale Campaign,Ad Set 2,Ad Creative B,13000,650,6500.00,65,32500.00
+2024-12-09,Summer Promotion,Ad Set 3,Ad Creative C,16000,800,8000.00,80,40000.00
+2024-12-10,Spring Sale Campaign,Ad Set 1,Ad Creative A,14000,700,7000.00,70,35000.00
+2024-12-11,Winter Collection,Ad Set 5,Ad Creative E,20000,1000,10000.00,100,50000.00
+2024-12-12,Winter Collection,Ad Set 5,Ad Creative E,22000,1100,11000.00,110,55000.00
+2024-12-13,Spring Sale Campaign,Ad Set 2,Ad Creative B,15000,750,7500.00,75,37500.00
+2024-12-14,Summer Promotion,Ad Set 4,Ad Creative D,17000,850,8500.00,85,42500.00
+2024-12-15,Winter Collection,Ad Set 5,Ad Creative E,25000,1250,12500.00,125,62500.00
+2024-12-16,Spring Sale Campaign,Ad Set 1,Ad Creative A,16000,800,8000.00,80,40000.00
+2024-12-17,Summer Promotion,Ad Set 3,Ad Creative C,19000,950,9500.00,95,47500.00
+2024-12-18,Winter Collection,Ad Set 5,Ad Creative E,28000,1400,14000.00,140,70000.00
+2024-12-19,Spring Sale Campaign,Ad Set 2,Ad Creative B,18000,900,9000.00,90,45000.00
+2024-12-20,Summer Promotion,Ad Set 4,Ad Creative D,20000,1000,10000.00,100,50000.00
+2024-12-21,Winter Collection,Ad Set 5,Ad Creative E,30000,1500,15000.00,150,75000.00
+2024-12-22,Spring Sale Campaign,Ad Set 1,Ad Creative A,17000,850,8500.00,85,42500.00
+2024-12-23,Summer Promotion,Ad Set 3,Ad Creative C,21000,1050,10500.00,105,52500.00
+2024-12-24,Winter Collection,Ad Set 5,Ad Creative E,32000,1600,16000.00,160,80000.00
+2024-12-25,Spring Sale Campaign,Ad Set 2,Ad Creative B,19000,950,9500.00,95,47500.00
+2024-12-26,Summer Promotion,Ad Set 4,Ad Creative D,22000,1100,11000.00,110,55000.00
+2024-12-27,Winter Collection,Ad Set 5,Ad Creative E,35000,1750,17500.00,175,87500.00
+2024-12-28,Spring Sale Campaign,Ad Set 1,Ad Creative A,20000,1000,10000.00,100,50000.00
+2024-12-29,Summer Promotion,Ad Set 3,Ad Creative C,23000,1150,11500.00,115,57500.00
+2024-12-30,Winter Collection,Ad Set 5,Ad Creative E,38000,1900,19000.00,190,95000.00
+

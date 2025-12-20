@@ -1,0 +1,416 @@
+# n8n Railway/Netlify環境セットアップガイド
+
+## 構成概要
+
+```
+┌─────────────┐
+│   Netlify   │ フロントエンド（React）
+│  (Frontend) │
+└──────┬──────┘
+       │
+       │ API呼び出し
+       │
+┌──────▼──────┐
+│   Railway    │ バックエンド（FastAPI）
+│  (Backend)   │ - /api/uploads エンドポイント
+└──────┬──────┘
+       │
+       │ データ送信
+       │
+┌──────▼──────┐
+│   Railway    │ n8n（自己ホスト）
+│    (n8n)     │ - Meta APIからデータ取得
+│              │ - 本システムAPIへ送信
+└─────────────┘
+```
+
+---
+
+## 1. Railwayでn8nをセットアップ
+
+### 1.1 Railwayアカウントの準備
+1. [Railway](https://railway.app/)にアクセス
+2. GitHubアカウントでログイン
+3. 新しいプロジェクトを作成
+
+### 1.2 n8nのデプロイ
+
+#### 方法A: Railwayテンプレートから（推奨）
+1. Railwayダッシュボードで「New Project」をクリック
+2. 「Deploy from GitHub repo」を選択
+3. n8nの公式リポジトリを検索: `n8n-io/n8n`
+4. または、以下のDockerfileを使用してデプロイ
+
+#### 方法B: Dockerfileを使用
+プロジェクトルートに以下のファイルを作成：
+
+**Dockerfile**
+```dockerfile
+FROM n8nio/n8n:latest
+
+# 環境変数を設定
+ENV N8N_HOST=0.0.0.0
+ENV N8N_PORT=5678
+ENV N8N_PROTOCOL=https
+ENV WEBHOOK_URL=https://your-n8n-domain.railway.app/
+
+# ポートを公開
+EXPOSE 5678
+
+# n8nを起動
+CMD ["n8n", "start"]
+```
+
+**railway.json**（オプション）
+```json
+{
+  "$schema": "https://railway.app/railway.schema.json",
+  "build": {
+    "builder": "DOCKERFILE",
+    "dockerfilePath": "Dockerfile"
+  },
+  "deploy": {
+    "startCommand": "n8n start",
+    "restartPolicyType": "ON_FAILURE",
+    "restartPolicyMaxRetries": 10
+  }
+}
+```
+
+### 1.3 環境変数の設定
+
+Railwayダッシュボードで以下の環境変数を設定：
+
+#### 必須環境変数
+```
+N8N_HOST=0.0.0.0
+N8N_PORT=5678
+N8N_PROTOCOL=https
+WEBHOOK_URL=https://your-n8n-domain.railway.app/
+```
+
+#### 認証設定（本番環境では必須）
+```
+N8N_BASIC_AUTH_ACTIVE=true
+N8N_BASIC_AUTH_USER=admin
+N8N_BASIC_AUTH_PASSWORD=your-secure-password
+```
+
+#### データベース設定（オプション）
+- SQLite（デフォルト）: 追加設定不要
+- PostgreSQL（推奨）: RailwayのPostgreSQLサービスを追加して接続
+
+```
+DB_TYPE=postgresdb
+DB_POSTGRESDB_HOST=your-postgres-host.railway.app
+DB_POSTGRESDB_PORT=5432
+DB_POSTGRESDB_DATABASE=railway
+DB_POSTGRESDB_USER=postgres
+DB_POSTGRESDB_PASSWORD=your-password
+```
+
+### 1.4 ドメインの設定
+1. Railwayダッシュボードで「Settings」→「Networking」
+2. 「Generate Domain」をクリック
+3. 生成されたドメインをコピー（例: `n8n-production.up.railway.app`）
+4. カスタムドメインを設定する場合は「Custom Domain」を追加
+
+---
+
+## 2. n8nでMeta API連携ワークフローを作成
+
+### 2.1 Meta API接続の設定
+
+1. n8nダッシュボードにアクセス
+2. 「Workflows」→「New Workflow」をクリック
+3. 「Meta」ノードを追加
+
+#### Meta API認証設定
+1. 「Meta」ノードをクリック
+2. 「Credential」タブで「Create New Credential」
+3. 認証タイプ: **OAuth2**
+4. 以下の情報を入力：
+   - **App ID**: MetaアプリのApp ID
+   - **App Secret**: MetaアプリのApp Secret
+   - **Access Token**: ユーザーのアクセストークン（または長期トークン）
+
+#### Meta API認証の取得方法
+1. [Meta for Developers](https://developers.facebook.com/)にアクセス
+2. アプリを作成（または既存アプリを使用）
+3. 「Marketing API」を有効化
+4. 「Tools」→「Graph API Explorer」でトークンを取得
+5. 長期トークン（60日有効）を取得する場合は、以下のエンドポイントを使用：
+   ```
+   GET /oauth/access_token?grant_type=fb_exchange_token&client_id={app-id}&client_secret={app-secret}&fb_exchange_token={short-lived-token}
+   ```
+
+### 2.2 データ取得ワークフローの作成
+
+#### ステップ1: Meta APIからデータを取得
+1. **Meta**ノードを追加
+2. **Operation**: `Get Campaign Insights`
+3. **Fields**: 必要なフィールドを選択
+   - `campaign_id`
+   - `campaign_name`
+   - `date_start`
+   - `date_stop`
+   - `impressions`
+   - `clicks`
+   - `spend`
+   - `conversions`
+   - など
+
+#### ステップ2: データを変換
+1. **Code**ノードを追加
+2. 以下のコードでデータを変換：
+
+```javascript
+// Meta APIのデータを本システムのフォーマットに変換
+const items = $input.all();
+
+return items.map(item => {
+  const data = item.json;
+  
+  return {
+    json: {
+      日付: data.date_start || data.date_stop,
+      キャンペーン名: data.campaign_name || '',
+      広告費: parseFloat(data.spend || 0),
+      インプレッション数: parseInt(data.impressions || 0),
+      クリック数: parseInt(data.clicks || 0),
+      コンバージョン数: parseInt(data.conversions || 0),
+      // その他の必要なフィールド
+    }
+  };
+});
+```
+
+#### ステップ3: 本システムAPIに送信
+1. **HTTP Request**ノードを追加
+2. 設定：
+   - **Method**: `POST`
+   - **URL**: `https://your-backend-domain.railway.app/api/uploads`
+   - **Authentication**: `Generic Credential Type`
+   - **Header**:
+     - `Authorization`: `Bearer {ユーザーのJWTトークン}`
+     - `Content-Type`: `multipart/form-data`
+3. **Body**:
+   - **Body Type**: `Form-Data`
+   - **File Name**: `file`
+   - **File Content**: CSVデータ（Codeノードで生成）
+
+### 2.3 CSV形式でデータを生成
+
+**Code**ノードでCSVを生成：
+
+```javascript
+const items = $input.all();
+
+// CSVヘッダー
+const headers = [
+  '日付',
+  'キャンペーン名',
+  '広告費',
+  'インプレッション数',
+  'クリック数',
+  'コンバージョン数',
+  // その他のカラム
+];
+
+// CSVデータ行
+const rows = items.map(item => {
+  const data = item.json;
+  return [
+    data.日付,
+    data.キャンペーン名,
+    data.広告費,
+    data.インプレッション数,
+    data.クリック数,
+    data.コンバージョン数,
+    // その他の値
+  ].map(val => `"${String(val || '').replace(/"/g, '""')}"`).join(',');
+});
+
+// CSV全体
+const csv = [
+  headers.map(h => `"${h}"`).join(','),
+  ...rows
+].join('\n');
+
+// UTF-8 BOM付きCSV（Excel対応）
+const bom = '\ufeff';
+const csvWithBom = bom + csv;
+
+return [{
+  json: {
+    csv: csvWithBom,
+    filename: `meta_data_${new Date().toISOString().split('T')[0]}.csv`
+  }
+}];
+```
+
+### 2.4 スケジュール設定
+
+1. **Schedule Trigger**ノードを追加
+2. 設定：
+   - **Trigger Times**: `Every Day`
+   - **Hour**: `9`（毎朝9時）
+   - **Minute**: `0`
+
+---
+
+## 3. 本システムAPIとの連携
+
+### 3.1 APIエンドポイント
+
+**エンドポイント**: `POST /api/uploads`
+
+**認証**: Bearer Token（JWT）
+
+**リクエスト形式**: `multipart/form-data`
+
+**パラメータ**:
+- `file`: CSVファイル（必須）
+
+**レスポンス例**:
+```json
+{
+  "id": "uuid",
+  "file_name": "meta_data_2025-12-20.csv",
+  "row_count": 150,
+  "start_date": "2025-12-01",
+  "end_date": "2025-12-20",
+  "status": "completed"
+}
+```
+
+### 3.2 JWTトークンの取得方法
+
+n8nから本システムAPIを呼び出すには、ユーザーのJWTトークンが必要です。
+
+#### 方法A: ユーザーが手動でトークンを提供
+1. ユーザーが本システムにログイン
+2. ブラウザの開発者ツールでトークンを取得
+3. n8nの環境変数に設定
+
+#### 方法B: n8nで自動ログイン（推奨）
+1. **HTTP Request**ノードでログインAPIを呼び出し
+2. レスポンスからトークンを取得
+3. 後続のAPI呼び出しで使用
+
+**ログインAPI呼び出し例**:
+```javascript
+// HTTP Requestノード
+Method: POST
+URL: https://your-backend-domain.railway.app/api/auth/login
+Body (JSON):
+{
+  "email": "user@example.com",
+  "password": "user-password"
+}
+
+// レスポンスからトークンを取得
+const token = $json.access_token;
+```
+
+### 3.3 n8nワークフロー全体の流れ
+
+```
+1. Schedule Trigger（毎日9時）
+   ↓
+2. Meta API（データ取得）
+   ↓
+3. Code（データ変換）
+   ↓
+4. Code（CSV生成）
+   ↓
+5. HTTP Request（本システムAPIに送信）
+   - 認証: JWTトークン
+   - ファイル: CSVデータ
+   ↓
+6. 完了通知（オプション）
+```
+
+---
+
+## 4. セキュリティ設定
+
+### 4.1 n8nの認証を有効化
+本番環境では必ず認証を有効にしてください：
+
+```
+N8N_BASIC_AUTH_ACTIVE=true
+N8N_BASIC_AUTH_USER=admin
+N8N_BASIC_AUTH_PASSWORD=強力なパスワード
+```
+
+### 4.2 APIトークンの管理
+- JWTトークンは環境変数に保存
+- 定期的にトークンを更新
+- トークンは暗号化して保存（可能であれば）
+
+### 4.3 CORS設定
+本システムのバックエンドで、n8nのドメインを許可：
+
+```python
+# backend/app/config.py
+CORS_ORIGINS = "https://your-n8n-domain.railway.app,https://your-frontend-domain.netlify.app"
+```
+
+---
+
+## 5. トラブルシューティング
+
+### 5.1 n8nが起動しない
+- Railwayのログを確認
+- 環境変数が正しく設定されているか確認
+- ポート番号（5678）が正しいか確認
+
+### 5.2 Meta API接続エラー
+- アクセストークンが有効か確認
+- トークンの有効期限を確認（60日で期限切れ）
+- Metaアプリの権限設定を確認
+
+### 5.3 本システムAPIへの送信エラー
+- JWTトークンが有効か確認
+- トークンの有効期限を確認（30分で期限切れの可能性）
+- CSVフォーマットが正しいか確認
+- 必須カラムが含まれているか確認
+
+### 5.4 データが重複する
+- 本システムのAPIは自動的に重複を検出・更新します
+- 同じ日付・キャンペーン名のデータは更新されます
+
+---
+
+## 6. コスト見積もり
+
+### Railway（n8n用）
+- **最小プラン**: $5/月 = 約¥750/月
+- **スペック**: 512MB RAM, 1GB ストレージ, 100GB 転送量/月
+
+### 既存Railwayサーバーを使用する場合
+- **追加コスト**: ¥0
+- **注意**: 既存システムのリソースを共有するため、負荷が増える可能性
+
+---
+
+## 7. 次のステップ
+
+1. ✅ Railwayでn8nをデプロイ
+2. ✅ Meta API接続を設定
+3. ✅ データ取得ワークフローを作成
+4. ✅ 本システムAPIへの送信を設定
+5. ✅ スケジュールを設定
+6. ✅ テスト実行
+7. ✅ 本番環境で運用開始
+
+---
+
+## 参考リンク
+
+- [n8n公式ドキュメント](https://docs.n8n.io/)
+- [Meta Marketing API](https://developers.facebook.com/docs/marketing-apis)
+- [Railwayドキュメント](https://docs.railway.app/)
+- [本システムAPI仕様](http://localhost:8000/docs)（開発環境）
+

@@ -1,0 +1,436 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 管理画面全体を85%に縮小 */
+html {
+  font-size: 85%;
+}
+
+/* レスポンシブ対応 */
+@media (max-width: 768px) {
+  html {
+    font-size: 90%;  /* モバイルでは少し大きめ */
+  }
+}
+
+@media (min-width: 1920px) {
+  html {
+    font-size: 80%;  /* 大画面では少し小さめ */
+  }
+}
+
+body {
+  font-family: 'Inter', 'Noto Sans JP', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', Meiryo, sans-serif;
+  font-size: 1rem;  /* html の font-size を継承 */
+  line-height: 1.5;
+}
+
+/* Custom scrollbar for better SaaS feel */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #f1f1f1; 
+}
+.dark ::-webkit-scrollbar-track {
+  background: #1f2937;
+}
+::-webkit-scrollbar-thumb {
+  background: #c1c1c1; 
+  border-radius: 4px;
+}
+.dark ::-webkit-scrollbar-thumb {
+  background: #4b5563;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8; 
+}
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #6b7280;
+}
+
+/* Print Styles for PDF Generation - 1ページに収めるため最適化 */
+@media print {
+  @page {
+    margin: 8mm; /* 余白を8mmに固定して1ページに収める */
+    size: A4;
+  }
+  * {
+    box-sizing: border-box !important;
+  }
+  body {
+    background-color: white;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+    line-height: 1.4 !important;
+    font-size: 10px !important;
+    margin: 0 !important;
+    padding: 8px !important;
+    font-family: 'Noto Sans JP', sans-serif !important;
+  }
+  /* Hide UI elements not needed for report */
+  .no-print, button, nav, header, .mobile-header {
+    display: none !important;
+  }
+  /* Layout adjustments for print */
+  #root {
+    width: 100%;
+    margin: 0;
+    padding: 0;
+  }
+  main {
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow: visible !important;
+  }
+  .bg-gray-50, .bg-gray-900, .dark\:bg-gray-900 {
+    background-color: white !important;
+    color: black !important;
+  }
+  .shadow-sm, .shadow, .shadow-md {
+    box-shadow: none !important;
+    border: 1px solid #e5e7eb !important;
+  }
+  /* Ensure graphs are visible if possible */
+  .recharts-responsive-container {
+    min-height: 300px;
+    page-break-inside: avoid;
+  }
+  /* Page break handling */
+  .page-break {
+    page-break-before: always;
+  }
+  .avoid-break {
+    page-break-inside: avoid;
+  }
+  /* Typography adjustments for print */
+  h1, h2, h3, h4, p, td, th, span {
+    color: #111827 !important;
+  }
+  /* 見出しの余白を最適化（1ページに収めるため） */
+  h1 {
+    font-size: 20px !important;
+    margin: 4px 0 6px 0 !important;
+    padding: 4px 0 !important;
+    line-height: 1.4 !important;
+    page-break-after: avoid !important;
+    page-break-inside: avoid !important;
+  }
+  h2 {
+    font-size: 15px !important;
+    margin: 6px 0 4px 0 !important;
+    padding: 3px 0 !important;
+    line-height: 1.4 !important;
+    page-break-after: avoid !important;
+    page-break-inside: avoid !important;
+  }
+  h3 {
+    font-size: 13px !important;
+    margin: 5px 0 3px 0 !important;
+    padding: 2px 0 !important;
+    line-height: 1.4 !important;
+    page-break-after: avoid !important;
+    page-break-inside: avoid !important;
+  }
+  h4, h5, h6 {
+    margin: 8px 0 4px 0 !important;
+    padding: 3px 0 !important;
+    line-height: 1.4 !important;
+    page-break-after: avoid !important;
+    page-break-inside: avoid !important;
+  }
+  h4, h5, h6 {
+    margin: 5px 0 3px 0 !important;
+    line-height: 1.3 !important;
+  }
+  /* 段落とテキストを最適化（1ページに収めるため） */
+  p {
+    font-size: 10px !important;
+    line-height: 1.4 !important;
+    margin: 3px 0 !important;
+    padding: 0 !important;
+    orphans: 3 !important;
+    widows: 3 !important;
+    page-break-inside: avoid !important;
+  }
+  /* すべてのセクションの余白を最適化（1ページに収めるため） */
+  .analysis-section,
+  .performance-detail-section,
+  .recommendations-section,
+  [id*="section"],
+  .avoid-break,
+  .no-break,
+  [class*="section"],
+  [class*="rounded-xl"],
+  [class*="rounded-lg"] {
+    margin: 5px 0 !important;
+    padding: 5px !important;
+    page-break-inside: avoid !important;
+    page-break-after: avoid !important;
+  }
+  
+  /* 改善提案セクションの前で改ページを防ぐ（3ページ目に行かないように） */
+  .recommendations-section,
+  #recommendations-section,
+  [class*="recommendations"] {
+    page-break-before: avoid !important;
+  }
+  
+  /* 詳細パフォーマンス分析と改善提案を同じページに */
+  .performance-detail-section + .recommendations-section {
+    page-break-before: avoid !important;
+  }
+  /* 1ページ目のコンテンツ */
+  /* 1ページ目のコンテンツ - 強制改ページを削除（自動調整させる） */
+  .page-1-content {
+    /* 強制改ページを削除して自動調整 */
+  }
+  /* 2ページ目のコンテンツ */
+  .page-2-content {
+    /* 2ページ目の内容 */
+  }
+  /* テーブルを最適化（1ページに収めるため） */
+  table, .grid, [class*="grid"] {
+    width: 100% !important;
+    margin: 4px 0 !important;
+    font-size: 9px !important;
+    border-collapse: collapse !important;
+    page-break-inside: avoid !important;
+  }
+  th, td {
+    padding: 3px 4px !important;
+    font-size: 9px !important;
+    line-height: 1.3 !important;
+    page-break-inside: avoid !important;
+  }
+  /* 表のヘッダーを各ページで繰り返し */
+  thead {
+    display: table-header-group !important;
+  }
+  td, th, [class*="rounded-lg"], [class*="rounded-xl"] {
+    padding: 6px 8px !important;
+    font-size: 10pt !important;
+  }
+  /* リストの余白を最適化（1ページに収めるため） */
+  ul, ol {
+    margin: 3px 0 !important;
+    padding-left: 15px !important;
+    font-size: 10px !important;
+    page-break-inside: avoid !important;
+  }
+  li {
+    font-size: 10px !important;
+    line-height: 1.4 !important;
+    margin: 2px 0 !important;
+    page-break-inside: avoid !important;
+  }
+  /* メトリックカードを適切なサイズに戻す */
+  .metric-card, [class*="rounded-xl"], [class*="rounded-lg"] {
+    padding: 8px !important;
+    margin: 4px !important;
+    font-size: 11px !important;
+  }
+  /* グラフ・画像を極限まで縮小 */
+  img, canvas, .chart-container, .chart {
+    max-width: 100% !important;
+    height: auto !important;
+    margin: 4px 0 !important;
+    page-break-inside: avoid !important;
+  }
+  /* 不要な余白を全削除 */
+  .container, .wrapper, main, article {
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+  * {
+    margin-block-start: 0 !important;
+    margin-block-end: 0 !important;
+  }
+  /* 改ページを防ぐ要素 */
+  h1, h2, h3, h4, h5, h6 {
+    page-break-after: avoid !important;
+    page-break-inside: avoid !important;
+  }
+  table, ul, ol, .analysis-section {
+    page-break-inside: avoid !important;
+  }
+  /* 強制改ページのクラス */
+  .page-break-before {
+    page-break-before: always !important;
+  }
+  .page-break-after {
+    page-break-after: always !important;
+  }
+  /* PDF出力時の数字のはみ出し防止 */
+  .grid {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+  /* カード内の数字がはみ出さないように */
+  [class*="rounded-lg"] {
+    min-width: 0 !important;
+    overflow: hidden !important;
+    word-wrap: break-word !important;
+    word-break: break-word !important;
+  }
+  /* 長い数字の処理 */
+  .font-bold {
+    font-size: 0.875rem !important;
+    line-height: 1.25 !important;
+    word-break: break-all !important;
+    overflow-wrap: break-word !important;
+  }
+  /* タイトルや見出しのテキストが切れないように */
+  h1, h2, h3, h4, h5, h6 {
+    word-break: break-word !important;
+    overflow-wrap: break-word !important;
+    hyphens: auto !important;
+    max-width: 100% !important;
+  }
+  /* flexboxコンテナ内のテキストが切れないように */
+  .flex {
+    min-width: 0 !important;
+  }
+  .flex > * {
+    min-width: 0 !important;
+  }
+  /* 特に詳細パフォーマンス分析セクションを極限まで圧縮（2ページに強制的に収めるため） */
+  .performance-detail-section,
+  #performance-analysis-section,
+  #performance-detail,
+  [id*="performance"],
+  [class*="performance"] {
+    font-size: 9px !important;
+    line-height: 1.2 !important;
+    margin: 5px 0 !important;
+    padding: 4px !important;
+  }
+  .performance-detail-section h3,
+  #performance-analysis-section h3,
+  #performance-detail h3 {
+    font-size: 11px !important;
+    margin: 4px 0 2px 0 !important;
+    word-break: break-word !important;
+    overflow-wrap: break-word !important;
+    white-space: normal !important;
+    max-width: 100% !important;
+    overflow: visible !important;
+  }
+  .performance-detail-section h4,
+  #performance-analysis-section h4,
+  #performance-detail h4 {
+    font-size: 9px !important;
+    margin: 4px 0 2px 0 !important;
+  }
+  .performance-detail-section p,
+  .performance-detail-section ul,
+  #performance-analysis-section p,
+  #performance-analysis-section ul,
+  #performance-detail p,
+  #performance-detail ul {
+    font-size: 8px !important;
+    line-height: 1.2 !important;
+    margin: 2px 0 !important;
+  }
+  .performance-detail-section li,
+  #performance-analysis-section li,
+  #performance-detail li {
+    font-size: 8px !important;
+    line-height: 1.2 !important;
+    margin: 2px 0 !important;
+  }
+  /* ページブレイクの最適化 */
+  .performance-detail-section {
+    page-break-before: auto !important;
+    page-break-after: auto !important;
+    page-break-inside: avoid !important;
+  }
+  /* 改善提案セクションも極限まで圧縮 */
+  .recommendations-section,
+  #recommendations-section {
+    font-size: 9px !important;
+    margin: 5px 0 !important;
+    padding: 4px !important;
+  }
+  /* 改善提案詳細セクションのテキストが切れないように */
+  #recommendations-section h3,
+  #recommendations-section * {
+    word-break: break-word !important;
+    overflow-wrap: break-word !important;
+    max-width: 100% !important;
+  }
+  /* 表やグリッドのレスポンシブ対応 */
+  table, .grid, [class*="grid"] {
+    width: 100% !important;
+    max-width: 100% !important;
+    table-layout: fixed !important;
+    word-break: break-word !important;
+    overflow-wrap: break-word !important;
+  }
+  td, th, [class*="rounded-lg"], [class*="rounded-xl"] {
+    word-break: break-word !important;
+    overflow-wrap: break-word !important;
+    max-width: 100% !important;
+    overflow: visible !important;
+  }
+  /* セクションのページ分割を避ける */
+  [id*="section"], .avoid-break, .no-break {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    margin-bottom: 15px !important;
+  }
+  /* 見出しのページ分割を避ける */
+  h1, h2, h3, h4, h5, h6 {
+    page-break-after: avoid !important;
+    page-break-inside: avoid !important;
+    break-after: avoid !important;
+    break-inside: avoid !important;
+  }
+  /* 表の改ページ制御 */
+  table, .grid, [class*="grid"] {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    margin: 10px 0 !important;
+  }
+  /* 表のヘッダーを各ページで繰り返し */
+  thead {
+    display: table-header-group !important;
+  }
+  /* リストの改ページ制御 */
+  ul, ol {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+  li {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+  /* カードやボックスの改ページ制御 */
+  [class*="rounded-xl"], [class*="rounded-lg"], .metric-card, .chart-container, .insight-box {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+  /* 段落の改ページ制御 */
+  p {
+    orphans: 3 !important;
+    widows: 3 !important;
+  }
+  /* 強制改ページのクラス */
+  .page-break-before {
+    page-break-before: always !important;
+    break-before: page !important;
+  }
+  .page-break-after {
+    page-break-after: always !important;
+    break-after: page !important;
+  }
+  /* 改ページを許可する場所 */
+  .allow-break {
+    page-break-inside: auto !important;
+    break-inside: auto !important;
+  }
+}
+
+
