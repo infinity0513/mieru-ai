@@ -20,9 +20,6 @@ COPY backend/ ./backend/
 # 作業ディレクトリをbackendに変更
 WORKDIR /app/backend
 
-# ポートを環境変数から取得（Railwayが自動設定）
-EXPOSE $PORT
-
 # 環境変数を設定
 ENV PYTHONPATH=/app/backend
 ENV PYTHONUNBUFFERED=1
@@ -30,6 +27,13 @@ ENV PYTHONUNBUFFERED=1
 # デフォルトポート（環境変数PORTが設定されていない場合）
 ENV PORT=8000
 
-# uvicornでアプリケーションを起動（環境変数PORTを使用）
-CMD uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}
+# 起動スクリプトを作成
+RUN echo '#!/bin/sh\nuvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}' > /app/backend/start.sh && \
+    chmod +x /app/backend/start.sh
+
+# ポートを公開（Railwayが自動設定するポートを使用）
+EXPOSE 8000
+
+# 起動スクリプトを実行
+CMD ["/bin/sh", "/app/backend/start.sh"]
 
