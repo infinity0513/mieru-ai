@@ -31,5 +31,5 @@ ENV PYTHONUNBUFFERED=1
 EXPOSE 8000
 
 # Pythonスクリプトでサーバーを起動（環境変数PORTを正しく読み取る）
-CMD ["python", "start_server.py"]
+CMD ["python3", "/app/backend/start_server.py"]
 
