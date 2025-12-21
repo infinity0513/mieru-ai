@@ -59,10 +59,18 @@ class Settings(BaseSettings):
     # 2FA Skip List (comma-separated emails that can skip 2FA)
     SKIP_2FA_EMAILS: str = "gi06220622@gmail.com"  # メール無料枠節約のため
     
+    # Email Verification Skip List (comma-separated emails that can skip email verification)
+    SKIP_EMAIL_VERIFICATION_EMAILS: str = "gi06220622@gmail.com"  # メール送信が設定されていない場合のため
+    
     @property
     def skip_2fa_emails_list(self) -> List[str]:
         """Parse SKIP_2FA_EMAILS string into list"""
         return [email.strip().lower() for email in self.SKIP_2FA_EMAILS.split(",") if email.strip()]
+    
+    @property
+    def skip_email_verification_emails_list(self) -> List[str]:
+        """Parse SKIP_EMAIL_VERIFICATION_EMAILS string into list"""
+        return [email.strip().lower() for email in self.SKIP_EMAIL_VERIFICATION_EMAILS.split(",") if email.strip()]
     
     @property
     def is_production(self) -> bool:

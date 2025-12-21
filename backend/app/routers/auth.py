@@ -99,18 +99,26 @@ def login_with_verification(
         
         if not user or not verify_password(request.password, user.password_hash):
             print(f"[Auth] Invalid credentials")
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="メールアドレスまたはパスワードが正しくありません"
-            )
-        
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="メールアドレスまたはパスワードが正しくありません"
+        )
+    
         # Check if email is verified
         print(f"[Auth] Checking email verification status: {user.email_verified}")
+        email_lower = request.email.lower().strip()
+        
+        # Auto-verify email if in skip list
         if user.email_verified != "true":
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="メールアドレスの確認が完了していません。登録時に送信されたメールの確認リンクをクリックしてください。"
-            )
+            if email_lower in settings.skip_email_verification_emails_list:
+                print(f"[Auth] Email {email_lower} is in skip email verification list, auto-verifying")
+                user.email_verified = "true"
+                db.commit()
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="メールアドレスの確認が完了していません。登録時に送信されたメールの確認リンクをクリックしてください。"
+                )
         
         # Check if email is in skip 2FA list
         email_lower = request.email.lower().strip()
