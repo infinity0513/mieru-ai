@@ -64,7 +64,26 @@ async def global_exception_handler(request: Request, exc: Exception):
         headers=headers
     )
 
+# Custom middleware to fix HTTPS redirects (must be added first)
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import RedirectResponse
+
+class HTTPSRedirectMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        
+        # Fix HTTP redirects to HTTPS
+        if hasattr(response, 'status_code') and response.status_code in [301, 302, 307, 308]:
+            location = response.headers.get("location", "")
+            if location and location.startswith("http://"):
+                # Replace http:// with https://
+                location = location.replace("http://", "https://", 1)
+                response.headers["location"] = location
+        
+        return response
+
 # Security middleware (must be added before CORS)
+app.add_middleware(HTTPSRedirectMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(RateLimitMiddleware, calls=settings.rate_limit_calls, period=60)
 
