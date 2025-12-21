@@ -1,5 +1,5 @@
 from fastapi import Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from time import time
 from collections import defaultdict
@@ -48,7 +48,21 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
+        # Handle trailing slash redirects with HTTPS
+        if request.url.path.endswith("/") == False and request.url.path.count("/") > 1:
+            # Check if there's a route with trailing slash
+            # FastAPI will handle this, but we need to ensure HTTPS in redirect
+            pass
+        
         response = await call_next(request)
+        
+        # If response is a redirect (307), ensure it uses HTTPS
+        if isinstance(response, RedirectResponse) and response.status_code in [301, 302, 307, 308]:
+            redirect_url = str(response.headers.get("location", ""))
+            if redirect_url.startswith("http://"):
+                # Replace http:// with https://
+                redirect_url = redirect_url.replace("http://", "https://", 1)
+                response.headers["location"] = redirect_url
         
         # Add security headers (but don't overwrite CORS headers)
         response.headers["X-Content-Type-Options"] = "nosniff"
