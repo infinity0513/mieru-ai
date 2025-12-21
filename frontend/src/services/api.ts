@@ -736,7 +736,7 @@ class ApiClient {
     }
     
     try {
-      const response = await fetch(`${this.baseURL}/campaigns`, {
+      const response = await fetch(`${this.baseURL}/campaigns/`, {
         credentials: 'include',  // CORS credentials をサポート
         headers: this.getHeaders(),
       });
@@ -2030,7 +2030,7 @@ ${url ? `- 参考URL: ${url}` : ''}
 広告テキスト: "${text}"
 
 レスポンスは必ず日本語で返してください。すべての説明、コメント、提案は日本語で記述してください。
-`;
+    `;
 
     try {
       const aiInstance = getAI();
