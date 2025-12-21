@@ -432,3 +432,44 @@ def verify_email(request: EmailVerificationRequest, db: Session = Depends(get_db
         "message": "メールアドレスの確認が完了しました。アカウントが有効化されました。",
         "verified": True
     }
+
+@router.post("/admin/reset-password-no-email", response_model=PasswordResetResponse)
+def admin_reset_password_no_email(
+    email: str,
+    new_password: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Temporary admin endpoint to reset password without email (for development/testing)
+    Only works for emails in SKIP_EMAIL_VERIFICATION_EMAILS list
+    """
+    # Check if email is in skip list
+    email_lower = email.lower().strip()
+    if email_lower not in settings.skip_email_verification_emails_list:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="このエンドポイントは開発・テスト用です。"
+        )
+    
+    # Find user
+    user = db.query(User).filter(User.email == email_lower).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="ユーザーが見つかりません。"
+        )
+    
+    # Validate new password
+    if len(new_password) < 8:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="パスワードは8文字以上である必要があります。"
+        )
+    
+    # Update password and auto-verify email
+    user.password_hash = get_password_hash(new_password)
+    user.email_verified = "true"
+    
+    db.commit()
+    
+    return {"message": "パスワードが正常にリセットされました。メール確認も完了しました。"}
