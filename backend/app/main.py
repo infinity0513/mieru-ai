@@ -23,8 +23,8 @@ Base.metadata.create_all(bind=engine)
 app = FastAPI(
     title="Meta Ad Analyzer AI API",
     description="SaaS-style dashboard for analyzing Meta advertising data",
-    version="1.0.0",
-    redirect_slashes=False  # Disable automatic redirect to prevent HTTP redirect issue
+    version="1.0.0"
+    # redirect_slashes is True by default, we'll fix HTTP redirects in middleware
 )
 
 # Global exception handler to ensure CORS headers are always included

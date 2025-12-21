@@ -11,7 +11,6 @@ from ..schemas.campaign import CampaignResponse
 
 router = APIRouter()
 
-@router.get("", include_in_schema=False)
 @router.get("/")
 def get_campaigns(
     start_date: Optional[date] = Query(None),
