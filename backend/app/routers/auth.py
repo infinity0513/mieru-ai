@@ -99,10 +99,10 @@ def login_with_verification(
         
         if not user or not verify_password(request.password, user.password_hash):
             print(f"[Auth] Invalid credentials")
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="メールアドレスまたはパスワードが正しくありません"
-        )
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="メールアドレスまたはパスワードが正しくありません"
+            )
     
         # Check if email is verified
         print(f"[Auth] Checking email verification status: {user.email_verified}")
