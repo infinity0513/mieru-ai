@@ -73,10 +73,17 @@ class HTTPSRedirectMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
         
         # Fix HTTP redirects to HTTPS
+        # Check for redirect status codes
         if hasattr(response, 'status_code') and response.status_code in [301, 302, 307, 308]:
             location = response.headers.get("location", "")
             if location and location.startswith("http://"):
                 # Replace http:// with https://
+                location = location.replace("http://", "https://", 1)
+                response.headers["location"] = location
+        # Also handle RedirectResponse objects directly
+        elif isinstance(response, RedirectResponse):
+            location = response.headers.get("location", "")
+            if location and location.startswith("http://"):
                 location = location.replace("http://", "https://", 1)
                 response.headers["location"] = location
         
