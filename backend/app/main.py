@@ -14,7 +14,7 @@ from .routers import notifications
 # from .routers import teams  # Temporarily disabled
 from .middleware.security import RateLimitMiddleware, SecurityHeadersMiddleware
 # Import all models to ensure they are registered with Base
-from .models import user, campaign, analysis, notification, email_verification, login_verification, password_reset
+from . import models  # This will import all models via models/__init__.py
 import traceback
 
 # Create database tables (if they don't exist)
