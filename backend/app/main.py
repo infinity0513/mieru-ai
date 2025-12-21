@@ -31,6 +31,7 @@ app = FastAPI(
 async def global_exception_handler(request: Request, exc: Exception):
     """Global exception handler that ensures CORS headers are included even on errors"""
     import traceback
+    error_traceback = traceback.format_exc()
     traceback.print_exc()
     
     # Get origin from request
@@ -48,9 +49,17 @@ async def global_exception_handler(request: Request, exc: Exception):
     else:
         headers = {}
     
+    # Include detailed error in response for debugging
+    error_detail = {
+        "detail": f"Internal server error: {str(exc)}",
+        "error": str(exc),
+        "error_type": type(exc).__name__,
+        "traceback": error_traceback if settings.DEBUG else None
+    }
+    
     return JSONResponse(
         status_code=500,
-        content={"detail": "Internal server error", "error": str(exc)},
+        content=error_detail,
         headers=headers
     )
 
