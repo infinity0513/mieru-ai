@@ -71,10 +71,19 @@ async def upload_file(
         # Check for duplicates before processing
         duplicate_count = 0
         for _, row in df.iterrows():
-            campaign_date = pd.to_datetime(row['日付']).date()
-            campaign_name = str(row['キャンペーン名'])
-            ad_set_name = str(row.get('広告セット名', '') or '')
-            ad_name = str(row.get('広告名', '') or '')
+            # Handle empty/NaT dates
+            date_value = row.get('日付', '')
+            if pd.isna(date_value) or date_value == '' or str(date_value).lower() == 'nat':
+                continue  # Skip rows with invalid dates
+            try:
+                campaign_date = pd.to_datetime(date_value).date()
+            except (ValueError, TypeError):
+                continue  # Skip rows with invalid dates
+            
+            # Handle NaN values in string fields
+            campaign_name = str(row.get('キャンペーン名', '') or '').replace('nan', '').replace('NaN', '')
+            ad_set_name = str(row.get('広告セット名', '') or '').replace('nan', '').replace('NaN', '')
+            ad_name = str(row.get('広告名', '') or '').replace('nan', '').replace('NaN', '')
             
             existing = db.query(Campaign).filter(
                 Campaign.user_id == current_user.id,
@@ -90,9 +99,13 @@ async def upload_file(
         # Process and save (duplicates will be updated)
         row_count = DataService.process_and_save_data(df, current_user.id, upload.id, db)
         
-        # Get date range
-        upload.start_date = pd.to_datetime(df['日付']).min().date()
-        upload.end_date = pd.to_datetime(df['日付']).max().date()
+        # Get date range - filter out NaT values
+        valid_dates = pd.to_datetime(df['日付'], errors='coerce').dropna()
+        if len(valid_dates) > 0:
+            upload.start_date = valid_dates.min().date()
+            upload.end_date = valid_dates.max().date()
+        else:
+            raise HTTPException(status_code=400, detail="有効な日付データが見つかりませんでした")
         upload.row_count = row_count
         upload.status = "completed"
         upload.processed_at = datetime.utcnow()
@@ -125,10 +138,14 @@ async def upload_file(
         }
         
     except Exception as e:
+        db.rollback()  # トランザクションをロールバック
         upload.status = "error"
         upload.error_message = str(e)
-        db.commit()
-        raise HTTPException(status_code=500, detail=str(e))
+        try:
+            db.commit()
+        except:
+            db.rollback()
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 @router.get("/")
 def get_uploads(
