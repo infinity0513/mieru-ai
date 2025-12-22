@@ -18,7 +18,23 @@ export const Settings: React.FC<SettingsProps> = ({ user }) => {
   const [inviteRole, setInviteRole] = useState<UserRole>('VIEWER');
   const [loading, setLoading] = useState(false);
   const [membersLoading, setMembersLoading] = useState(false);
+  const [metaAccountId, setMetaAccountId] = useState('');
+  const [metaAccessToken, setMetaAccessToken] = useState('');
+  const [metaSettingsLoading, setMetaSettingsLoading] = useState(false);
   const { addToast } = useToast();
+
+  // Load Meta settings
+  useEffect(() => {
+    const loadMetaSettings = async () => {
+      try {
+        const settings = await Api.getMetaSettings();
+        setMetaAccountId(settings.meta_account_id || '');
+      } catch (error) {
+        console.error('Failed to load Meta settings:', error);
+      }
+    };
+    loadMetaSettings();
+  }, []);
 
   // Load teams and members
   useEffect(() => {
@@ -252,6 +268,61 @@ export const Settings: React.FC<SettingsProps> = ({ user }) => {
                     </div>
                 </div>
                 <Button variant="outline" size="sm">プラン変更</Button>
+            </div>
+          </div>
+
+          <div className="p-6">
+            <h3 className="text-lg leading-6 font-medium text-gray-900 dark:text-white mb-4">Meta広告アカウント連携</h3>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Meta広告アカウントID
+                </label>
+                <input
+                  type="text"
+                  value={metaAccountId}
+                  onChange={(e) => setMetaAccountId(e.target.value)}
+                  placeholder="act_123456789"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                />
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  Meta広告マネージャーで確認できるアカウントID（act_で始まる形式）
+                </p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Metaアクセストークン
+                </label>
+                <input
+                  type="password"
+                  value={metaAccessToken}
+                  onChange={(e) => setMetaAccessToken(e.target.value)}
+                  placeholder="アクセストークンを入力（更新時のみ）"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                />
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  長期トークン（60日有効）を推奨。更新しない場合は空欄のままにしてください。
+                </p>
+              </div>
+              <div className="flex justify-end">
+                <Button
+                  onClick={async () => {
+                    setMetaSettingsLoading(true);
+                    try {
+                      await Api.updateMetaSettings(metaAccountId, metaAccessToken);
+                      addToast('Metaアカウント設定を更新しました', 'success');
+                      setMetaAccessToken(''); // セキュリティのため、保存後はクリア
+                    } catch (error: any) {
+                      addToast(error.message || '設定の更新に失敗しました', 'error');
+                    } finally {
+                      setMetaSettingsLoading(false);
+                    }
+                  }}
+                  disabled={metaSettingsLoading}
+                >
+                  {metaSettingsLoading ? '保存中...' : 'Meta設定を保存'}
+                </Button>
+              </div>
             </div>
           </div>
         </div>

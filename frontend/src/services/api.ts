@@ -398,6 +398,31 @@ class ApiClient {
     }
   }
 
+  async getMe(): Promise<User> {
+    const response = await this.request<User>('/api/users/me', {
+      method: 'GET',
+    });
+    return response;
+  }
+
+  async updateMetaSettings(metaAccountId: string, metaAccessToken: string): Promise<{ message: string; meta_account_id: string | null }> {
+    const response = await this.request<{ message: string; meta_account_id: string | null }>('/api/users/me/meta-settings', {
+      method: 'PUT',
+      body: JSON.stringify({
+        meta_account_id: metaAccountId,
+        meta_access_token: metaAccessToken
+      }),
+    });
+    return response;
+  }
+
+  async getMetaSettings(): Promise<{ meta_account_id: string | null }> {
+    const response = await this.request<{ meta_account_id: string | null }>('/api/users/me/meta-settings', {
+      method: 'GET',
+    });
+    return response;
+  }
+
   async register(email: string, password: string, name?: string): Promise<User> {
     const response = await fetch(`${this.baseURL}/auth/register`, {
       method: 'POST',

@@ -14,5 +14,8 @@ class User(Base):
     plan = Column(String(20), default="FREE")  # FREE, STANDARD, PRO
     email_verified = Column(String(10), default="false", nullable=False)  # "true" or "false"
     # organization = Column(String(255))  # Commented out - column doesn't exist in DB
+    # Meta API settings
+    meta_account_id = Column(String(255), nullable=True)  # Meta広告アカウントID (例: act_123456789)
+    meta_access_token = Column(String(500), nullable=True)  # Metaアクセストークン（暗号化推奨）
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

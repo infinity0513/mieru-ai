@@ -63,3 +63,11 @@ class LoginVerificationResponse(BaseModel):
     access_token: Optional[str] = None  # 2FAスキップ時のみ
     token_type: Optional[str] = None  # 2FAスキップ時のみ
     user: Optional[UserResponse] = None  # 2FAスキップ時のみ
+
+class MetaAccountSettings(BaseModel):
+    meta_account_id: Optional[str] = None
+    meta_access_token: Optional[str] = None
+
+class MetaAccountSettingsResponse(BaseModel):
+    message: str
+    meta_account_id: Optional[str] = None

@@ -115,6 +115,10 @@ app.include_router(uploads.router, prefix="/api/uploads", tags=["uploads"])
 app.include_router(campaigns.router, prefix="/api/campaigns", tags=["campaigns"])
 app.include_router(analysis.router, prefix="/api/analysis", tags=["analysis"])
 app.include_router(notifications.router, prefix="/api/notifications", tags=["notifications"])
+
+# Meta API router
+from .routers import meta_api
+app.include_router(meta_api.router, prefix="/api/meta", tags=["meta"])
 # app.include_router(teams.router, prefix="/api/teams", tags=["teams"])  # Temporarily disabled
 
 @app.get("/")
