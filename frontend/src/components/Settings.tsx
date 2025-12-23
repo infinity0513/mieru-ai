@@ -36,6 +36,32 @@ export const Settings: React.FC<SettingsProps> = ({ user }) => {
     loadMetaSettings();
   }, []);
 
+  // Handle OAuth callback
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const oauthStatus = urlParams.get('meta_oauth');
+    
+    if (oauthStatus === 'success') {
+      const accountId = urlParams.get('account_id');
+      if (accountId) {
+        setMetaAccountId(accountId);
+        addToast('Metaアカウントの連携が完了しました', 'success');
+        // URLパラメータをクリア
+        window.history.replaceState({}, '', '/settings');
+        // 設定を再読み込み
+        Api.getMetaSettings().then(settings => {
+          setMetaAccountId(settings.meta_account_id || '');
+        }).catch(error => {
+          console.error('Failed to reload Meta settings:', error);
+        });
+      }
+    } else if (oauthStatus === 'callback') {
+      // コールバックはバックエンドで処理されるため、ここでは何もしない
+      // バックエンドからリダイレクトされる
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // addToastは安定した参照なので依存配列から除外
+
   // Load teams and members
   useEffect(() => {
     const loadTeams = async () => {
@@ -274,6 +300,42 @@ export const Settings: React.FC<SettingsProps> = ({ user }) => {
           <div className="p-6">
             <h3 className="text-lg leading-6 font-medium text-gray-900 dark:text-white mb-4">Meta広告アカウント連携</h3>
             <div className="space-y-4">
+              {/* OAuth認証ボタン */}
+              <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="text-sm font-medium text-blue-900 dark:text-blue-100 mb-1">
+                      簡単に連携する（推奨）
+                    </h4>
+                    <p className="text-xs text-blue-700 dark:text-blue-300">
+                      Metaでログインするだけで、アカウントIDとアクセストークンを自動取得できます
+                    </p>
+                  </div>
+                  <Button
+                    onClick={async () => {
+                      try {
+                        await Api.startMetaOAuth();
+                      } catch (error: any) {
+                        addToast(error.message || 'OAuth認証の開始に失敗しました', 'error');
+                      }
+                    }}
+                    variant="primary"
+                    disabled={metaSettingsLoading}
+                  >
+                    Metaでログインして連携
+                  </Button>
+                </div>
+              </div>
+
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-gray-300 dark:border-gray-600"></div>
+                </div>
+                <div className="relative flex justify-center text-sm">
+                  <span className="px-2 bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400">または</span>
+                </div>
+              </div>
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                   Meta広告アカウントID

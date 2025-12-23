@@ -47,13 +47,13 @@ export const Simulation: React.FC<SimulationProps> = ({ data }) => {
             const value = Number(s.value) || 0;
             
             return {
-                name,
+            name,
                 baseCost: cost,
                 baseConversions: conversions,
                 baseValue: value,
                 avgCpa: conversions > 0 ? cost / conversions : 0,
                 avgRoas: cost > 0 ? (value / cost) * 100 : 0,
-                budgetMultiplier: 1.0
+            budgetMultiplier: 1.0
             };
         })
         // Filter out very small campaigns to keep UI clean

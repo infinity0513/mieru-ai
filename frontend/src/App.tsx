@@ -362,7 +362,7 @@ const AppContent: React.FC = () => {
           
           try {
             if (handleLogoutRef.current) {
-              handleLogoutRef.current();
+            handleLogoutRef.current();
             }
           } catch (logoutError) {
             console.error('[App] Error during logout:', logoutError);

@@ -93,8 +93,8 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
           } else {
             console.log('[Auth] Fallback to direct login');
             // Fallback to direct login (should not happen with 2FA enabled)
-            const user = await Api.login(email, password);
-            onLogin(user);
+          const user = await Api.login(email, password);
+          onLogin(user);
           }
         } catch (loginError: any) {
           console.error('[Auth] Login error:', loginError);
@@ -144,11 +144,14 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
         return;
       }
 
+      console.log('[Auth] Verifying code for:', pendingEmail);
       const user = await Api.verifyLoginCode(pendingEmail, verificationCode);
+      console.log('[Auth] Verification successful, user:', user);
       onLogin(user);
+      setLoading(false);
     } catch (err: any) {
+      console.error('[Auth] Verification error:', err);
       setError(err.message || '認証コードの確認に失敗しました');
-    } finally {
       setLoading(false);
     }
   };

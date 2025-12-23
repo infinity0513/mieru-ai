@@ -160,9 +160,9 @@ export const RoiSimulator: React.FC<RoiSimulatorProps> = ({ data }) => {
               }
               
               return {
-                  ...prev,
-                  profitPerUnit: profit,
-                  totalMonthlyProfit: totalProfit
+              ...prev,
+              profitPerUnit: profit,
+              totalMonthlyProfit: totalProfit
               };
           });
       }

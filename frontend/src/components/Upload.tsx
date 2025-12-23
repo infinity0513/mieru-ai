@@ -305,13 +305,13 @@ export const Upload: React.FC<UploadProps> = ({ onUploadComplete }) => {
           </div>
           <div>
             <p className="font-medium mb-1">オプションカラム:</p>
-            <ul className="list-disc pl-5 space-y-1">
+          <ul className="list-disc pl-5 space-y-1">
               <li>コンバージョン価値</li>
               <li>リーチ</li>
               <li>エンゲージメント</li>
               <li>リンククリック</li>
               <li>ランディングページビュー</li>
-            </ul>
+          </ul>
           </div>
         </div>
       </div>

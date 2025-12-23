@@ -56,6 +56,11 @@ class Settings(BaseSettings):
     RESEND_FROM_NAME: Optional[str] = None  # 例: "MIERU AI"
     FRONTEND_URL: Optional[str] = "http://localhost:3000"  # パスワードリセットリンク用
     
+    # Meta OAuth
+    META_APP_ID: Optional[str] = None
+    META_APP_SECRET: Optional[str] = None
+    META_OAUTH_REDIRECT_URI: Optional[str] = None  # 例: "http://localhost:3000/settings?meta_oauth=callback"
+    
     # 2FA Skip List (comma-separated emails that can skip 2FA)
     SKIP_2FA_EMAILS: str = "gi06220622@gmail.com"  # メール無料枠節約のため
     

@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 from typing import Optional
 from datetime import datetime, timedelta
@@ -6,7 +7,10 @@ from ..models.user import User
 from ..utils.dependencies import get_current_user
 from ..utils.plan_limits import get_max_adset_limit
 from ..database import get_db
+from ..config import settings
 import httpx
+import urllib.parse
+import secrets
 
 router = APIRouter()
 
@@ -118,5 +122,200 @@ async def get_meta_insights(
         raise HTTPException(
             status_code=500,
             detail=f"Meta API呼び出しに失敗しました: {str(e)}"
+        )
+
+@router.get("/oauth/authorize")
+async def meta_oauth_authorize(
+    current_user: User = Depends(get_current_user)
+):
+    """Meta OAuth認証を開始 - 認証URLを生成してリダイレクト"""
+    if not settings.META_APP_ID:
+        raise HTTPException(
+            status_code=500,
+            detail="Meta OAuthが設定されていません。管理者に連絡してください。"
+        )
+    
+    # リダイレクトURIを設定
+    redirect_uri = settings.META_OAUTH_REDIRECT_URI or f"{settings.FRONTEND_URL}/settings?meta_oauth=callback"
+    
+    # ステートパラメータを生成（CSRF対策）
+    state = secrets.token_urlsafe(32)
+    # ステートをセッションに保存する代わりに、ユーザーIDを含める（簡易版）
+    state_with_user = f"{state}:{current_user.id}"
+    
+    # Meta OAuth認証URLを生成
+    oauth_url = (
+        f"https://www.facebook.com/v18.0/dialog/oauth?"
+        f"client_id={settings.META_APP_ID}&"
+        f"redirect_uri={urllib.parse.quote(redirect_uri)}&"
+        f"scope=ads_read,ads_management&"
+        f"state={urllib.parse.quote(state_with_user)}&"
+        f"response_type=code"
+    )
+    
+    return RedirectResponse(url=oauth_url)
+
+@router.get("/oauth/authorize-url")
+async def meta_oauth_authorize_url(
+    current_user: User = Depends(get_current_user)
+):
+    """Meta OAuth認証URLを取得（JSON形式で返す）"""
+    try:
+        if not settings.META_APP_ID:
+            raise HTTPException(
+                status_code=500,
+                detail="Meta OAuthが設定されていません。バックエンドの環境変数にMETA_APP_IDを設定してください。"
+            )
+        
+        # リダイレクトURIを設定
+        redirect_uri = settings.META_OAUTH_REDIRECT_URI or f"{settings.FRONTEND_URL}/settings?meta_oauth=callback"
+        
+        # ステートパラメータを生成（CSRF対策）
+        state = secrets.token_urlsafe(32)
+        # ステートをセッションに保存する代わりに、ユーザーIDを含める（簡易版）
+        state_with_user = f"{state}:{current_user.id}"
+        
+        # Meta OAuth認証URLを生成
+        oauth_url = (
+            f"https://www.facebook.com/v18.0/dialog/oauth?"
+            f"client_id={settings.META_APP_ID}&"
+            f"redirect_uri={urllib.parse.quote(redirect_uri)}&"
+            f"scope=ads_read,ads_management&"
+            f"state={urllib.parse.quote(state_with_user)}&"
+            f"response_type=code"
+        )
+        
+        return {"oauth_url": oauth_url}
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
+        print(f"[Meta OAuth] Error in authorize-url: {str(e)}")
+        print(f"[Meta OAuth] Error details: {error_details}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"OAuth認証URLの生成に失敗しました: {str(e)}"
+        )
+
+@router.get("/oauth/callback")
+async def meta_oauth_callback(
+    code: str = Query(..., description="OAuth認証コード"),
+    state: str = Query(..., description="ステートパラメータ（CSRF対策）"),
+    db: Session = Depends(get_db)
+):
+    """Meta OAuthコールバック - トークンを取得して保存"""
+    if not settings.META_APP_ID or not settings.META_APP_SECRET:
+        raise HTTPException(
+            status_code=500,
+            detail="Meta OAuthが設定されていません。管理者に連絡してください。"
+        )
+    
+    # ステートからユーザーIDを取得
+    try:
+        state_parts = state.split(":")
+        if len(state_parts) < 2:
+            raise HTTPException(status_code=400, detail="無効なステートパラメータです")
+        user_id = int(state_parts[1])
+    except (ValueError, IndexError):
+        raise HTTPException(status_code=400, detail="無効なステートパラメータです")
+    
+    # ユーザーを取得
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="ユーザーが見つかりません")
+    
+    # リダイレクトURI
+    redirect_uri = settings.META_OAUTH_REDIRECT_URI or f"{settings.FRONTEND_URL}/settings?meta_oauth=callback"
+    
+    try:
+        # アクセストークンを取得
+        async with httpx.AsyncClient() as client:
+            token_url = "https://graph.facebook.com/v18.0/oauth/access_token"
+            token_params = {
+                "client_id": settings.META_APP_ID,
+                "client_secret": settings.META_APP_SECRET,
+                "redirect_uri": redirect_uri,
+                "code": code
+            }
+            
+            token_response = await client.get(token_url, params=token_params)
+            token_response.raise_for_status()
+            token_data = token_response.json()
+            
+            if "error" in token_data:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"トークン取得エラー: {token_data.get('error', {}).get('message', 'Unknown error')}"
+                )
+            
+            access_token = token_data.get("access_token")
+            if not access_token:
+                raise HTTPException(status_code=400, detail="アクセストークンを取得できませんでした")
+            
+            # 長期トークンに変換（60日有効）
+            exchange_url = "https://graph.facebook.com/v18.0/oauth/access_token"
+            exchange_params = {
+                "grant_type": "fb_exchange_token",
+                "client_id": settings.META_APP_ID,
+                "client_secret": settings.META_APP_SECRET,
+                "fb_exchange_token": access_token
+            }
+            
+            exchange_response = await client.get(exchange_url, params=exchange_params)
+            exchange_response.raise_for_status()
+            exchange_data = exchange_response.json()
+            
+            long_lived_token = exchange_data.get("access_token", access_token)
+            
+            # 広告アカウントIDを取得
+            accounts_url = "https://graph.facebook.com/v18.0/me/adaccounts"
+            accounts_params = {
+                "access_token": long_lived_token,
+                "fields": "account_id,id,name"
+            }
+            
+            accounts_response = await client.get(accounts_url, params=accounts_params)
+            accounts_response.raise_for_status()
+            accounts_data = accounts_response.json()
+            
+            if "error" in accounts_data:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"広告アカウント取得エラー: {accounts_data.get('error', {}).get('message', 'Unknown error')}"
+                )
+            
+            accounts = accounts_data.get("data", [])
+            if not accounts:
+                raise HTTPException(
+                    status_code=400,
+                    detail="広告アカウントが見つかりませんでした。Meta広告アカウントを作成してください。"
+                )
+            
+            # 最初の広告アカウントを使用
+            account = accounts[0]
+            account_id = account.get("id")  # act_123456789形式
+            
+            # ユーザーのMetaアカウント設定を更新
+            user.meta_account_id = account_id
+            user.meta_access_token = long_lived_token
+            db.commit()
+            db.refresh(user)
+            
+            # フロントエンドにリダイレクト（成功メッセージ付き）
+            frontend_url = settings.FRONTEND_URL or "http://localhost:3000"
+            success_url = f"{frontend_url}/settings?meta_oauth=success&account_id={account_id}"
+            return RedirectResponse(url=success_url)
+            
+    except httpx.HTTPStatusError as e:
+        error_text = e.response.text if hasattr(e.response, 'text') else str(e)
+        raise HTTPException(
+            status_code=e.response.status_code,
+            detail=f"Meta APIエラー: {error_text}"
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"OAuth認証に失敗しました: {str(e)}"
         )
 

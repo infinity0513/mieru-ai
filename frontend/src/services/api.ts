@@ -304,46 +304,68 @@ class ApiClient {
   }
 
   async verifyLoginCode(email: string, code: string): Promise<User> {
-    const response = await fetch(`${this.baseURL}/auth/login/verify-code`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ email, code }),
-    });
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ detail: '認証コードの確認に失敗しました' }));
-      throw new Error(error.detail || '認証コードの確認に失敗しました');
-    }
-
-    const data = await response.json();
+    console.log('[Api] verifyLoginCode called for:', email);
+    console.log('[Api] verifyLoginCode baseURL:', this.baseURL);
+    console.log('[Api] verifyLoginCode URL:', `${this.baseURL}/auth/login/verify-code`);
     
-    // Save token to localStorage
-    if (data.access_token) {
-      this.setToken(data.access_token);
-      console.log('[Api] Token saved after verifyLoginCode');
-    }
-    
-    // If user data is included in response, use it directly
-    if (data.user) {
-      const userData = data.user;
-      const user: User = {
-        id: String(userData.id),
-        name: userData.name || '',
-        email: userData.email || email,
-        plan: userData.plan || 'FREE',
+    try {
+      const response = await fetch(`${this.baseURL}/auth/login/verify-code`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, code }),
+      });
+
+      console.log('[Api] verifyLoginCode response status:', response.status);
+      console.log('[Api] verifyLoginCode response ok:', response.ok);
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ detail: '認証コードの確認に失敗しました' }));
+        console.error('[Api] verifyLoginCode error:', error);
+        throw new Error(error.detail || '認証コードの確認に失敗しました');
+      }
+
+      const data = await response.json();
+      console.log('[Api] verifyLoginCode response data:', data);
+      
+      // Save token to localStorage
+      if (data.access_token) {
+        this.setToken(data.access_token);
+        console.log('[Api] Token saved after verifyLoginCode');
+      }
+      
+      // If user data is included in response, use it directly
+      if (data.user) {
+        const userData = data.user;
+        const user: User = {
+          id: String(userData.id),
+          name: userData.name || '',
+          email: userData.email || email,
+          plan: userData.plan || 'FREE',
+          organization: userData.organization || '',
+        };
+        console.log('[Api] verifyLoginCode returning user:', user);
+        return user;
+      }
+      
+      // Fallback: return user with email (should not happen)
+      console.warn('[Api] verifyLoginCode: No user data in response, using fallback');
+      return {
+        id: '',
+        name: '',
+        email: email,
+        plan: 'FREE',
+        organization: '',
       };
-      return user;
+    } catch (error: any) {
+      console.error('[Api] verifyLoginCode exception:', error);
+      // ネットワークエラーの場合
+      if (error.name === 'TypeError' && error.message.includes('fetch')) {
+        throw new Error('サーバーに接続できませんでした。バックエンドサーバー（http://localhost:8000）が起動しているか確認してください。');
+      }
+      throw error;
     }
-    
-    // Fallback: return user with email (should not happen)
-    return {
-      id: '',
-      name: '',
-      email: email,
-      plan: 'FREE',
-    };
   }
 
   async verifyEmail(token: string): Promise<{ message: string; verified: boolean }> {
@@ -398,15 +420,62 @@ class ApiClient {
     }
   }
 
+  /**
+   * 共通のリクエストメソッド
+   */
+  private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+    // エンドポイントが既にhttpで始まる場合はそのまま使用
+    if (endpoint.startsWith('http')) {
+      const response = await fetch(endpoint, {
+        ...this.getFetchOptions(options),
+        ...options,
+      });
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          this.handle401Error(response);
+        }
+        const error = await response.json().catch(() => ({ detail: 'リクエストに失敗しました' }));
+        throw new Error(error.detail || 'リクエストに失敗しました');
+      }
+
+      return await response.json();
+    }
+
+    // baseURLに既に/apiが含まれているので、エンドポイントが/api/で始まる場合は/api/を削除
+    let normalizedEndpoint = endpoint;
+    if (normalizedEndpoint.startsWith('/api/')) {
+      normalizedEndpoint = normalizedEndpoint.substring(4); // '/api/'を削除
+    } else if (!normalizedEndpoint.startsWith('/')) {
+      normalizedEndpoint = '/' + normalizedEndpoint; // 先頭に/がない場合は追加
+    }
+
+    const url = `${this.baseURL}${normalizedEndpoint}`;
+    const response = await fetch(url, {
+      ...this.getFetchOptions(options),
+      ...options,
+    });
+
+    if (!response.ok) {
+      if (response.status === 401) {
+        this.handle401Error(response);
+      }
+      const error = await response.json().catch(() => ({ detail: 'リクエストに失敗しました' }));
+      throw new Error(error.detail || 'リクエストに失敗しました');
+    }
+
+    return await response.json();
+  }
+
   async getMe(): Promise<User> {
-    const response = await this.request<User>('/api/users/me', {
+    const response = await this.request<User>('/users/me', {
       method: 'GET',
     });
     return response;
   }
 
   async updateMetaSettings(metaAccountId: string, metaAccessToken: string): Promise<{ message: string; meta_account_id: string | null }> {
-    const response = await this.request<{ message: string; meta_account_id: string | null }>('/api/users/me/meta-settings', {
+    const response = await this.request<{ message: string; meta_account_id: string | null }>('/users/me/meta-settings', {
       method: 'PUT',
       body: JSON.stringify({
         meta_account_id: metaAccountId,
@@ -416,8 +485,21 @@ class ApiClient {
     return response;
   }
 
+  async startMetaOAuth(): Promise<void> {
+    // OAuth認証を開始 - バックエンドからOAuth認証URLを取得してリダイレクト
+    const response = await this.request<{ oauth_url: string }>('/meta/oauth/authorize-url', {
+      method: 'GET',
+    });
+    
+    if (response.oauth_url) {
+      window.location.href = response.oauth_url;
+    } else {
+      throw new Error('OAuth認証URLを取得できませんでした');
+    }
+  }
+
   async getMetaSettings(): Promise<{ meta_account_id: string | null }> {
-    const response = await this.request<{ meta_account_id: string | null }>('/api/users/me/meta-settings', {
+    const response = await this.request<{ meta_account_id: string | null }>('/users/me/meta-settings', {
       method: 'GET',
     });
     return response;

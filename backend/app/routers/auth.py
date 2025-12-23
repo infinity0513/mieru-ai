@@ -404,6 +404,9 @@ def verify_email(request: EmailVerificationRequest, db: Session = Depends(get_db
             "verified": True
         }
     
+    # Check if token was already used to prevent duplicate emails
+    was_already_used = verification_token.used == "true"
+    
     # Verify email
     user.email_verified = "true"
     
@@ -412,21 +415,22 @@ def verify_email(request: EmailVerificationRequest, db: Session = Depends(get_db
     
     db.commit()
     
-    # Send welcome email after verification
-    try:
-        if email_service.is_configured():
-            email_sent = email_service.send_welcome_email(
-                to_email=user.email,
-                user_name=user.name or "ユーザー"
-            )
-            if not email_sent:
-                print(f"[Auth] Failed to send welcome email to {user.email}")
-    except Exception as e:
-        import traceback
-        error_details = traceback.format_exc()
-        print(f"[Auth] Exception in send_welcome_email: {str(e)}")
-        print(f"[Auth] Error details: {error_details}")
-        # Don't fail verification if welcome email fails
+    # Send welcome email after verification (only if token was not already used)
+    if not was_already_used:
+        try:
+            if email_service.is_configured():
+                email_sent = email_service.send_welcome_email(
+                    to_email=user.email,
+                    user_name=user.name or "ユーザー"
+                )
+                if not email_sent:
+                    print(f"[Auth] Failed to send welcome email to {user.email}")
+        except Exception as e:
+            import traceback
+            error_details = traceback.format_exc()
+            print(f"[Auth] Exception in send_welcome_email: {str(e)}")
+            print(f"[Auth] Error details: {error_details}")
+            # Don't fail verification if welcome email fails
     
     return {
         "message": "メールアドレスの確認が完了しました。アカウントが有効化されました。",
