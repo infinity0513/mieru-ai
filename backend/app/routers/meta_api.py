@@ -143,6 +143,16 @@ async def meta_oauth_authorize(
     # ステートをセッションに保存する代わりに、ユーザーIDを含める（簡易版）
     state_with_user = f"{state}:{current_user.id}"
     
+    # デバッグ: パラメータの値をログ出力
+    print(f"[Meta OAuth] OAuth URL Parameters (authorize endpoint):")
+    print(f"  - client_id: {settings.META_APP_ID}")
+    print(f"  - redirect_uri (raw): {redirect_uri}")
+    print(f"  - redirect_uri (encoded): {urllib.parse.quote(redirect_uri)}")
+    print(f"  - scope: ads_read,ads_management,business_management")
+    print(f"  - response_type: code")
+    print(f"  - state (raw): {state_with_user}")
+    print(f"  - state (encoded): {urllib.parse.quote(state_with_user)}")
+    
     # Meta OAuth認証URLを生成
     oauth_url = (
         f"https://www.facebook.com/v24.0/dialog/oauth?"
@@ -152,6 +162,9 @@ async def meta_oauth_authorize(
         f"state={urllib.parse.quote(state_with_user)}&"
         f"response_type=code"
     )
+    
+    # デバッグ: 生成されたURL全体をログ出力
+    print(f"[Meta OAuth] Generated OAuth URL (authorize endpoint): {oauth_url}")
     
     return RedirectResponse(url=oauth_url)
 
@@ -175,6 +188,16 @@ async def meta_oauth_authorize_url(
         # ステートをセッションに保存する代わりに、ユーザーIDを含める（簡易版）
         state_with_user = f"{state}:{current_user.id}"
         
+        # デバッグ: パラメータの値をログ出力
+        print(f"[Meta OAuth] OAuth URL Parameters:")
+        print(f"  - client_id: {settings.META_APP_ID}")
+        print(f"  - redirect_uri (raw): {redirect_uri}")
+        print(f"  - redirect_uri (encoded): {urllib.parse.quote(redirect_uri)}")
+        print(f"  - scope: ads_read,ads_management,business_management")
+        print(f"  - response_type: code")
+        print(f"  - state (raw): {state_with_user}")
+        print(f"  - state (encoded): {urllib.parse.quote(state_with_user)}")
+        
         # Meta OAuth認証URLを生成
         oauth_url = (
             f"https://www.facebook.com/v24.0/dialog/oauth?"
@@ -184,6 +207,9 @@ async def meta_oauth_authorize_url(
             f"state={urllib.parse.quote(state_with_user)}&"
             f"response_type=code"
         )
+        
+        # デバッグ: 生成されたURL全体をログ出力
+        print(f"[Meta OAuth] Generated OAuth URL: {oauth_url}")
         
         return {"oauth_url": oauth_url}
     except HTTPException:
