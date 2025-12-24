@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from typing import Optional
 from datetime import datetime, timedelta
 from ..models.user import User
+from ..models.campaign import Campaign, Upload
 from ..utils.dependencies import get_current_user
 from ..utils.plan_limits import get_max_adset_limit
 from ..database import get_db
@@ -12,8 +13,166 @@ import httpx
 import urllib.parse
 import secrets
 import uuid
+from decimal import Decimal
 
 router = APIRouter()
+
+async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id: str, db: Session):
+    """Meta APIからデータを取得してCampaignテーブルに保存"""
+    # ダミーのUploadレコードを作成（Meta API同期用）
+    upload = Upload(
+        user_id=user.id,
+        file_name="Meta API Sync",
+        status="completed",
+        row_count=0
+    )
+    db.add(upload)
+    db.flush()  # upload.idを取得するためにflush
+    
+    # 過去30日間のデータを取得
+    from datetime import datetime, timedelta
+    until = datetime.now().strftime('%Y-%m-%d')
+    since = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
+    
+    try:
+        async with httpx.AsyncClient() as client:
+            all_insights = []
+            all_adsets = []
+            
+            # 広告セット一覧を取得
+            adsets_url = f"https://graph.facebook.com/v24.0/{account_id}/adsets"
+            adsets_params = {
+                "access_token": access_token,
+                "fields": "id,name,campaign_id",
+                "limit": 100
+            }
+            
+            # ページネーション処理（最初の100件のみ）
+            adsets_response = await client.get(adsets_url, params=adsets_params)
+            adsets_response.raise_for_status()
+            adsets_data = adsets_response.json()
+            all_adsets = adsets_data.get('data', [])[:100]  # 最初の100件のみ
+            
+            # 各広告セットのInsightsを取得
+            for adset in all_adsets:
+                adset_id = adset['id']
+                insights_url = f"https://graph.facebook.com/v24.0/{adset_id}/insights"
+                insights_params = {
+                    "access_token": access_token,
+                    "fields": "adset_id,adset_name,ad_id,ad_name,campaign_id,campaign_name,date_start,spend,impressions,clicks,reach,actions",
+                    "time_range": f"{{'since':'{since}','until':'{until}'}}"
+                }
+                try:
+                    insights_response = await client.get(insights_url, params=insights_params)
+                    insights_response.raise_for_status()
+                    insights_data = insights_response.json()
+                    all_insights.extend(insights_data.get('data', []))
+                except Exception as e:
+                    print(f"[Meta OAuth] Error fetching insights for adset {adset_id}: {str(e)}")
+                    continue
+            
+            # InsightsデータをCampaignテーブルに保存
+            saved_count = 0
+            for insight in all_insights:
+                try:
+                    # 日付を取得
+                    date_str = insight.get('date_start')
+                    if not date_str:
+                        continue
+                    campaign_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+                    
+                    # データを取得
+                    campaign_name = insight.get('campaign_name', 'Unknown')
+                    ad_set_name = insight.get('adset_name')
+                    ad_name = insight.get('ad_name')
+                    spend = float(insight.get('spend', 0))
+                    impressions = int(insight.get('impressions', 0))
+                    clicks = int(insight.get('clicks', 0))
+                    reach = int(insight.get('reach', 0))
+                    
+                    # actionsからconversionsとconversion_valueを取得
+                    actions = insight.get('actions', [])
+                    conversions = 0
+                    conversion_value = 0
+                    for action in actions:
+                        if action.get('action_type') in ['offsite_conversion', 'onsite_conversion']:
+                            conversions += int(action.get('value', 0))
+                        if action.get('action_type') == 'purchase':
+                            conversion_value += float(action.get('value', 0))
+                    
+                    # メトリクスを計算
+                    ctr = (clicks / impressions * 100) if impressions > 0 else 0
+                    cpc = (spend / clicks) if clicks > 0 else 0
+                    cpm = (spend / impressions * 1000) if impressions > 0 else 0
+                    cpa = (spend / conversions) if conversions > 0 else 0
+                    cvr = (conversions / clicks * 100) if clicks > 0 else 0
+                    roas = (conversion_value / spend) if spend > 0 else 0
+                    
+                    # 既存のレコードをチェック
+                    existing = db.query(Campaign).filter(
+                        Campaign.user_id == user.id,
+                        Campaign.date == campaign_date,
+                        Campaign.campaign_name == campaign_name,
+                        Campaign.ad_set_name == ad_set_name,
+                        Campaign.ad_name == ad_name
+                    ).first()
+                    
+                    if existing:
+                        # 更新
+                        existing.upload_id = upload.id
+                        existing.cost = Decimal(str(spend))
+                        existing.impressions = impressions
+                        existing.clicks = clicks
+                        existing.conversions = conversions
+                        existing.conversion_value = Decimal(str(conversion_value))
+                        existing.reach = reach
+                        existing.ctr = Decimal(str(round(ctr, 2)))
+                        existing.cpc = Decimal(str(round(cpc, 2)))
+                        existing.cpm = Decimal(str(round(cpm, 2)))
+                        existing.cpa = Decimal(str(round(cpa, 2)))
+                        existing.cvr = Decimal(str(round(cvr, 2)))
+                        existing.roas = Decimal(str(round(roas, 2)))
+                    else:
+                        # 新規作成
+                        campaign = Campaign(
+                            user_id=user.id,
+                            upload_id=upload.id,
+                            date=campaign_date,
+                            campaign_name=campaign_name,
+                            ad_set_name=ad_set_name,
+                            ad_name=ad_name,
+                            cost=Decimal(str(spend)),
+                            impressions=impressions,
+                            clicks=clicks,
+                            conversions=conversions,
+                            conversion_value=Decimal(str(conversion_value)),
+                            reach=reach,
+                            ctr=Decimal(str(round(ctr, 2))),
+                            cpc=Decimal(str(round(cpc, 2))),
+                            cpm=Decimal(str(round(cpm, 2))),
+                            cpa=Decimal(str(round(cpa, 2))),
+                            cvr=Decimal(str(round(cvr, 2))),
+                            roas=Decimal(str(round(roas, 2)))
+                        )
+                        db.add(campaign)
+                        saved_count += 1
+                except Exception as e:
+                    print(f"[Meta OAuth] Error processing insight: {str(e)}")
+                    continue
+            
+            # Uploadレコードを更新
+            upload.row_count = saved_count
+            if all_insights:
+                dates = [datetime.strptime(i.get('date_start', ''), '%Y-%m-%d').date() for i in all_insights if i.get('date_start')]
+                if dates:
+                    upload.start_date = min(dates)
+                    upload.end_date = max(dates)
+            
+            db.commit()
+            print(f"[Meta OAuth] Saved {saved_count} campaign records")
+    except Exception as e:
+        db.rollback()
+        raise
 
 @router.get("/insights")
 async def get_meta_insights(
@@ -396,6 +555,17 @@ async def meta_oauth_callback(
             user.meta_access_token = long_lived_token
             db.commit()
             db.refresh(user)
+            
+            # Meta APIからデータを取得してCampaignテーブルに保存（バックグラウンドで実行）
+            try:
+                print(f"[Meta OAuth] Starting data sync for user {user.id}")
+                await sync_meta_data_to_campaigns(user, long_lived_token, account_id, db)
+                print(f"[Meta OAuth] Data sync completed for user {user.id}")
+            except Exception as sync_error:
+                import traceback
+                print(f"[Meta OAuth] Error syncing data: {str(sync_error)}")
+                print(f"[Meta OAuth] Error details: {traceback.format_exc()}")
+                # データ同期エラーは無視して、OAuth認証は成功として扱う
             
             # フロントエンドにリダイレクト（成功メッセージ付き）
             frontend_url = settings.FRONTEND_URL or "http://localhost:3000"
