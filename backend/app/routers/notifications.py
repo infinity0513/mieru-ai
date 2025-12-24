@@ -16,39 +16,27 @@ def get_notifications(
     db: Session = Depends(get_db)
 ):
     """Get notifications for current user"""
-    try:
-        print(f"[API] GET /api/notifications/ - Start (user_id: {current_user.id}, unread_only: {unread_only}, limit: {limit})")
-        
-        notifications = NotificationService.get_user_notifications(
-            current_user.id,
-            unread_only,
-            limit,
-            db
-        )
-        
-        result = {
-            "data": [
-                {
-                    "id": str(n.id),
-                    "type": n.type,
-                    "title": n.title,
-                    "message": n.message,
-                    "data": n.data,
-                    "is_read": n.is_read,
-                    "created_at": n.created_at.isoformat() + 'Z' if n.created_at else None
-                }
-                for n in notifications
-            ]
-        }
-        
-        print(f"[API] GET /api/notifications/ - Success (count: {len(result['data'])})")
-        return result
-    except Exception as e:
-        import traceback
-        error_details = traceback.format_exc()
-        print(f"[API] GET /api/notifications/ - Error: {str(e)}")
-        print(f"[API] GET /api/notifications/ - Error details: {error_details}")
-        raise
+    notifications = NotificationService.get_user_notifications(
+        current_user.id,
+        unread_only,
+        limit,
+        db
+    )
+    
+    return {
+        "data": [
+            {
+                "id": str(n.id),
+                "type": n.type,
+                "title": n.title,
+                "message": n.message,
+                "data": n.data,
+                "is_read": n.is_read,
+                "created_at": n.created_at.isoformat() + 'Z' if n.created_at else None
+            }
+            for n in notifications
+        ]
+    }
 
 @router.post("/{notification_id}/read")
 def mark_notification_read(
