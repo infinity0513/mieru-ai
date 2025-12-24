@@ -168,7 +168,7 @@ async def meta_oauth_authorize_url(
             )
         
         # リダイレクトURIを設定（デフォルト値を固定）
-        redirect_uri = settings.META_OAUTH_REDIRECT_URI or "https://mieru-ai-production.up.railway.app/api/meta/oauth/callback"
+        redirect_uri = settings.META_REDIRECT_URI or "https://mieru-ai-production.up.railway.app/api/meta/oauth/callback"
         
         # ステートパラメータを生成（CSRF対策）
         state = secrets.token_urlsafe(32)
