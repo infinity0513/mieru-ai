@@ -29,10 +29,11 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
     db.add(upload)
     db.flush()  # upload.idを取得するためにflush
     
-    # 過去30日間のデータを取得
+    # 全期間のデータを取得（Meta APIの最大範囲：過去2年間）
     from datetime import datetime, timedelta
     until = datetime.now().strftime('%Y-%m-%d')
-    since = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
+    # Meta APIは最大2年間のデータを取得可能
+    since = (datetime.now() - timedelta(days=730)).strftime('%Y-%m-%d')
     
     try:
         async with httpx.AsyncClient() as client:
@@ -546,20 +547,37 @@ async def meta_oauth_callback(
                     detail="広告アカウントが見つかりませんでした。Meta広告アカウントを作成してください。"
                 )
             
-            # 最初の広告アカウントを使用
-            account = accounts[0]
-            account_id = account.get("id")  # act_123456789形式
+            # すべての広告アカウントのデータを取得して保存
+            # 最初のアカウントIDを保存（後方互換性のため）
+            first_account = accounts[0]
+            account_id = first_account.get("id")  # act_123456789形式
             
-            # ユーザーのMetaアカウント設定を更新
+            # ユーザーのMetaアカウント設定を更新（最初のアカウントIDを保存）
             user.meta_account_id = account_id
             user.meta_access_token = long_lived_token
             db.commit()
             db.refresh(user)
             
-            # Meta APIからデータを取得してCampaignテーブルに保存（バックグラウンドで実行）
+            # すべての広告アカウントからデータを取得してCampaignテーブルに保存（バックグラウンドで実行）
             try:
                 print(f"[Meta OAuth] Starting data sync for user {user.id}")
-                await sync_meta_data_to_campaigns(user, long_lived_token, account_id, db)
+                print(f"[Meta OAuth] Found {len(accounts)} ad account(s)")
+                
+                # すべての広告アカウントのデータを同期
+                for idx, account in enumerate(accounts):
+                    account_id_to_sync = account.get("id")
+                    account_name = account.get("name", "Unknown")
+                    print(f"[Meta OAuth] Syncing account {idx + 1}/{len(accounts)}: {account_name} ({account_id_to_sync})")
+                    try:
+                        await sync_meta_data_to_campaigns(user, long_lived_token, account_id_to_sync, db)
+                        print(f"[Meta OAuth] Successfully synced account {account_name}")
+                    except Exception as account_error:
+                        import traceback
+                        print(f"[Meta OAuth] Error syncing account {account_name}: {str(account_error)}")
+                        print(f"[Meta OAuth] Error details: {traceback.format_exc()}")
+                        # 1つのアカウントでエラーが発生しても、他のアカウントの同期は続行
+                        continue
+                
                 print(f"[Meta OAuth] Data sync completed for user {user.id}")
             except Exception as sync_error:
                 import traceback
@@ -569,7 +587,11 @@ async def meta_oauth_callback(
             
             # フロントエンドにリダイレクト（成功メッセージ付き）
             frontend_url = settings.FRONTEND_URL or "http://localhost:3000"
-            success_url = f"{frontend_url}/settings?meta_oauth=success&account_id={account_id}"
+            account_count = len(accounts)
+            if account_count > 1:
+                success_url = f"{frontend_url}/settings?meta_oauth=success&account_id={account_id}&account_count={account_count}"
+            else:
+                success_url = f"{frontend_url}/settings?meta_oauth=success&account_id={account_id}"
             return RedirectResponse(url=success_url)
             
     except httpx.HTTPStatusError as e:
