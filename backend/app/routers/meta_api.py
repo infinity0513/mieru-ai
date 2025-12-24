@@ -11,6 +11,7 @@ from ..config import settings
 import httpx
 import urllib.parse
 import secrets
+import uuid
 
 router = APIRouter()
 
@@ -287,8 +288,13 @@ async def meta_oauth_callback(
         
         user_id_str = state_parts[1]
         print(f"  - user_id (string): {user_id_str}")
-        user_id = int(user_id_str)
-        print(f"  - user_id (int): {user_id}")
+        # user_idはUUID形式なので、UUIDとして扱う
+        try:
+            user_id = uuid.UUID(user_id_str)
+        except ValueError as uuid_error:
+            print(f"  - UUID conversion error: {str(uuid_error)}")
+            raise ValueError(f"Invalid UUID format: {user_id_str}")
+        print(f"  - user_id (UUID): {user_id}")
     except ValueError as e:
         print(f"[Meta OAuth] ERROR: ValueError when parsing state: {str(e)}")
         print(f"  - state_parts: {state_parts if 'state_parts' in locals() else 'N/A'}")
