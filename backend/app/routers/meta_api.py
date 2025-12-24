@@ -135,8 +135,8 @@ async def meta_oauth_authorize(
             detail="Meta OAuthが設定されていません。管理者に連絡してください。"
         )
     
-    # リダイレクトURIを設定
-    redirect_uri = settings.META_OAUTH_REDIRECT_URI or f"{settings.FRONTEND_URL}/settings?meta_oauth=callback"
+    # リダイレクトURIを設定（デフォルト値を固定）
+    redirect_uri = settings.META_OAUTH_REDIRECT_URI or "https://mieru-ai-production.up.railway.app/api/meta/oauth/callback"
     
     # ステートパラメータを生成（CSRF対策）
     state = secrets.token_urlsafe(32)
@@ -145,10 +145,10 @@ async def meta_oauth_authorize(
     
     # Meta OAuth認証URLを生成
     oauth_url = (
-        f"https://www.facebook.com/v18.0/dialog/oauth?"
+        f"https://www.facebook.com/v24.0/dialog/oauth?"
         f"client_id={settings.META_APP_ID}&"
         f"redirect_uri={urllib.parse.quote(redirect_uri)}&"
-        f"scope=ads_read,ads_management&"
+        f"scope=ads_read,ads_management,business_management&"
         f"state={urllib.parse.quote(state_with_user)}&"
         f"response_type=code"
     )
@@ -167,8 +167,8 @@ async def meta_oauth_authorize_url(
                 detail="Meta OAuthが設定されていません。バックエンドの環境変数にMETA_APP_IDを設定してください。"
             )
         
-        # リダイレクトURIを設定
-        redirect_uri = settings.META_OAUTH_REDIRECT_URI or f"{settings.FRONTEND_URL}/settings?meta_oauth=callback"
+        # リダイレクトURIを設定（デフォルト値を固定）
+        redirect_uri = settings.META_OAUTH_REDIRECT_URI or "https://mieru-ai-production.up.railway.app/api/meta/oauth/callback"
         
         # ステートパラメータを生成（CSRF対策）
         state = secrets.token_urlsafe(32)
@@ -177,10 +177,10 @@ async def meta_oauth_authorize_url(
         
         # Meta OAuth認証URLを生成
         oauth_url = (
-            f"https://www.facebook.com/v18.0/dialog/oauth?"
+            f"https://www.facebook.com/v24.0/dialog/oauth?"
             f"client_id={settings.META_APP_ID}&"
             f"redirect_uri={urllib.parse.quote(redirect_uri)}&"
-            f"scope=ads_read,ads_management&"
+            f"scope=ads_read,ads_management,business_management&"
             f"state={urllib.parse.quote(state_with_user)}&"
             f"response_type=code"
         )
@@ -249,13 +249,13 @@ async def meta_oauth_callback(
     if not user:
         raise HTTPException(status_code=404, detail="ユーザーが見つかりません")
     
-    # リダイレクトURI
-    redirect_uri = settings.META_OAUTH_REDIRECT_URI or f"{settings.FRONTEND_URL}/settings?meta_oauth=callback"
+    # リダイレクトURI（デフォルト値を固定）
+    redirect_uri = settings.META_OAUTH_REDIRECT_URI or "https://mieru-ai-production.up.railway.app/api/meta/oauth/callback"
     
     try:
         # アクセストークンを取得
         async with httpx.AsyncClient() as client:
-            token_url = "https://graph.facebook.com/v18.0/oauth/access_token"
+            token_url = "https://graph.facebook.com/v24.0/oauth/access_token"
             token_params = {
                 "client_id": settings.META_APP_ID,
                 "client_secret": settings.META_APP_SECRET,
@@ -278,7 +278,7 @@ async def meta_oauth_callback(
                 raise HTTPException(status_code=400, detail="アクセストークンを取得できませんでした")
             
             # 長期トークンに変換（60日有効）
-            exchange_url = "https://graph.facebook.com/v18.0/oauth/access_token"
+            exchange_url = "https://graph.facebook.com/v24.0/oauth/access_token"
             exchange_params = {
                 "grant_type": "fb_exchange_token",
                 "client_id": settings.META_APP_ID,
@@ -293,7 +293,7 @@ async def meta_oauth_callback(
             long_lived_token = exchange_data.get("access_token", access_token)
             
             # 広告アカウントIDを取得
-            accounts_url = "https://graph.facebook.com/v18.0/me/adaccounts"
+            accounts_url = "https://graph.facebook.com/v24.0/me/adaccounts"
             accounts_params = {
                 "access_token": long_lived_token,
                 "fields": "account_id,id,name"
