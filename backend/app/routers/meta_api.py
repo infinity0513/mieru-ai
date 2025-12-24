@@ -257,17 +257,56 @@ async def meta_oauth_callback(
         error_url = f"{frontend_url}/settings?meta_oauth=error&message={urllib.parse.quote('Meta OAuthが設定されていません')}"
         return RedirectResponse(url=error_url)
     
+    # デバッグ: コールバック時に受け取ったパラメータをログ出力
+    print(f"[Meta OAuth] Callback received parameters:")
+    print(f"  - code: {code[:20] + '...' if code and len(code) > 20 else code}")
+    print(f"  - state (raw): {state}")
+    print(f"  - state (length): {len(state) if state else 0}")
+    
+    # ステートパラメータをURLデコード（Metaがエンコードして返す可能性があるため）
+    try:
+        decoded_state = urllib.parse.unquote(state)
+        print(f"  - state (decoded): {decoded_state}")
+        state = decoded_state
+    except Exception as e:
+        print(f"  - state decode error: {str(e)}")
+        # デコードに失敗した場合は元のstateを使用
+    
     # ステートからユーザーIDを取得
     try:
+        print(f"[Meta OAuth] Parsing state: {state}")
         state_parts = state.split(":")
+        print(f"  - state_parts: {state_parts}")
+        print(f"  - state_parts length: {len(state_parts)}")
+        
         if len(state_parts) < 2:
+            print(f"[Meta OAuth] ERROR: State parts length is less than 2: {len(state_parts)}")
             frontend_url = settings.FRONTEND_URL or "http://localhost:3000"
             error_url = f"{frontend_url}/settings?meta_oauth=error&message={urllib.parse.quote('無効なステートパラメータです')}"
             return RedirectResponse(url=error_url)
-        user_id = int(state_parts[1])
-    except (ValueError, IndexError):
+        
+        user_id_str = state_parts[1]
+        print(f"  - user_id (string): {user_id_str}")
+        user_id = int(user_id_str)
+        print(f"  - user_id (int): {user_id}")
+    except ValueError as e:
+        print(f"[Meta OAuth] ERROR: ValueError when parsing state: {str(e)}")
+        print(f"  - state_parts: {state_parts if 'state_parts' in locals() else 'N/A'}")
         frontend_url = settings.FRONTEND_URL or "http://localhost:3000"
-        error_url = f"{frontend_url}/settings?meta_oauth=error&message={urllib.parse.quote('無効なステートパラメータです')}"
+        error_url = f"{frontend_url}/settings?meta_oauth=error&message={urllib.parse.quote(f'無効なステートパラメータです: {str(e)}')}"
+        return RedirectResponse(url=error_url)
+    except IndexError as e:
+        print(f"[Meta OAuth] ERROR: IndexError when parsing state: {str(e)}")
+        print(f"  - state_parts: {state_parts if 'state_parts' in locals() else 'N/A'}")
+        frontend_url = settings.FRONTEND_URL or "http://localhost:3000"
+        error_url = f"{frontend_url}/settings?meta_oauth=error&message={urllib.parse.quote(f'無効なステートパラメータです: {str(e)}')}"
+        return RedirectResponse(url=error_url)
+    except Exception as e:
+        print(f"[Meta OAuth] ERROR: Unexpected error when parsing state: {str(e)}")
+        import traceback
+        print(f"  - traceback: {traceback.format_exc()}")
+        frontend_url = settings.FRONTEND_URL or "http://localhost:3000"
+        error_url = f"{frontend_url}/settings?meta_oauth=error&message={urllib.parse.quote(f'無効なステートパラメータです: {str(e)}')}"
         return RedirectResponse(url=error_url)
     
     # ユーザーを取得
