@@ -450,6 +450,20 @@ class ApiClient {
       normalizedEndpoint = '/' + normalizedEndpoint; // 先頭に/がない場合は追加
     }
 
+    // 末尾スラッシュを追加して307リダイレクトを回避
+    // クエリパラメータやフラグメントがある場合は、それらの前にスラッシュを追加
+    if (normalizedEndpoint.includes('?')) {
+      // クエリパラメータがある場合
+      const [path, query] = normalizedEndpoint.split('?');
+      if (!path.endsWith('/') && !path.includes('.')) {
+        // ファイル拡張子がない場合のみ末尾スラッシュを追加
+        normalizedEndpoint = `${path}/${query ? '?' + query : ''}`;
+      }
+    } else if (!normalizedEndpoint.endsWith('/') && !normalizedEndpoint.includes('.')) {
+      // クエリパラメータがなく、ファイル拡張子がない場合のみ末尾スラッシュを追加
+      normalizedEndpoint = normalizedEndpoint + '/';
+    }
+
     const url = `${this.baseURL}${normalizedEndpoint}`;
     const response = await fetch(url, {
       ...this.getFetchOptions(options),
@@ -1335,7 +1349,7 @@ class ApiClient {
     });
     
     const response = await fetch(
-      `${this.baseURL}/notifications?${params}`,
+      `${this.baseURL}/notifications/?${params}`,
       { 
         credentials: 'include',  // CORS credentials をサポート
         headers: this.getHeaders() 
