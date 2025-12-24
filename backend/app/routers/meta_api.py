@@ -200,25 +200,49 @@ async def meta_oauth_authorize_url(
 
 @router.get("/oauth/callback")
 async def meta_oauth_callback(
-    code: str = Query(..., description="OAuth認証コード"),
-    state: str = Query(..., description="ステートパラメータ（CSRF対策）"),
+    code: Optional[str] = Query(None, description="OAuth認証コード"),
+    state: Optional[str] = Query(None, description="ステートパラメータ（CSRF対策）"),
+    error: Optional[str] = Query(None, description="エラーメッセージ"),
+    error_reason: Optional[str] = Query(None, description="エラー理由"),
+    error_description: Optional[str] = Query(None, description="エラー詳細"),
     db: Session = Depends(get_db)
 ):
     """Meta OAuthコールバック - トークンを取得して保存"""
+    # エラーパラメータが存在する場合（認証拒否など）
+    if error:
+        frontend_url = settings.FRONTEND_URL or "http://localhost:3000"
+        error_message = error_description or error_reason or error
+        error_url = f"{frontend_url}/settings?meta_oauth=error&message={urllib.parse.quote(error_message)}"
+        return RedirectResponse(url=error_url)
+    
+    # codeとstateが必須
+    if not code:
+        frontend_url = settings.FRONTEND_URL or "http://localhost:3000"
+        error_url = f"{frontend_url}/settings?meta_oauth=error&message={urllib.parse.quote('認証コードが取得できませんでした')}"
+        return RedirectResponse(url=error_url)
+    
+    if not state:
+        frontend_url = settings.FRONTEND_URL or "http://localhost:3000"
+        error_url = f"{frontend_url}/settings?meta_oauth=error&message={urllib.parse.quote('ステートパラメータが取得できませんでした')}"
+        return RedirectResponse(url=error_url)
+    
     if not settings.META_APP_ID or not settings.META_APP_SECRET:
-        raise HTTPException(
-            status_code=500,
-            detail="Meta OAuthが設定されていません。管理者に連絡してください。"
-        )
+        frontend_url = settings.FRONTEND_URL or "http://localhost:3000"
+        error_url = f"{frontend_url}/settings?meta_oauth=error&message={urllib.parse.quote('Meta OAuthが設定されていません')}"
+        return RedirectResponse(url=error_url)
     
     # ステートからユーザーIDを取得
     try:
         state_parts = state.split(":")
         if len(state_parts) < 2:
-            raise HTTPException(status_code=400, detail="無効なステートパラメータです")
+            frontend_url = settings.FRONTEND_URL or "http://localhost:3000"
+            error_url = f"{frontend_url}/settings?meta_oauth=error&message={urllib.parse.quote('無効なステートパラメータです')}"
+            return RedirectResponse(url=error_url)
         user_id = int(state_parts[1])
     except (ValueError, IndexError):
-        raise HTTPException(status_code=400, detail="無効なステートパラメータです")
+        frontend_url = settings.FRONTEND_URL or "http://localhost:3000"
+        error_url = f"{frontend_url}/settings?meta_oauth=error&message={urllib.parse.quote('無効なステートパラメータです')}"
+        return RedirectResponse(url=error_url)
     
     # ユーザーを取得
     user = db.query(User).filter(User.id == user_id).first()
@@ -309,13 +333,18 @@ async def meta_oauth_callback(
             
     except httpx.HTTPStatusError as e:
         error_text = e.response.text if hasattr(e.response, 'text') else str(e)
-        raise HTTPException(
-            status_code=e.response.status_code,
-            detail=f"Meta APIエラー: {error_text}"
-        )
+        frontend_url = settings.FRONTEND_URL or "http://localhost:3000"
+        error_url = f"{frontend_url}/settings?meta_oauth=error&message={urllib.parse.quote(f'Meta APIエラー: {error_text}')}"
+        return RedirectResponse(url=error_url)
+    except HTTPException:
+        # HTTPExceptionはそのまま再スロー（ただし、リダイレクトに変換する）
+        raise
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"OAuth認証に失敗しました: {str(e)}"
-        )
+        import traceback
+        error_details = traceback.format_exc()
+        print(f"[Meta OAuth] Error in callback: {str(e)}")
+        print(f"[Meta OAuth] Error details: {error_details}")
+        frontend_url = settings.FRONTEND_URL or "http://localhost:3000"
+        error_url = f"{frontend_url}/settings?meta_oauth=error&message={urllib.parse.quote(f'OAuth認証に失敗しました: {str(e)}')}"
+        return RedirectResponse(url=error_url)
 

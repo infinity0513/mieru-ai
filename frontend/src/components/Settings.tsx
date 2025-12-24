@@ -55,6 +55,11 @@ export const Settings: React.FC<SettingsProps> = ({ user }) => {
           console.error('Failed to reload Meta settings:', error);
         });
       }
+    } else if (oauthStatus === 'error') {
+      const errorMessage = urlParams.get('message') || 'Meta OAuth認証に失敗しました';
+      addToast(errorMessage, 'error');
+      // URLパラメータをクリア
+      window.history.replaceState({}, '', '/settings');
     } else if (oauthStatus === 'callback') {
       // コールバックはバックエンドで処理されるため、ここでは何もしない
       // バックエンドからリダイレクトされる
