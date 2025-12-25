@@ -1072,8 +1072,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
       {selectedCampaignName && (
         <CampaignDetailModal 
             campaignName={selectedCampaignName} 
-            allData={data} 
-            onClose={() => setSelectedCampaignName(null)} 
+            allData={filteredData} 
+            onClose={() => setSelectedCampaignName(null)}
         />
       )}
 
