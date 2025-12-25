@@ -546,26 +546,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
             return;
           }
           
-          // Filter campaigns by date range
-          const filteredCampaigns = campaignsResponse.filter((c: CampaignData) => {
-            const cDate = new Date(c.date);
-            const start = new Date(dateRange.start);
-            const end = new Date(dateRange.end);
-            return cDate >= start && cDate <= end;
-          });
-          
+          // apiDataには全データを保存（日付範囲でフィルタリングしない）
+          // 日付範囲のフィルタリングはdataの計算時に行う
           console.log('[Dashboard] Loaded campaigns:', {
             total: campaignsResponse.length,
-            filtered: filteredCampaigns.length,
             selectedMetaAccountId: selectedMetaAccountId,
             dateRange: { start: dateRange.start, end: dateRange.end }
           });
           
-          if (filteredCampaigns.length === 0 && campaignsResponse.length > 0) {
-            console.warn('[Dashboard] No campaigns match date range filter');
-          }
-          
-          setApiData(filteredCampaigns);
+          setApiData(campaignsResponse);
         } else {
           console.error('[Dashboard] Failed to load campaigns:', campaignsResult.reason);
           // API取得失敗時は、アセットが選択されている場合は空配列を設定
@@ -604,18 +593,40 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
   }, [dateRange.start, dateRange.end, selectedMetaAccountId]);
 
   // Use propData if available (from App.tsx), otherwise fallback to apiData
-  // If an asset is selected, use apiData which is already filtered by asset
-  // propData contains all data (may not have meta_account_id), apiData is filtered by date range and asset
+  // Filter by asset and date range
+  // propData contains all data (may not have meta_account_id), apiData is filtered by asset only
   const data = useMemo(() => {
+    let sourceData: CampaignData[];
+    
     if (selectedMetaAccountId) {
       // Asset is selected: use apiData which is filtered by asset
       // propData from CSV uploads doesn't have meta_account_id, so we can't filter it
-      return apiData;
+      sourceData = apiData;
     } else {
       // No asset selected: use propData if available, otherwise apiData
-      return (propData && propData.length > 0) ? propData : apiData;
+      sourceData = (propData && propData.length > 0) ? propData : apiData;
     }
-  }, [propData, apiData, selectedMetaAccountId]);
+    
+    // Filter by date range
+    if (sourceData.length === 0) return [];
+    
+    const startDateStr = dateRange.start;
+    const endDateStr = dateRange.end;
+    
+    const filtered = sourceData.filter((d: CampaignData) => {
+      const inDateRange = d.date >= startDateStr && d.date <= endDateStr;
+      return inDateRange;
+    });
+    
+    console.log('[Dashboard] Data filtered:', {
+      selectedMetaAccountId,
+      sourceDataCount: sourceData.length,
+      filteredCount: filtered.length,
+      dateRange: { start: startDateStr, end: endDateStr }
+    });
+    
+    return filtered;
+  }, [propData, apiData, selectedMetaAccountId, dateRange.start, dateRange.end]);
 
   // 利用可能なキャンペーン一覧を取得
   const availableCampaigns = useMemo(() => {
