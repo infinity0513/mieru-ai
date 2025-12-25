@@ -308,10 +308,17 @@ class DataService:
             
             # Handle NaN values in string fields
             # Meta CSVフォーマット対応
-            campaign_name = str(
+            campaign_name_raw = (
                 row.get('キャンペーン名', '') or row.get('campaign_name', '') or 
                 row.get('Campaign Name', '') or ''
-            ).replace('nan', '').replace('NaN', '')
+            )
+            campaign_name = str(campaign_name_raw).replace('nan', '').replace('NaN', '').strip()
+            
+            # キャンペーン名が空の場合はスキップ
+            if not campaign_name:
+                if idx < 5:
+                    print(f"[DataService] Row {idx}: Skipping row with empty campaign_name")
+                continue
             ad_set_name = str(
                 row.get('広告セット名', '') or row.get('ad_set_name', '') or 
                 row.get('Ad Set Name', '') or row.get('広告セットの名前', '') or ''
@@ -346,10 +353,13 @@ class DataService:
             
             existing_campaign = query.first()
             
-            # デバッグログ
-            if idx < 5:  # 最初の5行のみログ出力
-                print(f"[DataService] Row {idx}: campaign_name='{campaign_name}', date={campaign_date}, ad_set_name='{ad_set_name}', ad_name='{ad_name}'")
-                print(f"[DataService] Existing campaign found: {existing_campaign is not None}")
+            # デバッグログ（全行をログ出力）
+            print(f"[DataService] Row {idx}: campaign_name='{campaign_name}', date={campaign_date}, ad_set_name='{ad_set_name}', ad_name='{ad_name}'")
+            print(f"[DataService] Row {idx}: Existing campaign found: {existing_campaign is not None}")
+            if existing_campaign:
+                print(f"[DataService] Row {idx}: Will UPDATE existing campaign (ID: {existing_campaign.id})")
+            else:
+                print(f"[DataService] Row {idx}: Will CREATE new campaign")
             
             if existing_campaign:
                 # Update existing record
@@ -370,6 +380,7 @@ class DataService:
                 existing_campaign.cvr = metrics['cvr']
                 existing_campaign.roas = metrics['roas']
                 updated_count += 1
+                print(f"[DataService] Updated existing campaign: '{campaign_name}' on {campaign_date} (updated_count: {updated_count})")
             else:
                 # Create new campaign record
                 campaign = Campaign(
@@ -392,8 +403,7 @@ class DataService:
                 )
                 db.add(campaign)
                 saved_count += 1
-                if idx < 5:  # 最初の5行のみログ出力
-                    print(f"[DataService] Created new campaign: {campaign_name} on {campaign_date}")
+                print(f"[DataService] Created new campaign: '{campaign_name}' on {campaign_date} (saved_count: {saved_count})")
         
         db.commit()
         print(f"[DataService] Saved {saved_count} new campaigns, updated {updated_count} existing campaigns")
