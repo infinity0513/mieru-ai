@@ -554,15 +554,23 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
           // apiDataには全データを保存（日付範囲でフィルタリングしない）
           // 日付範囲のフィルタリングはdataの計算時に行う
           console.log('[Dashboard] ===== Successfully loaded campaigns =====');
+          
+          // データの日付範囲を確認
+          const dates = campaignsResponse.map(c => c.date).sort();
+          const minDate = dates[0];
+          const maxDate = dates[dates.length - 1];
+          
           console.log('[Dashboard] Loaded campaigns:', {
             total: campaignsResponse.length,
             selectedMetaAccountId: selectedMetaAccountId,
             dateRange: { start: dateRange.start, end: dateRange.end },
+            dataDateRange: { min: minDate, max: maxDate },
             sampleCampaign: campaignsResponse.length > 0 ? {
               campaign_name: campaignsResponse[0].campaign_name,
               meta_account_id: campaignsResponse[0].meta_account_id,
               date: campaignsResponse[0].date
-            } : null
+            } : null,
+            allDates: dates
           });
           
           setApiData(campaignsResponse);
@@ -630,11 +638,31 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
       return inDateRange;
     });
     
+    // 日付範囲の詳細を確認
+    const sourceDates = sourceData.length > 0 ? sourceData.map(d => d.date).sort() : [];
+    const filteredDates = filtered.length > 0 ? filtered.map(d => d.date).sort() : [];
+    
+    console.log('[Dashboard] ===== Data filtered =====');
     console.log('[Dashboard] Data filtered:', {
       selectedMetaAccountId,
       sourceDataCount: sourceData.length,
       filteredCount: filtered.length,
-      dateRange: { start: startDateStr, end: endDateStr }
+      dateRange: { start: startDateStr, end: endDateStr },
+      sourceDataDateRange: sourceData.length > 0 ? {
+        min: sourceDates[0],
+        max: sourceDates[sourceDates.length - 1],
+        allDates: sourceDates.slice(0, 10) // 最初の10件のみ表示
+      } : null,
+      filteredDateRange: filtered.length > 0 ? {
+        min: filteredDates[0],
+        max: filteredDates[filteredDates.length - 1],
+        allDates: filteredDates.slice(0, 10) // 最初の10件のみ表示
+      } : null,
+      dateRangeMatch: sourceData.length > 0 ? {
+        hasDataBeforeRange: sourceDates[0] < startDateStr,
+        hasDataInRange: sourceDates.some(d => d >= startDateStr && d <= endDateStr),
+        hasDataAfterRange: sourceDates[sourceDates.length - 1] > endDateStr
+      } : null
     });
     
     return filtered;
