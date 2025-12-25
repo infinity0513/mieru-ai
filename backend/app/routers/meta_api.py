@@ -30,11 +30,13 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
     db.add(upload)
     db.flush()  # upload.idを取得するためにflush
     
-    # 全期間のデータを取得（Meta APIの最大範囲：過去2年間）
+    # 全期間のデータを取得（Meta APIの最大範囲：過去37ヶ月間）
     from datetime import datetime, timedelta
     until = datetime.now().strftime('%Y-%m-%d')
-    # Meta APIは最大2年間のデータを取得可能
-    since = (datetime.now() - timedelta(days=730)).strftime('%Y-%m-%d')
+    # Meta APIは1回のリクエストで最大37ヶ月（約3年）のデータを取得可能
+    # より長期間のデータが必要な場合は、複数回に分けて取得する必要がある
+    # ここでは最大37ヶ月（約1125日）を設定
+    since = (datetime.now() - timedelta(days=1125)).strftime('%Y-%m-%d')
     
     try:
         async with httpx.AsyncClient() as client:
@@ -56,22 +58,49 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
             all_adsets = adsets_data.get('data', [])[:100]  # 最初の100件のみ
             
             # 各広告セットのInsightsを取得
+            # Meta APIは1回のリクエストで最大37ヶ月のデータを取得可能
+            # より長期間のデータが必要な場合は、期間を分割して複数回取得する
+            max_days_per_request = 1125  # 37ヶ月（約1125日）
+            current_until = datetime.now()
+            current_since = datetime.strptime(since, '%Y-%m-%d')
+            
             for adset in all_adsets:
                 adset_id = adset['id']
                 insights_url = f"https://graph.facebook.com/v24.0/{adset_id}/insights"
-                insights_params = {
-                    "access_token": access_token,
-                    "fields": "adset_id,adset_name,ad_id,ad_name,campaign_id,campaign_name,date_start,spend,impressions,clicks,reach,actions,conversions,action_values",
-                    "time_range": f"{{'since':'{since}','until':'{until}'}}"
-                }
-                try:
-                    insights_response = await client.get(insights_url, params=insights_params)
-                    insights_response.raise_for_status()
-                    insights_data = insights_response.json()
-                    all_insights.extend(insights_data.get('data', []))
-                except Exception as e:
-                    print(f"[Meta OAuth] Error fetching insights for adset {adset_id}: {str(e)}")
-                    continue
+                
+                # 期間を分割して取得（37ヶ月ごと）
+                request_since = current_since
+                while request_since < current_until:
+                    request_until = min(request_since + timedelta(days=max_days_per_request), current_until)
+                    
+                    insights_params = {
+                        "access_token": access_token,
+                        "fields": "adset_id,adset_name,ad_id,ad_name,campaign_id,campaign_name,date_start,spend,impressions,clicks,reach,actions,conversions,action_values",
+                        "time_range": f"{{'since':'{request_since.strftime('%Y-%m-%d')}','until':'{request_until.strftime('%Y-%m-%d')}'}}"
+                    }
+                    try:
+                        insights_response = await client.get(insights_url, params=insights_params)
+                        insights_response.raise_for_status()
+                        insights_data = insights_response.json()
+                        all_insights.extend(insights_data.get('data', []))
+                        
+                        # ページネーション処理
+                        while 'paging' in insights_data and 'next' in insights_data['paging']:
+                            next_url = insights_data['paging']['next']
+                            next_response = await client.get(next_url)
+                            next_response.raise_for_status()
+                            insights_data = next_response.json()
+                            all_insights.extend(insights_data.get('data', []))
+                    except Exception as e:
+                        print(f"[Meta OAuth] Error fetching insights for adset {adset_id} from {request_since.strftime('%Y-%m-%d')} to {request_until.strftime('%Y-%m-%d')}: {str(e)}")
+                        # エラーが発生しても次の期間の取得を続行
+                    
+                    # 次の期間に進む
+                    request_since = request_until + timedelta(days=1)
+                    
+                    # 無限ループ防止
+                    if request_since >= current_until:
+                        break
             
             # InsightsデータをCampaignテーブルに保存
             saved_count = 0
