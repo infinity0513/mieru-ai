@@ -842,7 +842,7 @@ class ApiClient {
     }
   }
 
-  async fetchCampaignData(metaAccountId?: string): Promise<CampaignData[]> {
+  async fetchCampaignData(metaAccountId?: string, startDate?: string, endDate?: string): Promise<CampaignData[]> {
     const token = this.getToken();
     if (!token) {
       console.warn("[ApiClient] No token available for fetchCampaignData");
@@ -852,13 +852,15 @@ class ApiClient {
     try {
       const params = new URLSearchParams();
       if (metaAccountId) params.append('meta_account_id', metaAccountId);
+      if (startDate) params.append('start_date', startDate);
+      if (endDate) params.append('end_date', endDate);
       // 最大1000件まで取得可能（バックエンドのlimit上限）
       params.append('limit', '1000');
       
       const url = `${this.baseURL}/campaigns/?${params}`;
       console.log('[ApiClient] ===== Fetching campaigns =====');
       console.log('[ApiClient] URL:', url);
-      console.log('[ApiClient] metaAccountId parameter:', metaAccountId);
+      console.log('[ApiClient] Parameters:', { metaAccountId, startDate, endDate });
       console.log('[ApiClient] URLSearchParams:', params.toString());
       
       const response = await fetch(url, {

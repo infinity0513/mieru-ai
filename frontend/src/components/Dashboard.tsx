@@ -242,23 +242,23 @@ const CampaignDetailModal = ({ campaignName, allData, onClose }: { campaignName:
               </div>
 
               {/* リーチ・エンゲージメント指標 */}
-                <div>
-                  <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-4 break-words">リーチ・エンゲージメント指標</h4>
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-                      <div className="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-3 border border-purple-200 dark:border-purple-800 min-w-0 overflow-hidden">
-                        <div className="text-xs text-purple-600 dark:text-purple-400 mb-1 font-medium truncate">リーチ数</div>
-                        <div className="text-lg font-bold text-purple-700 dark:text-purple-300 break-words leading-tight">
-                          {(stats.totalReach || 0).toLocaleString()}
-                        </div>
-                        <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate">合計</div>
-                </div>
-                      <div className="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-3 border border-purple-200 dark:border-purple-800 min-w-0 overflow-hidden">
-                        <div className="text-xs text-purple-600 dark:text-purple-400 mb-1 font-medium truncate">フリークエンシー</div>
-                        <div className="text-lg font-bold text-purple-700 dark:text-purple-300 break-words leading-tight">
-                          {(stats.frequency || 0).toFixed(2)}
-                </div>
-                        <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate">平均</div>
-            </div>
+              <div>
+                <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-4 break-words">リーチ・エンゲージメント指標</h4>
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+                  <div className="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-3 border border-purple-200 dark:border-purple-800 min-w-0 overflow-hidden">
+                    <div className="text-xs text-purple-600 dark:text-purple-400 mb-1 font-medium truncate">リーチ数</div>
+                    <div className="text-lg font-bold text-purple-700 dark:text-purple-300 break-words leading-tight">
+                      {(stats.totalReach || 0).toLocaleString()}
+                    </div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate">合計</div>
+                  </div>
+                  <div className="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-3 border border-purple-200 dark:border-purple-800 min-w-0 overflow-hidden">
+                    <div className="text-xs text-purple-600 dark:text-purple-400 mb-1 font-medium truncate">フリークエンシー</div>
+                    <div className="text-lg font-bold text-purple-700 dark:text-purple-300 break-words leading-tight">
+                      {(stats.frequency || 0).toFixed(2)}
+                    </div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate">平均</div>
+                  </div>
                   <div className="bg-pink-50 dark:bg-pink-900/20 rounded-lg p-3 border border-pink-200 dark:border-pink-800 min-w-0 overflow-hidden">
                     <div className="text-xs text-pink-600 dark:text-pink-400 mb-1 font-medium truncate">エンゲージメント数</div>
                     <div className="text-lg font-bold text-pink-700 dark:text-pink-300 break-words leading-tight">
@@ -266,28 +266,21 @@ const CampaignDetailModal = ({ campaignName, allData, onClose }: { campaignName:
                     </div>
                     <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate">合計</div>
                   </div>
-                      <div className="bg-pink-50 dark:bg-pink-900/20 rounded-lg p-3 border border-pink-200 dark:border-pink-800 min-w-0 overflow-hidden">
-                        <div className="text-xs text-pink-600 dark:text-pink-400 mb-1 font-medium truncate">エンゲージメント率</div>
-                        <div className="text-lg font-bold text-pink-700 dark:text-pink-300 break-words leading-tight">
-                          {(stats.engagementRate || 0).toFixed(2)}%
-                        </div>
-                        <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate">平均</div>
+                  <div className="bg-pink-50 dark:bg-pink-900/20 rounded-lg p-3 border border-pink-200 dark:border-pink-800 min-w-0 overflow-hidden">
+                    <div className="text-xs text-pink-600 dark:text-pink-400 mb-1 font-medium truncate">エンゲージメント率</div>
+                    <div className="text-lg font-bold text-pink-700 dark:text-pink-300 break-words leading-tight">
+                      {(stats.engagementRate || 0).toFixed(2)}%
+                    </div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate">平均</div>
                   </div>
-                      <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-3 border border-blue-200 dark:border-blue-800 min-w-0 overflow-hidden">
-                        <div className="text-xs text-blue-600 dark:text-blue-400 mb-1 font-medium truncate">リンククリック数</div>
-                        <div className="text-lg font-bold text-blue-700 dark:text-blue-300 break-words leading-tight">
-                          {(stats.totalLinkClicks || 0).toLocaleString()}
-                        </div>
-                        <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate">合計</div>
+                  <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-3 border border-green-200 dark:border-green-800 min-w-0 overflow-hidden">
+                    <div className="text-xs text-green-600 dark:text-green-400 mb-1 font-medium truncate">LPビュー数</div>
+                    <div className="text-lg font-bold text-green-700 dark:text-green-300 break-words leading-tight">
+                      {(stats.totalLandingPageViews || 0).toLocaleString()}
+                    </div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate">合計</div>
                   </div>
-                      <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-3 border border-green-200 dark:border-green-800 min-w-0 overflow-hidden">
-                        <div className="text-xs text-green-600 dark:text-green-400 mb-1 font-medium truncate">LPビュー数</div>
-                        <div className="text-lg font-bold text-green-700 dark:text-green-300 break-words leading-tight">
-                          {(stats.totalLandingPageViews || 0).toLocaleString()}
-                        </div>
-                        <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate">合計</div>
-                  </div>
-                  </div>
+                </div>
               </div>
             </div>
 
@@ -500,7 +493,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
         const [summaryResult, trendsResult, campaignsResult] = await Promise.allSettled([
           Api.getCampaignSummary(dateRange.start, dateRange.end, metaAccountParam),
           Api.getCampaignTrends(dateRange.start, dateRange.end, 'day', metaAccountParam),
-          Api.fetchCampaignData(metaAccountParam) // Get detailed daily data
+          Api.fetchCampaignData(metaAccountParam, dateRange.start, dateRange.end) // Get detailed daily data with date range filter
         ]);
         
         // Summary data
@@ -609,27 +602,49 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
 
   // Use propData if available (from App.tsx), otherwise fallback to apiData
   // Filter by asset and date range
-  // propData contains all data (may not have meta_account_id), apiData is filtered by asset only
+  // propData contains all data (may not have meta_account_id), apiData is filtered by asset and date range
   const data = useMemo(() => {
     let sourceData: CampaignData[];
     
     if (selectedMetaAccountId) {
-      // Asset is selected: use apiData which is filtered by asset
+      // Asset is selected: use apiData which is filtered by asset and date range
       // If apiData is empty, fallback to propData (user might have uploaded CSV data)
       if (apiData && apiData.length > 0) {
+        // apiData is already filtered by date range on backend, use as-is
         sourceData = apiData;
       } else {
-        // apiData is empty, fallback to propData
+        // apiData is empty, fallback to propData (need to filter by date range)
         sourceData = (propData && propData.length > 0) ? propData : apiData;
       }
     } else {
       // No asset selected: use propData if available, otherwise apiData
-      sourceData = (propData && propData.length > 0) ? propData : apiData;
+      // apiData is already filtered by date range on backend
+      if (apiData && apiData.length > 0) {
+        sourceData = apiData;
+      } else {
+        sourceData = (propData && propData.length > 0) ? propData : apiData;
+      }
     }
     
-    // Filter by date range
+    // Filter by date range only if using propData (apiData is already filtered)
     if (sourceData.length === 0) return [];
     
+    // Check if sourceData is apiData (already filtered) or propData (needs filtering)
+    const isApiData = (selectedMetaAccountId && apiData && apiData.length > 0) || 
+                      (!selectedMetaAccountId && apiData && apiData.length > 0 && (!propData || propData.length === 0));
+    
+    if (isApiData) {
+      // apiData is already filtered by date range on backend, use as-is
+      console.log('[Dashboard] ===== Using apiData (already filtered by date range) =====');
+      console.log('[Dashboard] apiData:', {
+        count: sourceData.length,
+        dateRange: { start: dateRange.start, end: dateRange.end },
+        sampleDates: sourceData.slice(0, 5).map(d => d.date)
+      });
+      return sourceData;
+    }
+    
+    // Filter propData by date range
     const startDateStr = dateRange.start;
     const endDateStr = dateRange.end;
     
@@ -642,7 +657,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     const sourceDates = sourceData.length > 0 ? sourceData.map(d => d.date).sort() : [];
     const filteredDates = filtered.length > 0 ? filtered.map(d => d.date).sort() : [];
     
-    console.log('[Dashboard] ===== Data filtered =====');
+    console.log('[Dashboard] ===== Data filtered (propData) =====');
     console.log('[Dashboard] Data filtered:', {
       selectedMetaAccountId,
       sourceDataCount: sourceData.length,
@@ -1403,23 +1418,23 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
       </div>
 
         {/* リーチ・エンゲージメント指標 */}
-          <div>
-            <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-4 break-words">リーチ・エンゲージメント指標</h4>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-                <div className="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-3 border border-purple-200 dark:border-purple-800 min-w-0 overflow-hidden">
-                  <div className="text-xs text-purple-600 dark:text-purple-400 mb-1 font-medium truncate">リーチ数</div>
-                  <div className="text-lg font-bold text-purple-700 dark:text-purple-300 break-words leading-tight">
-                    {kpiData.totalReach.toLocaleString()}
-                  </div>
-                  <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate">合計</div>
-                </div>
-                <div className="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-3 border border-purple-200 dark:border-purple-800 min-w-0 overflow-hidden">
-                  <div className="text-xs text-purple-600 dark:text-purple-400 mb-1 font-medium truncate">フリークエンシー</div>
-                  <div className="text-lg font-bold text-purple-700 dark:text-purple-300 break-words leading-tight">
-                    {kpiData.frequency.toFixed(2)}
-                  </div>
-                  <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate">平均</div>
-                </div>
+        <div>
+          <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-4 break-words">リーチ・エンゲージメント指標</h4>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+            <div className="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-3 border border-purple-200 dark:border-purple-800 min-w-0 overflow-hidden">
+              <div className="text-xs text-purple-600 dark:text-purple-400 mb-1 font-medium truncate">リーチ数</div>
+              <div className="text-lg font-bold text-purple-700 dark:text-purple-300 break-words leading-tight">
+                {kpiData.totalReach.toLocaleString()}
+              </div>
+              <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate">合計</div>
+            </div>
+            <div className="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-3 border border-purple-200 dark:border-purple-800 min-w-0 overflow-hidden">
+              <div className="text-xs text-purple-600 dark:text-purple-400 mb-1 font-medium truncate">フリークエンシー</div>
+              <div className="text-lg font-bold text-purple-700 dark:text-purple-300 break-words leading-tight">
+                {kpiData.frequency.toFixed(2)}
+              </div>
+              <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate">平均</div>
+            </div>
             <div className="bg-pink-50 dark:bg-pink-900/20 rounded-lg p-3 border border-pink-200 dark:border-pink-800 min-w-0 overflow-hidden">
               <div className="text-xs text-pink-600 dark:text-pink-400 mb-1 font-medium truncate">エンゲージメント数</div>
               <div className="text-lg font-bold text-pink-700 dark:text-pink-300 break-words leading-tight">
@@ -1427,29 +1442,22 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
               </div>
               <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate">合計</div>
             </div>
-                <div className="bg-pink-50 dark:bg-pink-900/20 rounded-lg p-3 border border-pink-200 dark:border-pink-800 min-w-0 overflow-hidden">
-                  <div className="text-xs text-pink-600 dark:text-pink-400 mb-1 font-medium truncate">エンゲージメント率</div>
-                  <div className="text-lg font-bold text-pink-700 dark:text-pink-300 break-words leading-tight">
-                    {kpiData.engagementRate.toFixed(2)}%
-                  </div>
-                  <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate">平均</div>
-                </div>
-                <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-3 border border-blue-200 dark:border-blue-800 min-w-0 overflow-hidden">
-                  <div className="text-xs text-blue-600 dark:text-blue-400 mb-1 font-medium truncate">リンククリック数</div>
-                  <div className="text-lg font-bold text-blue-700 dark:text-blue-300 break-words leading-tight">
-                    {kpiData.totalLinkClicks.toLocaleString()}
-                  </div>
-                  <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate">合計</div>
-                </div>
-                <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-3 border border-green-200 dark:border-green-800 min-w-0 overflow-hidden">
-                  <div className="text-xs text-green-600 dark:text-green-400 mb-1 font-medium truncate">LPビュー数</div>
-                  <div className="text-lg font-bold text-green-700 dark:text-green-300 break-words leading-tight">
-                    {kpiData.totalLandingPageViews.toLocaleString()}
-                  </div>
-                  <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate">合計</div>
-                </div>
+            <div className="bg-pink-50 dark:bg-pink-900/20 rounded-lg p-3 border border-pink-200 dark:border-pink-800 min-w-0 overflow-hidden">
+              <div className="text-xs text-pink-600 dark:text-pink-400 mb-1 font-medium truncate">エンゲージメント率</div>
+              <div className="text-lg font-bold text-pink-700 dark:text-pink-300 break-words leading-tight">
+                {kpiData.engagementRate.toFixed(2)}%
+              </div>
+              <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate">平均</div>
+            </div>
+            <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-3 border border-green-200 dark:border-green-800 min-w-0 overflow-hidden">
+              <div className="text-xs text-green-600 dark:text-green-400 mb-1 font-medium truncate">LPビュー数</div>
+              <div className="text-lg font-bold text-green-700 dark:text-green-300 break-words leading-tight">
+                {kpiData.totalLandingPageViews.toLocaleString()}
+              </div>
+              <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate">合計</div>
             </div>
           </div>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 print:block print:space-y-6">
