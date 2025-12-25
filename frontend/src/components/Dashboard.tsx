@@ -497,16 +497,29 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
         // Summary data
         if (summaryResult.status === 'fulfilled') {
           setSummaryData(summaryResult.value);
+        } else {
+          console.error('[Dashboard] Failed to load summary:', summaryResult.reason);
         }
         
         // Trends data
         if (trendsResult.status === 'fulfilled') {
           setTrendsData(trendsResult.value);
+        } else {
+          console.error('[Dashboard] Failed to load trends:', trendsResult.reason);
         }
         
         // Campaigns data
         if (campaignsResult.status === 'fulfilled') {
           const campaignsResponse = campaignsResult.value;
+          
+          if (!Array.isArray(campaignsResponse)) {
+            console.error('[Dashboard] Invalid campaigns response format:', campaignsResponse);
+            // API取得失敗時は、propDataがある場合はそれを使用、なければ以前のapiDataを保持
+            if (propData && propData.length > 0) {
+              setApiData(propData);
+            }
+            return;
+          }
           
           // Filter campaigns by date range
           const filteredCampaigns = campaignsResponse.filter((c: CampaignData) => {
@@ -516,14 +529,22 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
             return cDate >= start && cDate <= end;
           });
           
+          console.log('[Dashboard] Loaded campaigns:', {
+            total: campaignsResponse.length,
+            filtered: filteredCampaigns.length,
+            selectedMetaAccountId: selectedMetaAccountId
+          });
+          
           setApiData(filteredCampaigns);
         } else {
+          console.error('[Dashboard] Failed to load campaigns:', campaignsResult.reason);
           // API取得失敗時は、propDataがある場合はそれを使用、なければ以前のapiDataを保持
           if (propData && propData.length > 0) {
             setApiData(propData);
           }
         }
       } catch (error) {
+        console.error('[Dashboard] Error loading dashboard data:', error);
         // エラー時も、propDataがある場合はそれを使用、なければ以前のapiDataを保持
         if (propData && propData.length > 0) {
           setApiData(propData);

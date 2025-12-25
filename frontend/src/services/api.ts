@@ -852,6 +852,8 @@ class ApiClient {
     try {
       const params = new URLSearchParams();
       if (metaAccountId) params.append('meta_account_id', metaAccountId);
+      // 最大1000件まで取得可能（バックエンドのlimit上限）
+      params.append('limit', '1000');
       
       const response = await fetch(`${this.baseURL}/campaigns/?${params}`, {
         credentials: 'include',  // CORS credentials をサポート
