@@ -698,14 +698,33 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     }
     
     // dataは既にアセットでフィルタリングされているので、そのまま使用
-    const campaigns = Array.from(new Set(sourceData.map(d => d.campaign_name))).sort();
+    // campaign_nameが空でないもののみを取得
+    const campaignNames = sourceData
+      .map(d => d.campaign_name)
+      .filter(name => name && name.trim() !== ''); // 空文字列を除外
     
-    console.log('[Dashboard] Available campaigns:', {
+    const campaigns = Array.from(new Set(campaignNames)).sort();
+    
+    // デバッグログ: 各データ行のcampaign_nameを確認
+    console.log('[Dashboard] ===== Available campaigns calculation =====');
+    console.log('[Dashboard] Source data sample (first 10 rows):', 
+      sourceData.slice(0, 10).map(d => ({
+        campaign_name: d.campaign_name,
+        date: d.date,
+        id: d.id
+      }))
+    );
+    console.log('[Dashboard] All campaign names in source data:', campaignNames);
+    console.log('[Dashboard] Unique campaigns (after Set):', campaigns);
+    console.log('[Dashboard] Available campaigns summary:', {
       selectedMetaAccountId,
       dataCount: data.length,
       sourceDataCount: sourceData.length,
+      campaignNamesCount: campaignNames.length,
+      uniqueCampaignsCount: campaigns.length,
       campaigns: campaigns
     });
+    console.log('[Dashboard] ===== End available campaigns calculation =====');
     
     return campaigns;
   }, [data, propData, selectedMetaAccountId]);
