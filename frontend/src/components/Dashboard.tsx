@@ -592,8 +592,18 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
   }, [dateRange.start, dateRange.end, selectedMetaAccountId]);
 
   // Use propData if available (from App.tsx), otherwise fallback to apiData
-  // propData contains all data, apiData is filtered by date range
-  const data = (propData && propData.length > 0) ? propData : apiData;
+  // If an asset is selected, use apiData which is already filtered by asset
+  // propData contains all data (may not have meta_account_id), apiData is filtered by date range and asset
+  const data = useMemo(() => {
+    if (selectedMetaAccountId) {
+      // Asset is selected: use apiData which is filtered by asset
+      // propData from CSV uploads doesn't have meta_account_id, so we can't filter it
+      return apiData;
+    } else {
+      // No asset selected: use propData if available, otherwise apiData
+      return (propData && propData.length > 0) ? propData : apiData;
+    }
+  }, [propData, apiData, selectedMetaAccountId]);
 
   // 利用可能なキャンペーン一覧を取得
   const availableCampaigns = useMemo(() => {
