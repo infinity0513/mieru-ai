@@ -1240,16 +1240,17 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
 
       {/* Performance Analysis - AI分析レポートと同じ形式 */}
       {data.length > 0 && (
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-6 md:p-8 avoid-break transition-colors">
-        <div className="flex items-center mb-6">
-          <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg text-blue-600 dark:text-blue-400 mr-3">
-            <TrendingUp size={20} />
+        <>
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-6 md:p-8 avoid-break transition-colors">
+          <div className="flex items-center mb-6">
+            <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg text-blue-600 dark:text-blue-400 mr-3">
+              <TrendingUp size={20} />
+            </div>
+            <h3 className="text-lg font-bold text-gray-900 dark:text-white">詳細パフォーマンス分析</h3>
           </div>
-          <h3 className="text-lg font-bold text-gray-900 dark:text-white">詳細パフォーマンス分析</h3>
-      </div>
 
-        {/* Totals - 全体サマリー */}
-        <div className="mb-6">
+          {/* Totals - 全体サマリー */}
+          <div className="mb-6">
           <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-4 break-words">全体サマリー</h4>
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
             <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-3 border border-blue-200 dark:border-blue-800 min-w-0 overflow-hidden">
@@ -1288,7 +1289,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
               <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate">合計</div>
             </div>
           </div>
-      </div>
+        </div>
 
         {/* Averages - 計算指標（パフォーマンス指標） */}
         <div className="mb-6">
@@ -1392,9 +1393,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
             </div>
           </div>
         )}
-      </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 print:block print:space-y-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 print:block print:space-y-6">
         {/* Trend Chart */}
         <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-3 transition-colors">
           <h4 className="text-sm font-bold text-gray-900 dark:text-white mb-2 flex items-center">
@@ -1634,6 +1634,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
           </table>
         </div>
       </div>
+        </>
       )}
     </div>
   );
