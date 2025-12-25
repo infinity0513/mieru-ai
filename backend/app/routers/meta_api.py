@@ -143,7 +143,7 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                     
                     campaign_insights_params = {
                         "access_token": access_token,
-                        "fields": "campaign_id,campaign_name,date_start,spend,impressions,clicks,reach,actions,conversions,action_values",
+                        "fields": "campaign_id,campaign_name,date_start,spend,impressions,clicks,reach,actions,conversions,action_values,engagements,landing_page_views,link_clicks,frequency",
                         "time_range": f"{{'since':'{request_since.strftime('%Y-%m-%d')}','until':'{request_until.strftime('%Y-%m-%d')}'}}",
                         "limit": 100
                     }
@@ -210,7 +210,7 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                     
                     insights_params = {
                         "access_token": access_token,
-                        "fields": "adset_id,adset_name,ad_id,ad_name,campaign_id,campaign_name,date_start,spend,impressions,clicks,reach,actions,conversions,action_values",
+                        "fields": "adset_id,adset_name,ad_id,ad_name,campaign_id,campaign_name,date_start,spend,impressions,clicks,reach,actions,conversions,action_values,engagements,landing_page_views,link_clicks,frequency",
                         "time_range": f"{{'since':'{request_since.strftime('%Y-%m-%d')}','until':'{request_until.strftime('%Y-%m-%d')}'}}",
                         "limit": 100  # ページネーション用のlimitを追加
                     }
@@ -284,6 +284,16 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                     clicks = int(insight.get('clicks', 0))
                     reach = int(insight.get('reach', 0))
                     
+                    # エンゲージメント関連のデータを取得
+                    engagements = int(insight.get('engagements', 0))
+                    link_clicks = int(insight.get('link_clicks', 0))
+                    landing_page_views = int(insight.get('landing_page_views', 0))
+                    frequency = float(insight.get('frequency', 0))
+                    
+                    # frequencyが取得できない場合は計算（impressions / reach）
+                    if frequency == 0 and reach > 0:
+                        frequency = (impressions / reach) if reach > 0 else 0
+                    
                     # conversionsとconversion_valueを取得
                     # まず、直接conversionsフィールドを確認
                     conversions_data = insight.get('conversions', [])
@@ -352,12 +362,20 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                     # デバッグログ（最初の数件のみ）
                     if saved_count < 3:
                         print(f"[Meta OAuth] Insight data for {campaign_name} on {campaign_date}:")
+                        print(f"  - impressions: {impressions}")
+                        print(f"  - clicks: {clicks}")
+                        print(f"  - spend: {spend}")
                         print(f"  - conversions: {conversions}")
                         print(f"  - conversion_value: {conversion_value}")
-                        print(f"  - spend: {spend}")
-                        print(f"  - clicks: {clicks}")
+                        print(f"  - reach: {reach}")
+                        print(f"  - engagements: {engagements}")
+                        print(f"  - link_clicks: {link_clicks}")
+                        print(f"  - landing_page_views: {landing_page_views}")
+                        print(f"  - frequency: {frequency}")
                         if conversions > 0:
                             print(f"  - Calculated CPA: {spend / conversions}")
+                        if spend > 0:
+                            print(f"  - Calculated ROAS: {conversion_value / spend * 100}%")
                     
                     # メトリクスを計算
                     ctr = (clicks / impressions * 100) if impressions > 0 else 0
@@ -365,7 +383,8 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                     cpm = (spend / impressions * 1000) if impressions > 0 else 0
                     cpa = (spend / conversions) if conversions > 0 else 0
                     cvr = (conversions / clicks * 100) if clicks > 0 else 0
-                    roas = (conversion_value / spend) if spend > 0 else 0
+                    # ROASはパーセンテージで計算（conversion_value / spend * 100）
+                    roas = (conversion_value / spend * 100) if spend > 0 else 0
                     
                     # 既存のレコードをチェック（meta_account_idも含める）
                     existing = db.query(Campaign).filter(
@@ -387,6 +406,9 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                         existing.conversions = conversions
                         existing.conversion_value = Decimal(str(conversion_value))
                         existing.reach = reach
+                        existing.engagements = engagements
+                        existing.link_clicks = link_clicks
+                        existing.landing_page_views = landing_page_views
                         existing.ctr = Decimal(str(round(ctr, 2)))
                         existing.cpc = Decimal(str(round(cpc, 2)))
                         existing.cpm = Decimal(str(round(cpm, 2)))
@@ -409,6 +431,9 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                             conversions=conversions,
                             conversion_value=Decimal(str(conversion_value)),
                             reach=reach,
+                            engagements=engagements,
+                            link_clicks=link_clicks,
+                            landing_page_views=landing_page_views,
                             ctr=Decimal(str(round(ctr, 2))),
                             cpc=Decimal(str(round(cpc, 2))),
                             cpm=Decimal(str(round(cpm, 2))),
