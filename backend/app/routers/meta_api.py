@@ -43,19 +43,44 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
             all_insights = []
             all_adsets = []
             
-            # 広告セット一覧を取得
+            # 広告セット一覧を取得（ページネーション対応）
+            print(f"[Meta API] Fetching adsets from account: {account_id}")
             adsets_url = f"https://graph.facebook.com/v24.0/{account_id}/adsets"
             adsets_params = {
                 "access_token": access_token,
                 "fields": "id,name,campaign_id",
-                "limit": 100
+                "limit": 100  # Meta APIの最大取得件数
             }
             
-            # ページネーション処理（最初の100件のみ）
-            adsets_response = await client.get(adsets_url, params=adsets_params)
-            adsets_response.raise_for_status()
-            adsets_data = adsets_response.json()
-            all_adsets = adsets_data.get('data', [])[:100]  # 最初の100件のみ
+            # ページネーション処理（すべてのadsetsを取得）
+            all_adsets = []
+            page_count = 0
+            while True:
+                page_count += 1
+                print(f"[Meta API] Fetching adsets page {page_count}...")
+                adsets_response = await client.get(adsets_url, params=adsets_params)
+                adsets_response.raise_for_status()
+                adsets_data = adsets_response.json()
+                
+                # 取得した広告セットを追加
+                page_adsets = adsets_data.get('data', [])
+                all_adsets.extend(page_adsets)
+                print(f"[Meta API] Retrieved {len(page_adsets)} adsets (total: {len(all_adsets)})")
+                
+                # 次のページがあるかチェック
+                paging = adsets_data.get('paging', {})
+                next_url = paging.get('next')
+                
+                if not next_url:
+                    # 次のページがない場合は終了
+                    print(f"[Meta API] No more pages. Total adsets retrieved: {len(all_adsets)}")
+                    break
+                
+                # 次のページのURLを設定（パラメータをクリア）
+                adsets_url = next_url
+                adsets_params = {}  # URLにパラメータが含まれているためクリア
+            
+            print(f"[Meta API] Total adsets fetched: {len(all_adsets)}")
             
             # 各広告セットのInsightsを取得
             # Meta APIは1回のリクエストで最大37ヶ月のデータを取得可能
@@ -64,8 +89,16 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
             current_until = datetime.now()
             current_since = datetime.strptime(since, '%Y-%m-%d')
             
-            for adset in all_adsets:
+            # 各広告セットのInsightsを取得
+            print(f"[Meta API] Processing {len(all_adsets)} adsets for insights...")
+            for idx, adset in enumerate(all_adsets):
                 adset_id = adset['id']
+                adset_name = adset.get('name', 'Unknown')
+                campaign_id = adset.get('campaign_id', 'Unknown')
+                
+                if (idx + 1) % 10 == 0 or idx == 0:
+                    print(f"[Meta API] Processing adset {idx + 1}/{len(all_adsets)}: {adset_name} (campaign_id: {campaign_id})")
+                
                 insights_url = f"https://graph.facebook.com/v24.0/{adset_id}/insights"
                 
                 # 期間を分割して取得（37ヶ月ごと）
@@ -76,23 +109,34 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                     insights_params = {
                         "access_token": access_token,
                         "fields": "adset_id,adset_name,ad_id,ad_name,campaign_id,campaign_name,date_start,spend,impressions,clicks,reach,actions,conversions,action_values",
-                        "time_range": f"{{'since':'{request_since.strftime('%Y-%m-%d')}','until':'{request_until.strftime('%Y-%m-%d')}'}}"
+                        "time_range": f"{{'since':'{request_since.strftime('%Y-%m-%d')}','until':'{request_until.strftime('%Y-%m-%d')}'}}",
+                        "limit": 100  # ページネーション用のlimitを追加
                     }
                     try:
                         insights_response = await client.get(insights_url, params=insights_params)
                         insights_response.raise_for_status()
                         insights_data = insights_response.json()
-                        all_insights.extend(insights_data.get('data', []))
                         
-                        # ページネーション処理
+                        # 最初のページのデータを追加
+                        page_insights = insights_data.get('data', [])
+                        all_insights.extend(page_insights)
+                        
+                        # ページネーション処理（すべてのページを取得）
+                        page_num = 1
                         while 'paging' in insights_data and 'next' in insights_data['paging']:
+                            page_num += 1
                             next_url = insights_data['paging']['next']
                             next_response = await client.get(next_url)
                             next_response.raise_for_status()
                             insights_data = next_response.json()
-                            all_insights.extend(insights_data.get('data', []))
+                            page_insights = insights_data.get('data', [])
+                            all_insights.extend(page_insights)
+                            
+                            # デバッグログ（最初の数件のみ）
+                            if idx < 3 and page_num <= 3:
+                                print(f"[Meta API] Adset {adset_name}: Page {page_num} - Retrieved {len(page_insights)} insights")
                     except Exception as e:
-                        print(f"[Meta OAuth] Error fetching insights for adset {adset_id} from {request_since.strftime('%Y-%m-%d')} to {request_until.strftime('%Y-%m-%d')}: {str(e)}")
+                        print(f"[Meta OAuth] Error fetching insights for adset {adset_id} ({adset_name}) from {request_since.strftime('%Y-%m-%d')} to {request_until.strftime('%Y-%m-%d')}: {str(e)}")
                         # エラーが発生しても次の期間の取得を続行
                     
                     # 次の期間に進む
@@ -101,6 +145,8 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                     # 無限ループ防止
                     if request_since >= current_until:
                         break
+            
+            print(f"[Meta API] Total insights retrieved: {len(all_insights)}")
             
             # InsightsデータをCampaignテーブルに保存
             saved_count = 0
