@@ -2,6 +2,7 @@ import pandas as pd
 from datetime import date
 from typing import List, Dict
 from sqlalchemy.orm import Session
+from sqlalchemy import or_
 from ..models.campaign import Campaign, Upload
 import uuid
 import math
@@ -207,7 +208,9 @@ class DataService:
         saved_count = 0
         updated_count = 0
         
-        for _, row in df.iterrows():
+        print(f"[DataService] Processing {len(df)} rows from CSV")
+        
+        for idx, row in df.iterrows():
             # Get values with defaults (safely handle NaN)
             # row.get()がNaNを返す可能性があるため、safe_int/safe_floatで直接処理
             # Meta CSVフォーマット対応: 複数の列名バリエーションをサポート
@@ -286,14 +289,35 @@ class DataService:
                 row.get('Ad Name', '') or row.get('広告の名前', '') or ''
             ).replace('nan', '').replace('NaN', '')
             
-            # Check for duplicate (same date, campaign_name, ad_set_name, ad_name)
-            existing_campaign = db.query(Campaign).filter(
+            # Check for duplicate
+            # Meta CSVにはad_set_nameとad_nameが含まれないため、空の場合は重複チェックから除外
+            query = db.query(Campaign).filter(
                 Campaign.user_id == user_id,
                 Campaign.date == campaign_date,
-                Campaign.campaign_name == campaign_name,
-                Campaign.ad_set_name == ad_set_name,
-                Campaign.ad_name == ad_name
-            ).first()
+                Campaign.campaign_name == campaign_name
+            )
+            
+            # ad_set_nameとad_nameが空でない場合のみ、重複チェックに含める
+            if ad_set_name and ad_set_name.strip():
+                query = query.filter(Campaign.ad_set_name == ad_set_name)
+            else:
+                query = query.filter(
+                    or_(Campaign.ad_set_name == '', Campaign.ad_set_name.is_(None))
+                )
+            
+            if ad_name and ad_name.strip():
+                query = query.filter(Campaign.ad_name == ad_name)
+            else:
+                query = query.filter(
+                    or_(Campaign.ad_name == '', Campaign.ad_name.is_(None))
+                )
+            
+            existing_campaign = query.first()
+            
+            # デバッグログ
+            if idx < 5:  # 最初の5行のみログ出力
+                print(f"[DataService] Row {idx}: campaign_name='{campaign_name}', date={campaign_date}, ad_set_name='{ad_set_name}', ad_name='{ad_name}'")
+                print(f"[DataService] Existing campaign found: {existing_campaign is not None}")
             
             if existing_campaign:
                 # Update existing record
@@ -336,6 +360,9 @@ class DataService:
                 )
                 db.add(campaign)
                 saved_count += 1
+                if idx < 5:  # 最初の5行のみログ出力
+                    print(f"[DataService] Created new campaign: {campaign_name} on {campaign_date}")
         
         db.commit()
+        print(f"[DataService] Saved {saved_count} new campaigns, updated {updated_count} existing campaigns")
         return saved_count + updated_count
