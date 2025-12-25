@@ -486,16 +486,26 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
   useEffect(() => {
     const loadDashboardData = async () => {
       setLoading(true);
+      console.log('[Dashboard] Loading data with params:', {
+        start: dateRange.start,
+        end: dateRange.end,
+        selectedMetaAccountId: selectedMetaAccountId
+      });
+      
       try {
         // 各API呼び出しを個別に処理し、1つが失敗しても他のデータは取得できるようにする
+        const metaAccountParam = selectedMetaAccountId || undefined;
+        console.log('[Dashboard] Calling APIs with metaAccountId:', metaAccountParam);
+        
         const [summaryResult, trendsResult, campaignsResult] = await Promise.allSettled([
-          Api.getCampaignSummary(dateRange.start, dateRange.end, selectedMetaAccountId || undefined),
-          Api.getCampaignTrends(dateRange.start, dateRange.end, 'day', selectedMetaAccountId || undefined),
-          Api.fetchCampaignData(selectedMetaAccountId || undefined) // Get detailed daily data
+          Api.getCampaignSummary(dateRange.start, dateRange.end, metaAccountParam),
+          Api.getCampaignTrends(dateRange.start, dateRange.end, 'day', metaAccountParam),
+          Api.fetchCampaignData(metaAccountParam) // Get detailed daily data
         ]);
         
         // Summary data
         if (summaryResult.status === 'fulfilled') {
+          console.log('[Dashboard] Summary loaded:', summaryResult.value);
           setSummaryData(summaryResult.value);
         } else {
           console.error('[Dashboard] Failed to load summary:', summaryResult.reason);
@@ -503,6 +513,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
         
         // Trends data
         if (trendsResult.status === 'fulfilled') {
+          console.log('[Dashboard] Trends loaded:', trendsResult.value);
           setTrendsData(trendsResult.value);
         } else {
           console.error('[Dashboard] Failed to load trends:', trendsResult.reason);
@@ -511,13 +522,23 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
         // Campaigns data
         if (campaignsResult.status === 'fulfilled') {
           const campaignsResponse = campaignsResult.value;
+          console.log('[Dashboard] Campaigns response:', {
+            type: typeof campaignsResponse,
+            isArray: Array.isArray(campaignsResponse),
+            length: Array.isArray(campaignsResponse) ? campaignsResponse.length : 'N/A',
+            data: campaignsResponse
+          });
           
           if (!Array.isArray(campaignsResponse)) {
             console.error('[Dashboard] Invalid campaigns response format:', campaignsResponse);
             // API取得失敗時は、propDataがある場合はそれを使用、なければ以前のapiDataを保持
             if (propData && propData.length > 0) {
+              console.log('[Dashboard] Using propData as fallback:', propData.length);
               setApiData(propData);
+            } else {
+              console.warn('[Dashboard] No propData available, keeping previous apiData');
             }
+            setLoading(false);
             return;
           }
           
@@ -532,22 +553,33 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
           console.log('[Dashboard] Loaded campaigns:', {
             total: campaignsResponse.length,
             filtered: filteredCampaigns.length,
-            selectedMetaAccountId: selectedMetaAccountId
+            selectedMetaAccountId: selectedMetaAccountId,
+            dateRange: { start: dateRange.start, end: dateRange.end }
           });
+          
+          if (filteredCampaigns.length === 0 && campaignsResponse.length > 0) {
+            console.warn('[Dashboard] No campaigns match date range filter');
+          }
           
           setApiData(filteredCampaigns);
         } else {
           console.error('[Dashboard] Failed to load campaigns:', campaignsResult.reason);
           // API取得失敗時は、propDataがある場合はそれを使用、なければ以前のapiDataを保持
           if (propData && propData.length > 0) {
+            console.log('[Dashboard] Using propData as fallback:', propData.length);
             setApiData(propData);
+          } else {
+            console.warn('[Dashboard] No propData available, keeping previous apiData');
           }
         }
       } catch (error) {
         console.error('[Dashboard] Error loading dashboard data:', error);
         // エラー時も、propDataがある場合はそれを使用、なければ以前のapiDataを保持
         if (propData && propData.length > 0) {
+          console.log('[Dashboard] Using propData as fallback after error:', propData.length);
           setApiData(propData);
+        } else {
+          console.warn('[Dashboard] No propData available after error, keeping previous apiData');
         }
       } finally {
         setLoading(false);

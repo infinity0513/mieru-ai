@@ -855,29 +855,46 @@ class ApiClient {
       // 最大1000件まで取得可能（バックエンドのlimit上限）
       params.append('limit', '1000');
       
-      const response = await fetch(`${this.baseURL}/campaigns/?${params}`, {
+      const url = `${this.baseURL}/campaigns/?${params}`;
+      console.log('[ApiClient] Fetching campaigns from:', url);
+      console.log('[ApiClient] metaAccountId parameter:', metaAccountId);
+      
+      const response = await fetch(url, {
         credentials: 'include',  // CORS credentials をサポート
         headers: this.getHeaders(),
       });
+      
+      console.log('[ApiClient] Response status:', response.status, response.statusText);
       
       if (!response.ok) {
         // 401エラーは統一処理
         if (response.status === 401) {
           this.handle401Error(response);
         } else {
-          console.error(`[ApiClient] Failed to fetch campaigns: ${response.status} ${response.statusText}`);
+          const errorText = await response.text();
+          console.error(`[ApiClient] Failed to fetch campaigns: ${response.status} ${response.statusText}`, errorText);
         }
         // If no campaigns found or error, return empty array
         return [];
       }
       
       const result = await response.json();
+      console.log('[ApiClient] Response data:', {
+        hasData: !!result.data,
+        dataType: Array.isArray(result.data) ? 'array' : typeof result.data,
+        dataLength: Array.isArray(result.data) ? result.data.length : 'N/A',
+        total: result.total,
+        fullResult: result
+      });
+      
       const campaigns = result.data || result; // Handle both paginated and list responses
       
       if (!Array.isArray(campaigns)) {
         console.warn("[ApiClient] Invalid campaigns response format:", result);
         return [];
       }
+      
+      console.log('[ApiClient] Returning campaigns array with length:', campaigns.length);
       
       // Convert backend CampaignResponse to frontend CampaignData
       return campaigns.map((c: any) => ({
