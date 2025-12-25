@@ -794,13 +794,13 @@ export const DailyData: React.FC<DailyDataProps> = ({ data: propData }) => {
                   </tr>
                 ))
               )}
-              </tbody>
+            </tbody>
           </table>
         </div>
       </div>
 
       {/* Summary */}
-      {!loading && dailyData.length > 0 && (
+      {dailyData.length > 0 && (
         <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-4">
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">合計</h3>
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
