@@ -105,10 +105,20 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                                 conversions += int(conv)
                     else:
                         # フォールバック: actionsから取得
+                        # Meta APIのactionsフィールドからコンバージョンを取得
+                        # offsite_conversion.fb_pixel_complete_registration などのサブタイプにも対応
                         actions = insight.get('actions', [])
                         for action in actions:
                             action_type = action.get('action_type', '')
-                            if action_type in ['offsite_conversion', 'onsite_conversion', 'omni_purchase', 'purchase']:
+                            # コンバージョン関連のアクションタイプをチェック
+                            # offsite_conversion, onsite_conversion, omni_purchase, purchase
+                            # およびそれらのサブタイプ（例: offsite_conversion.fb_pixel_complete_registration）
+                            if (action_type.startswith('offsite_conversion') or 
+                                action_type.startswith('onsite_conversion') or 
+                                action_type in ['omni_purchase', 'purchase'] or
+                                'complete_registration' in action_type or
+                                'lead' in action_type or
+                                'purchase' in action_type):
                                 value = action.get('value', 0)
                                 try:
                                     conversions += int(value) if isinstance(value, (int, str)) else 0
@@ -123,7 +133,11 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                         for av in action_values:
                             if isinstance(av, dict):
                                 av_type = av.get('action_type', '')
-                                if av_type in ['offsite_conversion', 'onsite_conversion', 'omni_purchase', 'purchase']:
+                                # コンバージョン価値に関連するアクションタイプをチェック
+                                if (av_type.startswith('offsite_conversion') or 
+                                    av_type.startswith('onsite_conversion') or 
+                                    av_type in ['omni_purchase', 'purchase'] or
+                                    'purchase' in av_type):
                                     value = av.get('value', 0)
                                     try:
                                         conversion_value += float(value) if isinstance(value, (int, float, str)) else 0
@@ -134,7 +148,9 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                         actions = insight.get('actions', [])
                         for action in actions:
                             action_type = action.get('action_type', '')
-                            if action_type in ['purchase', 'omni_purchase']:
+                            # 購入関連のアクションタイプをチェック
+                            if (action_type in ['purchase', 'omni_purchase'] or
+                                'purchase' in action_type):
                                 value = action.get('value', 0)
                                 try:
                                     conversion_value += float(value) if isinstance(value, (int, float, str)) else 0
