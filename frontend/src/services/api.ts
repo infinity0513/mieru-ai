@@ -856,8 +856,10 @@ class ApiClient {
       params.append('limit', '1000');
       
       const url = `${this.baseURL}/campaigns/?${params}`;
-      console.log('[ApiClient] Fetching campaigns from:', url);
+      console.log('[ApiClient] ===== Fetching campaigns =====');
+      console.log('[ApiClient] URL:', url);
       console.log('[ApiClient] metaAccountId parameter:', metaAccountId);
+      console.log('[ApiClient] URLSearchParams:', params.toString());
       
       const response = await fetch(url, {
         credentials: 'include',  // CORS credentials をサポート
@@ -879,12 +881,17 @@ class ApiClient {
       }
       
       const result = await response.json();
+      console.log('[ApiClient] ===== Campaigns response received =====');
       console.log('[ApiClient] Response data:', {
         hasData: !!result.data,
         dataType: Array.isArray(result.data) ? 'array' : typeof result.data,
         dataLength: Array.isArray(result.data) ? result.data.length : 'N/A',
         total: result.total,
-        fullResult: result
+        metaAccountId: metaAccountId,
+        sampleData: result.data && result.data.length > 0 ? {
+          firstCampaign: result.data[0],
+          meta_account_id: result.data[0]?.meta_account_id
+        } : null
       });
       
       const campaigns = result.data || result; // Handle both paginated and list responses
@@ -894,7 +901,15 @@ class ApiClient {
         return [];
       }
       
-      console.log('[ApiClient] Returning campaigns array with length:', campaigns.length);
+      console.log('[ApiClient] ===== Returning campaigns array =====');
+      console.log('[ApiClient] Campaigns array length:', campaigns.length);
+      if (campaigns.length > 0) {
+        console.log('[ApiClient] First campaign sample:', {
+          campaign_name: campaigns[0].campaign_name,
+          meta_account_id: campaigns[0].meta_account_id,
+          date: campaigns[0].date
+        });
+      }
       
       // Convert backend CampaignResponse to frontend CampaignData
       return campaigns.map((c: any) => ({

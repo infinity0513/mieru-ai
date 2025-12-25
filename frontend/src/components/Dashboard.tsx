@@ -486,16 +486,21 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
   useEffect(() => {
     const loadDashboardData = async () => {
       setLoading(true);
+      console.log('[Dashboard] ===== Loading data =====');
       console.log('[Dashboard] Loading data with params:', {
         start: dateRange.start,
         end: dateRange.end,
-        selectedMetaAccountId: selectedMetaAccountId
+        selectedMetaAccountId: selectedMetaAccountId,
+        hasPropData: !!(propData && propData.length > 0),
+        propDataLength: propData?.length || 0,
+        currentApiDataLength: apiData?.length || 0
       });
       
       try {
         // 各API呼び出しを個別に処理し、1つが失敗しても他のデータは取得できるようにする
         const metaAccountParam = selectedMetaAccountId || undefined;
         console.log('[Dashboard] Calling APIs with metaAccountId:', metaAccountParam);
+        console.log('[Dashboard] API URLs will be called with meta_account_id:', metaAccountParam);
         
         const [summaryResult, trendsResult, campaignsResult] = await Promise.allSettled([
           Api.getCampaignSummary(dateRange.start, dateRange.end, metaAccountParam),
@@ -548,13 +553,20 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
           
           // apiDataには全データを保存（日付範囲でフィルタリングしない）
           // 日付範囲のフィルタリングはdataの計算時に行う
+          console.log('[Dashboard] ===== Successfully loaded campaigns =====');
           console.log('[Dashboard] Loaded campaigns:', {
             total: campaignsResponse.length,
             selectedMetaAccountId: selectedMetaAccountId,
-            dateRange: { start: dateRange.start, end: dateRange.end }
+            dateRange: { start: dateRange.start, end: dateRange.end },
+            sampleCampaign: campaignsResponse.length > 0 ? {
+              campaign_name: campaignsResponse[0].campaign_name,
+              meta_account_id: campaignsResponse[0].meta_account_id,
+              date: campaignsResponse[0].date
+            } : null
           });
           
           setApiData(campaignsResponse);
+          console.log('[Dashboard] apiData state updated with', campaignsResponse.length, 'campaigns');
         } else {
           console.error('[Dashboard] Failed to load campaigns:', campaignsResult.reason);
           // API取得失敗時は、アセットが選択されている場合は空配列を設定
@@ -1037,14 +1049,26 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
               </label>
               <select
                 value={selectedMetaAccountId || ''}
-                onChange={(e) => {
+                onChange={async (e) => {
                   const newAccountId = e.target.value || null;
+                  console.log('[Dashboard] Asset selection changed:', {
+                    old: selectedMetaAccountId,
+                    new: newAccountId
+                  });
+                  
+                  // アセットIDを更新
                   setSelectedMetaAccountId(newAccountId);
+                  
                   try {
                     localStorage.setItem('dashboard_selectedMetaAccountId', newAccountId || '');
                   } catch (err) {
-                    // 無視
+                    console.error('[Dashboard] Failed to save asset selection to localStorage:', err);
                   }
+                  
+                  // useEffectが自動的に実行されるはずだが、念のため明示的にデータを再読み込み
+                  // ただし、setSelectedMetaAccountIdが非同期で更新されるため、
+                  // useEffectの依存配列にselectedMetaAccountIdが含まれているので自動的に再読み込みされる
+                  console.log('[Dashboard] Asset selection updated, useEffect should trigger data reload');
                 }}
                 className="w-full max-w-md pl-4 pr-12 py-3 border-2 border-indigo-300 dark:border-indigo-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white rounded-lg text-base font-semibold focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 shadow-sm hover:border-indigo-400 dark:hover:border-indigo-500 transition-colors"
               >
