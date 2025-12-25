@@ -1241,7 +1241,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
       {/* Performance Analysis - AI分析レポートと同じ形式 */}
       {data.length > 0 && (
         <>
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-6 md:p-8 avoid-break transition-colors">
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-6 md:p-8 avoid-break transition-colors">
           <div className="flex items-center mb-6">
             <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg text-blue-600 dark:text-blue-400 mr-3">
               <TrendingUp size={20} />
@@ -1289,10 +1289,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
               <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate">合計</div>
             </div>
           </div>
-        </div>
+          </div>
 
-        {/* Averages - 計算指標（パフォーマンス指標） */}
-        <div className="mb-6">
+          {/* Averages - 計算指標（パフォーマンス指標） */}
+          <div className="mb-6">
           <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-4 break-words">計算指標（パフォーマンス指標）</h4>
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
             <div className="bg-indigo-50 dark:bg-indigo-900/20 rounded-lg p-3 border border-indigo-200 dark:border-indigo-800 min-w-0 overflow-hidden">
@@ -1338,11 +1338,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
               <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate">インプレッション単価</div>
             </div>
           </div>
-      </div>
+          </div>
 
-        {/* リーチ・エンゲージメント指標 */}
-        {(kpiData.totalReach > 0 || kpiData.frequency > 0 || kpiData.engagementRate > 0 || kpiData.totalLinkClicks > 0 || kpiData.totalLandingPageViews > 0) && (
-          <div>
+          {/* リーチ・エンゲージメント指標 */}
+          {(kpiData.totalReach > 0 || kpiData.frequency > 0 || kpiData.engagementRate > 0 || kpiData.totalLinkClicks > 0 || kpiData.totalLandingPageViews > 0) && (
+            <div>
             <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-4 break-words">リーチ・エンゲージメント指標</h4>
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
               {kpiData.totalReach > 0 && (
@@ -1392,11 +1392,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
               )}
             </div>
           </div>
-        )}
+          )}
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 print:block print:space-y-6">
-        {/* Trend Chart */}
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-3 transition-colors">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 print:block print:space-y-6">
+            {/* Trend Chart */}
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-3 transition-colors">
           <h4 className="text-sm font-bold text-gray-900 dark:text-white mb-2 flex items-center">
             <TrendingUp size={16} className="mr-2 text-indigo-600 dark:text-indigo-400" />
             日次トレンド
@@ -1472,10 +1472,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
             </ResponsiveContainer>
           </div>
         </div>
-      </div>
+          </div>
 
-      {/* Campaign Table */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden transition-colors">
+          {/* Campaign Table */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden transition-colors">
         <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
           <h3 className="text-sm font-bold text-gray-900 dark:text-white">キャンペーン一覧</h3>
           <Button variant="outline" icon={<Download size={16} />} onClick={handleExportCSV}>
@@ -1634,7 +1634,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
           </table>
         </div>
       </div>
-        </>
+      </>
       )}
     </div>
   );
