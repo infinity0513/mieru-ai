@@ -61,8 +61,9 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                 insights_url = f"https://graph.facebook.com/v24.0/{adset_id}/insights"
                 insights_params = {
                     "access_token": access_token,
-                    "fields": "adset_id,adset_name,ad_id,ad_name,campaign_id,campaign_name,date_start,spend,impressions,clicks,reach,actions",
-                    "time_range": f"{{'since':'{since}','until':'{until}'}}"
+                    "fields": "adset_id,adset_name,ad_id,ad_name,campaign_id,campaign_name,date_start,spend,impressions,clicks,reach,actions,conversions,action_values",
+                    "time_range": f"{{'since':'{since}','until':'{until}'}}",
+                    "level": "ad"
                 }
                 try:
                     insights_response = await client.get(insights_url, params=insights_params)
@@ -92,15 +93,64 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                     clicks = int(insight.get('clicks', 0))
                     reach = int(insight.get('reach', 0))
                     
-                    # actionsからconversionsとconversion_valueを取得
-                    actions = insight.get('actions', [])
+                    # conversionsとconversion_valueを取得
+                    # まず、直接conversionsフィールドを確認
+                    conversions_data = insight.get('conversions', [])
                     conversions = 0
+                    if conversions_data:
+                        # conversionsが配列の場合
+                        for conv in conversions_data:
+                            if isinstance(conv, dict):
+                                conversions += int(conv.get('value', 0))
+                            else:
+                                conversions += int(conv)
+                    else:
+                        # フォールバック: actionsから取得
+                        actions = insight.get('actions', [])
+                        for action in actions:
+                            action_type = action.get('action_type', '')
+                            if action_type in ['offsite_conversion', 'onsite_conversion', 'omni_purchase', 'purchase']:
+                                value = action.get('value', 0)
+                                try:
+                                    conversions += int(value) if isinstance(value, (int, str)) else 0
+                                except (ValueError, TypeError):
+                                    pass
+                    
+                    # conversion_valueを取得
+                    action_values = insight.get('action_values', [])
                     conversion_value = 0
-                    for action in actions:
-                        if action.get('action_type') in ['offsite_conversion', 'onsite_conversion']:
-                            conversions += int(action.get('value', 0))
-                        if action.get('action_type') == 'purchase':
-                            conversion_value += float(action.get('value', 0))
+                    if action_values:
+                        # action_valuesが配列の場合
+                        for av in action_values:
+                            if isinstance(av, dict):
+                                av_type = av.get('action_type', '')
+                                if av_type in ['offsite_conversion', 'onsite_conversion', 'omni_purchase', 'purchase']:
+                                    value = av.get('value', 0)
+                                    try:
+                                        conversion_value += float(value) if isinstance(value, (int, float, str)) else 0
+                                    except (ValueError, TypeError):
+                                        pass
+                    else:
+                        # フォールバック: actionsから取得
+                        actions = insight.get('actions', [])
+                        for action in actions:
+                            action_type = action.get('action_type', '')
+                            if action_type in ['purchase', 'omni_purchase']:
+                                value = action.get('value', 0)
+                                try:
+                                    conversion_value += float(value) if isinstance(value, (int, float, str)) else 0
+                                except (ValueError, TypeError):
+                                    pass
+                    
+                    # デバッグログ（最初の数件のみ）
+                    if saved_count < 3:
+                        print(f"[Meta OAuth] Insight data for {campaign_name} on {campaign_date}:")
+                        print(f"  - conversions: {conversions}")
+                        print(f"  - conversion_value: {conversion_value}")
+                        print(f"  - spend: {spend}")
+                        print(f"  - clicks: {clicks}")
+                        if conversions > 0:
+                            print(f"  - Calculated CPA: {spend / conversions}")
                     
                     # メトリクスを計算
                     ctr = (clicks / impressions * 100) if impressions > 0 else 0
