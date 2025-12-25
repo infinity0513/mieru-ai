@@ -62,8 +62,7 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                 insights_params = {
                     "access_token": access_token,
                     "fields": "adset_id,adset_name,ad_id,ad_name,campaign_id,campaign_name,date_start,spend,impressions,clicks,reach,actions,conversions,action_values",
-                    "time_range": f"{{'since':'{since}','until':'{until}'}}",
-                    "level": "ad"
+                    "time_range": f"{{'since':'{since}','until':'{until}'}}"
                 }
                 try:
                     insights_response = await client.get(insights_url, params=insights_params)
