@@ -92,15 +92,25 @@ class DataService:
             df = pd.read_csv(file_path, keep_default_na=False, na_values=['', 'nan', 'NaN', 'NaT', 'None', 'null'])
             # 空の行やNaNのみの行を削除
             df = df.dropna(how='all')
-            # 日付が空の行を削除
-            if '日付' in df.columns:
-                df = df[df['日付'].notna()]
-                df = df[df['日付'] != '']
-                df = df[~df['日付'].astype(str).str.lower().isin(['nat', 'nan', 'none', 'null'])]
-            # 数値カラムのNaNを0に置換
-            numeric_columns = ['インプレッション', 'クリック数', '費用', 'コンバージョン数', 'リーチ', 'リーチ数', 
-                             'エンゲージメント', 'エンゲージメント数', 'リンククリック', 'ランディングページビュー',
-                             'コンバージョン価値', 'コンバージョン値']
+            # 日付が空の行を削除（Meta CSVフォーマット対応）
+            date_cols = ['日付', 'date', 'Date', 'レポート開始日', 'レポート終了日', 'date_start', 'date_end']
+            date_col = None
+            for col in date_cols:
+                if col in df.columns:
+                    date_col = col
+                    break
+            if date_col:
+                df = df[df[date_col].notna()]
+                df = df[df[date_col] != '']
+                df = df[~df[date_col].astype(str).str.lower().isin(['nat', 'nan', 'none', 'null'])]
+            # 数値カラムのNaNを0に置換（Meta CSVフォーマット対応）
+            numeric_columns = [
+                'インプレッション', 'クリック数', '費用', 'コンバージョン数', 'リーチ', 'リーチ数', 
+                'エンゲージメント', 'エンゲージメント数', 'リンククリック', 'ランディングページビュー',
+                'コンバージョン価値', 'コンバージョン値',
+                # Meta CSVフォーマット
+                '結果', '消化金額 (JPY)', '消化金額', '結果の単価'
+            ]
             for col in numeric_columns:
                 if col in df.columns:
                     df[col] = df[col].replace(['', 'nan', 'NaN', 'NaT', 'None', 'null'], 0)
@@ -120,40 +130,69 @@ class DataService:
     
     @staticmethod
     def validate_dataframe(df: pd.DataFrame) -> tuple[bool, str]:
-        """Validate required columns"""
-        required_columns = [
-            '日付', 'キャンペーン名', '広告セット名', '広告名',
-            'インプレッション', 'クリック数', '費用', 'コンバージョン数'
-        ]
+        """Validate required columns - Meta CSVフォーマット対応"""
+        # 日付列のチェック（Meta CSVでは「レポート開始日」を使用）
+        date_cols = ['日付', 'date', 'Date', 'レポート開始日', 'レポート終了日', 'date_start', 'date_end']
+        has_date = any(col in df.columns for col in date_cols)
+        if not has_date:
+            return False, "日付列が見つかりません。以下のいずれかの列が必要です: 日付, date, レポート開始日, レポート終了日"
         
-        # Alternative column names (English)
+        # キャンペーン名列のチェック
+        campaign_cols = ['キャンペーン名', 'campaign_name', 'Campaign Name']
+        has_campaign = any(col in df.columns for col in campaign_cols)
+        if not has_campaign:
+            return False, "キャンペーン名列が見つかりません"
+        
+        # 列名のマッピング（Meta CSVフォーマット対応）
+        column_mapping = {}
+        
+        # 日付列のマッピング（レポート開始日を優先）
+        if 'レポート開始日' in df.columns:
+            column_mapping['レポート開始日'] = '日付'
+        elif 'date_start' in df.columns:
+            column_mapping['date_start'] = '日付'
+        elif 'レポート終了日' in df.columns:
+            column_mapping['レポート終了日'] = '日付'
+        elif 'date_end' in df.columns:
+            column_mapping['date_end'] = '日付'
+        elif 'date' in df.columns:
+            column_mapping['date'] = '日付'
+        
+        # その他の列のマッピング
         alt_columns = {
-            'date': '日付',
             'campaign_name': 'キャンペーン名',
+            'Campaign Name': 'キャンペーン名',
             'ad_set_name': '広告セット名',
+            'Ad Set Name': '広告セット名',
+            '広告セットの名前': '広告セット名',
             'ad_name': '広告名',
+            'Ad Name': '広告名',
+            '広告の名前': '広告名',
             'impressions': 'インプレッション',
+            'Impressions': 'インプレッション',
             'clicks': 'クリック数',
+            'Clicks': 'クリック数',
             'cost': '費用',
-            'conversions': 'コンバージョン数'
+            'Cost': '費用',
+            '消化金額 (JPY)': '費用',
+            '消化金額': '費用',
+            'Spend': '費用',
+            'conversions': 'コンバージョン数',
+            'Conversions': 'コンバージョン数',
+            '結果': 'コンバージョン数',
+            'result': 'コンバージョン数'
         }
         
-        # Check for required columns
-        missing_cols = []
-        for col in required_columns:
-            if col not in df.columns:
-                # Check alternative names
-                found = False
-                for alt, jp in alt_columns.items():
-                    if jp == col and alt in df.columns:
-                        df.rename(columns={alt: jp}, inplace=True)
-                        found = True
-                        break
-                if not found:
-                    missing_cols.append(col)
+        for alt, jp in alt_columns.items():
+            if alt in df.columns and jp not in df.columns:
+                column_mapping[alt] = jp
         
-        if missing_cols:
-            return False, f"必須カラムが不足しています: {', '.join(missing_cols)}"
+        # 列名をマッピング
+        if column_mapping:
+            df.rename(columns=column_mapping, inplace=True)
+        
+        # 広告セット名と広告名はオプション（Meta CSVには含まれない場合がある）
+        # クリック数もオプション（Meta CSVには含まれない場合がある）
         
         return True, ""
     
