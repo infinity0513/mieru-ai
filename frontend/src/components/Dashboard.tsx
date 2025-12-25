@@ -990,17 +990,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
       <ChevronDown size={14} className="ml-1 inline-block text-indigo-600 dark:text-indigo-400" />;
   };
 
-  if (data.length === 0) {
-    if (loading) {
-      return (
-        <div className="text-center py-20">
-          <div className="animate-spin h-8 w-8 border-b-2 border-indigo-600 dark:border-indigo-400 rounded-full mx-auto"></div>
-          <p className="mt-4 text-gray-500 dark:text-gray-400">データを読み込み中...</p>
-        </div>
-      );
-    }
-    
-    return <div className="text-center py-20 text-gray-500 dark:text-gray-400">データがありません。「データ管理」からファイルをアップロードしてください。</div>;
+  // ローディング中の表示
+  if (loading && data.length === 0) {
+    return (
+      <div className="text-center py-20">
+        <div className="animate-spin h-8 w-8 border-b-2 border-indigo-600 dark:border-indigo-400 rounded-full mx-auto"></div>
+        <p className="mt-4 text-gray-500 dark:text-gray-400">データを読み込み中...</p>
+      </div>
+    );
   }
 
   return (
@@ -1215,7 +1212,23 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
         </div>
       </div>
 
+      {/* No Data Message */}
+      {data.length === 0 && !loading && (
+        <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-xl p-6 text-center">
+          <div className="flex items-center justify-center mb-2">
+            <Calendar size={24} className="text-yellow-600 dark:text-yellow-400 mr-2" />
+            <p className="text-base font-semibold text-yellow-800 dark:text-yellow-200">
+              選択した期間にデータがありません
+            </p>
+          </div>
+          <p className="text-sm text-yellow-700 dark:text-yellow-300 mt-2">
+            日付範囲を変更するか、「全期間」を選択してデータがある期間を表示してください。
+          </p>
+        </div>
+      )}
+
       {/* Performance Analysis - AI分析レポートと同じ形式 */}
+      {data.length > 0 && (
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-6 md:p-8 avoid-break transition-colors">
         <div className="flex items-center mb-6">
           <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg text-blue-600 dark:text-blue-400 mr-3">
@@ -1610,6 +1623,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
           </table>
         </div>
       </div>
+      )}
     </div>
   );
 };
