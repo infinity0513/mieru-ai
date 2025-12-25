@@ -14,6 +14,7 @@ import httpx
 import urllib.parse
 import secrets
 import uuid
+import json
 from decimal import Decimal
 
 router = APIRouter()
@@ -124,10 +125,15 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
             
             # 各キャンペーンのInsightsを取得（キャンペーンレベル）
             print(f"[Meta API] Processing {len(all_campaigns)} campaigns for campaign-level insights...")
-            max_days_per_request = 1125  # 37ヶ月（約1125日）
             # 昨日までのデータを取得（UTCを使用して未来の日付を避ける）
             current_until = datetime.utcnow() - timedelta(days=1)
             current_since = datetime.strptime(since, '%Y-%m-%d')
+            
+            # 期間を90日以内に制限
+            max_days_per_request = 90  # Meta APIの推奨期間
+            if (current_until - current_since).days > max_days_per_request:
+                current_since = current_until - timedelta(days=max_days_per_request)
+                print(f"[Meta API] Date range reduced to last {max_days_per_request} days: {current_since.strftime('%Y-%m-%d')} to {current_until.strftime('%Y-%m-%d')}")
             
             for idx, campaign in enumerate(all_campaigns):
                 campaign_id = campaign.get('id')
@@ -138,17 +144,28 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                 
                 campaign_insights_url = f"https://graph.facebook.com/v24.0/{campaign_id}/insights"
                 
-                # 期間を分割して取得（37ヶ月ごと）
+                # 期間を分割して取得（90日ごと）
                 request_since = current_since
                 while request_since < current_until:
                     request_until = min(request_since + timedelta(days=max_days_per_request), current_until)
                     
+                    # JSON形式でtime_rangeを作成
+                    time_range_dict = {
+                        "since": request_since.strftime('%Y-%m-%d'),
+                        "until": request_until.strftime('%Y-%m-%d')
+                    }
+                    time_range_json = json.dumps(time_range_dict)
+                    
                     campaign_insights_params = {
                         "access_token": access_token,
                         "fields": "campaign_id,campaign_name,date_start,spend,impressions,clicks,inline_link_clicks,reach,actions,conversions,action_values,engagements,landing_page_views,link_clicks,frequency",
-                        "time_range": f"{{'since':'{request_since.strftime('%Y-%m-%d')}','until':'{request_until.strftime('%Y-%m-%d')}'}}",
+                        "time_range": time_range_json,  # JSON文字列
                         "limit": 100
                     }
+                    
+                    # デバッグログ（最初の数件のみ）
+                    if idx < 3:
+                        print(f"[Meta API] Request params for campaign {campaign_name}: time_range={time_range_json}")
                     
                     try:
                         campaign_insights_response = await client.get(campaign_insights_url, params=campaign_insights_params)
@@ -192,8 +209,6 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
             print(f"[Meta API] Campaign-level insights retrieved: {len([i for i in all_insights if 'adset_id' not in i or not i.get('adset_id')])}")
             
             # 各広告セットのInsightsを取得（広告セットレベル）
-            # Meta APIは1回のリクエストで最大37ヶ月のデータを取得可能
-            # より長期間のデータが必要な場合は、期間を分割して複数回取得する
             print(f"[Meta API] Processing {len(all_adsets)} adsets for adset-level insights...")
             for idx, adset in enumerate(all_adsets):
                 adset_id = adset['id']
@@ -205,17 +220,28 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                 
                 insights_url = f"https://graph.facebook.com/v24.0/{adset_id}/insights"
                 
-                # 期間を分割して取得（37ヶ月ごと）
+                # 期間を分割して取得（90日ごと）
                 request_since = current_since
                 while request_since < current_until:
                     request_until = min(request_since + timedelta(days=max_days_per_request), current_until)
                     
+                    # JSON形式でtime_rangeを作成
+                    time_range_dict = {
+                        "since": request_since.strftime('%Y-%m-%d'),
+                        "until": request_until.strftime('%Y-%m-%d')
+                    }
+                    time_range_json = json.dumps(time_range_dict)
+                    
                     insights_params = {
                         "access_token": access_token,
                         "fields": "adset_id,adset_name,ad_id,ad_name,campaign_id,campaign_name,date_start,spend,impressions,clicks,inline_link_clicks,reach,actions,conversions,action_values,engagements,landing_page_views,link_clicks,frequency",
-                        "time_range": f"{{'since':'{request_since.strftime('%Y-%m-%d')}','until':'{request_until.strftime('%Y-%m-%d')}'}}",
+                        "time_range": time_range_json,  # JSON文字列
                         "limit": 100  # ページネーション用のlimitを追加
                     }
+                    
+                    # デバッグログ（最初の数件のみ）
+                    if idx < 3:
+                        print(f"[Meta API] Request params for adset {adset_name}: time_range={time_range_json}")
                     try:
                         insights_response = await client.get(insights_url, params=insights_params)
                         insights_response.raise_for_status()
@@ -578,11 +604,30 @@ async def get_meta_insights(
     # プランに応じた最大取得件数を取得
     max_limit = get_max_adset_limit(current_user.plan)
     
-    # デフォルトの日付範囲（昨日から昨日まで、未来の日付を避ける）
+    # デフォルトの日付範囲（最近90日間、未来の日付を避ける）
     if not since:
-        since = (datetime.utcnow() - timedelta(days=1)).strftime('%Y-%m-%d')
+        until_dt = datetime.utcnow() - timedelta(days=1)
+        since_dt = until_dt - timedelta(days=90)
+        since = since_dt.strftime('%Y-%m-%d')
     if not until:
         until = (datetime.utcnow() - timedelta(days=1)).strftime('%Y-%m-%d')
+    
+    # 期間を90日以内に制限
+    try:
+        until_dt = datetime.strptime(until, '%Y-%m-%d')
+        since_dt = datetime.strptime(since, '%Y-%m-%d')
+        
+        if (until_dt - since_dt).days > 90:
+            since_dt = until_dt - timedelta(days=90)
+            since = since_dt.strftime('%Y-%m-%d')
+            print(f"[Meta API] Date range reduced to last 90 days: {since} to {until}")
+    except Exception as e:
+        print(f"[Meta API] Error parsing dates: {e}")
+        # デフォルトで最近90日間
+        until_dt = datetime.utcnow() - timedelta(days=1)
+        since_dt = until_dt - timedelta(days=90)
+        since = since_dt.strftime('%Y-%m-%d')
+        until = until_dt.strftime('%Y-%m-%d')
     
     # Meta Graph APIを呼び出し
     account_id = current_user.meta_account_id
@@ -633,11 +678,21 @@ async def get_meta_insights(
             for adset in all_adsets:
                 adset_id = adset['id']
                 insights_url = f"https://graph.facebook.com/v18.0/{adset_id}/insights"
+                # JSON形式でtime_rangeを作成
+                time_range_dict = {
+                    "since": since,
+                    "until": until
+                }
+                time_range_json = json.dumps(time_range_dict)
+                
                 insights_params = {
                     "access_token": access_token,
                     "fields": "adset_id,adset_name,ad_id,ad_name,campaign_id,campaign_name,date_start,date_stop,spend,impressions,clicks,conversions,reach,actions",
-                    "time_range": f"{{'since':'{since}','until':'{until}'}}"
+                    "time_range": time_range_json  # JSON文字列
                 }
+                
+                # デバッグログ
+                print(f"[Meta API] Request params for /insights endpoint: time_range={time_range_json}")
                 insights_response = await client.get(insights_url, params=insights_params)
                 insights_response.raise_for_status()
                 insights_data = insights_response.json()
