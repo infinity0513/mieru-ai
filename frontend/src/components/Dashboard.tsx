@@ -1072,8 +1072,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
               </div>
             </div>
             <div className="flex-1">
-              <label className="block text-sm font-bold text-gray-700 dark:text-gray-200 mb-2">
+              <label className="block text-sm font-bold text-gray-700 dark:text-gray-200 mb-2 flex items-center gap-2">
                 アセット選択
+                <MousePointer size={16} className="text-indigo-600 dark:text-indigo-400" />
               </label>
               <select
                 value={selectedMetaAccountId || ''}
