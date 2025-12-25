@@ -189,7 +189,7 @@ class ApiClient {
   }
 
   async forgotPassword(email: string): Promise<{ message: string }> {
-    const response = await fetch(`${this.baseURL}/auth/forgot-password`, {
+    const response = await fetch(`${this.baseURL}/auth/forgot-password/`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -206,7 +206,7 @@ class ApiClient {
   }
 
   async resetPassword(token: string, newPassword: string): Promise<{ message: string }> {
-    const response = await fetch(`${this.baseURL}/auth/reset-password`, {
+    const response = await fetch(`${this.baseURL}/auth/reset-password/`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -251,7 +251,7 @@ class ApiClient {
       console.log('[Api] requestLoginCode: Starting fetch...');
       console.log('[Api] requestLoginCode: Request body:', { email, password: '***' });
       
-      const response = await fetch(`${this.baseURL}/auth/login/request-code`, {
+      const response = await fetch(`${this.baseURL}/auth/login/request-code/`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -309,7 +309,7 @@ class ApiClient {
     console.log('[Api] verifyLoginCode URL:', `${this.baseURL}/auth/login/verify-code`);
     
     try {
-      const response = await fetch(`${this.baseURL}/auth/login/verify-code`, {
+      const response = await fetch(`${this.baseURL}/auth/login/verify-code/`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -372,7 +372,7 @@ class ApiClient {
     console.log('[Api] verifyEmail called with token:', token.substring(0, 10) + '...');
     
     try {
-      const response = await fetch(`${this.baseURL}/auth/verify-email`, {
+      const response = await fetch(`${this.baseURL}/auth/verify-email/`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -450,7 +450,16 @@ class ApiClient {
       normalizedEndpoint = '/' + normalizedEndpoint; // 先頭に/がない場合は追加
     }
 
-    const url = `${this.baseURL}${normalizedEndpoint}`;
+    // クエリパラメータを分離
+    const [path, queryString] = normalizedEndpoint.split('?');
+    
+    // パスに末尾スラッシュを追加（既にスラッシュがある場合は追加しない）
+    const pathWithSlash = path.endsWith('/') ? path : path + '/';
+    
+    // クエリパラメータがある場合は結合
+    const finalEndpoint = queryString ? `${pathWithSlash}?${queryString}` : pathWithSlash;
+
+    const url = `${this.baseURL}${finalEndpoint}`;
     const response = await fetch(url, {
       ...this.getFetchOptions(options),
       ...options,
@@ -513,7 +522,7 @@ class ApiClient {
   }
 
   async register(email: string, password: string, name?: string): Promise<User> {
-    const response = await fetch(`${this.baseURL}/auth/register`, {
+    const response = await fetch(`${this.baseURL}/auth/register/`, {
       method: 'POST',
       credentials: 'include',  // CORS credentials をサポート
       headers: { 'Content-Type': 'application/json' },
@@ -547,7 +556,7 @@ class ApiClient {
     // Force clear any existing token before login - ensure clean state
     this.clearToken();
     
-    const loginUrl = `${this.baseURL}/auth/login`;
+    const loginUrl = `${this.baseURL}/auth/login/`;
     
     debugLogin('APIリクエスト送信', { action: 'beforeRequest' });
     
@@ -747,7 +756,7 @@ class ApiClient {
     let response: Response;
     try {
       const startTime = performance.now();
-      response = await fetch(`${this.baseURL}/users/me`, {
+      response = await fetch(`${this.baseURL}/users/me/`, {
         credentials: 'include',  // CORS credentials をサポート
         headers: this.getHeaders(),
       });
@@ -820,7 +829,7 @@ class ApiClient {
     }
     
     try {
-      const response = await fetch(`${this.baseURL}/campaigns/date-range`, {
+      const response = await fetch(`${this.baseURL}/campaigns/date-range/`, {
         credentials: 'include',
         headers: this.getHeaders(),
       });
@@ -1121,7 +1130,7 @@ class ApiClient {
       headers['Authorization'] = `Bearer ${token}`;
     }
     // Note: Don't set Content-Type for FormData - browser will set it automatically with boundary
-    const response = await fetch(`${this.baseURL}/uploads`, {
+    const response = await fetch(`${this.baseURL}/uploads/`, {
       method: 'POST',
       credentials: 'include',  // CORS credentials をサポート
       headers: headers,
@@ -1158,7 +1167,7 @@ class ApiClient {
   }
 
   async getUploads() {
-    const response = await fetch(`${this.baseURL}/uploads`, {
+    const response = await fetch(`${this.baseURL}/uploads/`, {
       credentials: 'include',  // CORS credentials をサポート
       headers: this.getHeaders(),
     });
@@ -1203,7 +1212,7 @@ class ApiClient {
   }
 
   async getAnalyses() {
-    const response = await fetch(`${this.baseURL}/analysis`, {
+    const response = await fetch(`${this.baseURL}/analysis/`, {
       credentials: 'include',  // CORS credentials をサポート
       headers: this.getHeaders(),
     });
@@ -1421,7 +1430,7 @@ class ApiClient {
     });
     
     const response = await fetch(
-      `${this.baseURL}/notifications?${params}`,
+      `${this.baseURL}/notifications/?${params}`,
       { 
         credentials: 'include',  // CORS credentials をサポート
         headers: this.getHeaders() 
@@ -1434,7 +1443,7 @@ class ApiClient {
 
   async markNotificationRead(notificationId: string) {
     const response = await fetch(
-      `${this.baseURL}/notifications/${notificationId}/read`,
+      `${this.baseURL}/notifications/${notificationId}/read/`,
       {
         method: 'POST',
         credentials: 'include',  // CORS credentials をサポート
@@ -1448,7 +1457,7 @@ class ApiClient {
 
   async markAllNotificationsRead() {
     const response = await fetch(
-      `${this.baseURL}/notifications/read-all`,
+      `${this.baseURL}/notifications/read-all/`,
       {
         method: 'POST',
         credentials: 'include',  // CORS credentials をサポート
@@ -1462,7 +1471,7 @@ class ApiClient {
 
   async getUnreadNotificationCount() {
     const response = await fetch(
-      `${this.baseURL}/notifications/unread-count`,
+      `${this.baseURL}/notifications/unread-count/`,
       { 
         credentials: 'include',  // CORS credentials をサポート
         headers: this.getHeaders() 

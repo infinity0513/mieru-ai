@@ -32,11 +32,12 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
     
     # 全期間のデータを取得（Meta APIの最大範囲：過去37ヶ月間）
     from datetime import datetime, timedelta
-    until = datetime.now().strftime('%Y-%m-%d')
+    # 昨日までのデータを取得（未来の日付を指定すると400エラーになるため）
+    until = (datetime.utcnow() - timedelta(days=1)).strftime('%Y-%m-%d')
     # Meta APIは1回のリクエストで最大37ヶ月（約3年）のデータを取得可能
     # より長期間のデータが必要な場合は、複数回に分けて取得する必要がある
     # ここでは最大37ヶ月（約1125日）を設定
-    since = (datetime.now() - timedelta(days=1125)).strftime('%Y-%m-%d')
+    since = (datetime.utcnow() - timedelta(days=1125)).strftime('%Y-%m-%d')
     
     try:
         async with httpx.AsyncClient() as client:
@@ -124,7 +125,8 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
             # 各キャンペーンのInsightsを取得（キャンペーンレベル）
             print(f"[Meta API] Processing {len(all_campaigns)} campaigns for campaign-level insights...")
             max_days_per_request = 1125  # 37ヶ月（約1125日）
-            current_until = datetime.now()
+            # 昨日までのデータを取得（UTCを使用して未来の日付を避ける）
+            current_until = datetime.utcnow() - timedelta(days=1)
             current_since = datetime.strptime(since, '%Y-%m-%d')
             
             for idx, campaign in enumerate(all_campaigns):
@@ -576,11 +578,11 @@ async def get_meta_insights(
     # プランに応じた最大取得件数を取得
     max_limit = get_max_adset_limit(current_user.plan)
     
-    # デフォルトの日付範囲（昨日から今日）
+    # デフォルトの日付範囲（昨日から昨日まで、未来の日付を避ける）
     if not since:
-        since = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
+        since = (datetime.utcnow() - timedelta(days=1)).strftime('%Y-%m-%d')
     if not until:
-        until = datetime.now().strftime('%Y-%m-%d')
+        until = (datetime.utcnow() - timedelta(days=1)).strftime('%Y-%m-%d')
     
     # Meta Graph APIを呼び出し
     account_id = current_user.meta_account_id
