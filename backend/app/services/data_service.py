@@ -91,8 +91,26 @@ class DataService:
         """Parse CSV file"""
         try:
             df = pd.read_csv(file_path, keep_default_na=False, na_values=['', 'nan', 'NaN', 'NaT', 'None', 'null'])
+            print(f"[DataService] CSV loaded: {len(df)} rows, columns: {list(df.columns)}")
+            
             # 空の行やNaNのみの行を削除
             df = df.dropna(how='all')
+            print(f"[DataService] After dropping all-NaN rows: {len(df)} rows")
+            
+            # キャンペーン名が空の行を削除
+            campaign_cols = ['キャンペーン名', 'campaign_name', 'Campaign Name']
+            campaign_col = None
+            for col in campaign_cols:
+                if col in df.columns:
+                    campaign_col = col
+                    break
+            if campaign_col:
+                before_count = len(df)
+                df = df[df[campaign_col].notna()]
+                df = df[df[campaign_col] != '']
+                df = df[~df[campaign_col].astype(str).str.strip().eq('')]
+                print(f"[DataService] After dropping empty campaign_name rows: {len(df)} rows (removed {before_count - len(df)})")
+            
             # 日付が空の行を削除（Meta CSVフォーマット対応）
             date_cols = ['日付', 'date', 'Date', 'レポート開始日', 'レポート終了日', 'date_start', 'date_end']
             date_col = None
@@ -101,9 +119,11 @@ class DataService:
                     date_col = col
                     break
             if date_col:
+                before_count = len(df)
                 df = df[df[date_col].notna()]
                 df = df[df[date_col] != '']
                 df = df[~df[date_col].astype(str).str.lower().isin(['nat', 'nan', 'none', 'null'])]
+                print(f"[DataService] After dropping empty date rows: {len(df)} rows (removed {before_count - len(df)})")
             # 数値カラムのNaNを0に置換（Meta CSVフォーマット対応）
             numeric_columns = [
                 'インプレッション', 'クリック数', '費用', 'コンバージョン数', 'リーチ', 'リーチ数', 
@@ -209,6 +229,18 @@ class DataService:
         updated_count = 0
         
         print(f"[DataService] Processing {len(df)} rows from CSV")
+        print(f"[DataService] CSV columns: {list(df.columns)}")
+        
+        # キャンペーン名の一覧を確認
+        campaign_cols = ['キャンペーン名', 'campaign_name', 'Campaign Name']
+        campaign_col = None
+        for col in campaign_cols:
+            if col in df.columns:
+                campaign_col = col
+                break
+        if campaign_col:
+            unique_campaigns = df[campaign_col].dropna().unique()
+            print(f"[DataService] Unique campaigns in CSV: {list(unique_campaigns)}")
         
         for idx, row in df.iterrows():
             # Get values with defaults (safely handle NaN)
