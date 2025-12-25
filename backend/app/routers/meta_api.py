@@ -121,15 +121,78 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
             
             print(f"[Meta API] Total adsets fetched: {len(all_adsets)}")
             
-            # 各広告セットのInsightsを取得
-            # Meta APIは1回のリクエストで最大37ヶ月のデータを取得可能
-            # より長期間のデータが必要な場合は、期間を分割して複数回取得する
+            # 各キャンペーンのInsightsを取得（キャンペーンレベル）
+            print(f"[Meta API] Processing {len(all_campaigns)} campaigns for campaign-level insights...")
             max_days_per_request = 1125  # 37ヶ月（約1125日）
             current_until = datetime.now()
             current_since = datetime.strptime(since, '%Y-%m-%d')
             
-            # 各広告セットのInsightsを取得
-            print(f"[Meta API] Processing {len(all_adsets)} adsets for insights...")
+            for idx, campaign in enumerate(all_campaigns):
+                campaign_id = campaign.get('id')
+                campaign_name = campaign.get('name', 'Unknown')
+                
+                if (idx + 1) % 10 == 0 or idx == 0:
+                    print(f"[Meta API] Fetching insights for campaign {idx + 1}/{len(all_campaigns)}: {campaign_name} (ID: {campaign_id})")
+                
+                campaign_insights_url = f"https://graph.facebook.com/v24.0/{campaign_id}/insights"
+                
+                # 期間を分割して取得（37ヶ月ごと）
+                request_since = current_since
+                while request_since < current_until:
+                    request_until = min(request_since + timedelta(days=max_days_per_request), current_until)
+                    
+                    campaign_insights_params = {
+                        "access_token": access_token,
+                        "fields": "campaign_id,campaign_name,date_start,spend,impressions,clicks,reach,actions,conversions,action_values",
+                        "time_range": f"{{'since':'{request_since.strftime('%Y-%m-%d')}','until':'{request_until.strftime('%Y-%m-%d')}'}}",
+                        "limit": 100
+                    }
+                    
+                    try:
+                        campaign_insights_response = await client.get(campaign_insights_url, params=campaign_insights_params)
+                        campaign_insights_response.raise_for_status()
+                        campaign_insights_data = campaign_insights_response.json()
+                        
+                        # 最初のページのデータを追加
+                        page_campaign_insights = campaign_insights_data.get('data', [])
+                        all_insights.extend(page_campaign_insights)
+                        
+                        # デバッグログ（最初の数件のみ）
+                        if idx < 3 and len(page_campaign_insights) > 0:
+                            sample_insight = page_campaign_insights[0]
+                            print(f"[Meta API] Campaign {campaign_name}: spend={sample_insight.get('spend')}, impressions={sample_insight.get('impressions')}, clicks={sample_insight.get('clicks')}")
+                        
+                        # ページネーション処理（すべてのページを取得）
+                        page_num = 1
+                        while 'paging' in campaign_insights_data and 'next' in campaign_insights_data['paging']:
+                            page_num += 1
+                            next_url = campaign_insights_data['paging']['next']
+                            next_response = await client.get(next_url)
+                            next_response.raise_for_status()
+                            campaign_insights_data = next_response.json()
+                            page_campaign_insights = campaign_insights_data.get('data', [])
+                            all_insights.extend(page_campaign_insights)
+                            
+                            # デバッグログ（最初の数件のみ）
+                            if idx < 3 and page_num <= 3:
+                                print(f"[Meta API] Campaign {campaign_name}: Page {page_num} - Retrieved {len(page_campaign_insights)} insights")
+                    except Exception as e:
+                        print(f"[Meta API] Error fetching campaign insights for {campaign_name} ({campaign_id}) from {request_since.strftime('%Y-%m-%d')} to {request_until.strftime('%Y-%m-%d')}: {str(e)}")
+                        # エラーが発生しても次の期間の取得を続行
+                    
+                    # 次の期間に進む
+                    request_since = request_until + timedelta(days=1)
+                    
+                    # 無限ループ防止
+                    if request_since >= current_until:
+                        break
+            
+            print(f"[Meta API] Campaign-level insights retrieved: {len([i for i in all_insights if 'adset_id' not in i or not i.get('adset_id')])}")
+            
+            # 各広告セットのInsightsを取得（広告セットレベル）
+            # Meta APIは1回のリクエストで最大37ヶ月のデータを取得可能
+            # より長期間のデータが必要な場合は、期間を分割して複数回取得する
+            print(f"[Meta API] Processing {len(all_adsets)} adsets for adset-level insights...")
             for idx, adset in enumerate(all_adsets):
                 adset_id = adset['id']
                 adset_name = adset.get('name', 'Unknown')
@@ -189,6 +252,9 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
             
             # InsightsデータをCampaignテーブルに保存
             saved_count = 0
+            campaign_level_count = 0
+            adset_level_count = 0
+            
             for insight in all_insights:
                 try:
                     # 日付を取得
@@ -201,6 +267,18 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                     campaign_name = insight.get('campaign_name', 'Unknown')
                     ad_set_name = insight.get('adset_name')
                     ad_name = insight.get('ad_name')
+                    
+                    # キャンペーンレベルか広告セットレベルかを判定
+                    is_campaign_level = not ad_set_name or ad_set_name == ''
+                    if is_campaign_level:
+                        campaign_level_count += 1
+                    else:
+                        adset_level_count += 1
+                    
+                    # デバッグログ（最初の数件のみ）
+                    if saved_count < 5:
+                        level_type = "campaign-level" if is_campaign_level else "adset-level"
+                        print(f"[Meta API] Saving {level_type} insight: campaign={campaign_name}, adset={ad_set_name or 'N/A'}, date={campaign_date}, spend={insight.get('spend', 0)}")
                     spend = float(insight.get('spend', 0))
                     impressions = int(insight.get('impressions', 0))
                     clicks = int(insight.get('clicks', 0))
@@ -354,6 +432,7 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
             
             db.commit()
             print(f"[Meta OAuth] Saved {saved_count} campaign records")
+            print(f"[Meta OAuth] Breakdown: {campaign_level_count} campaign-level insights, {adset_level_count} adset-level insights")
     except Exception as e:
         db.rollback()
         raise
