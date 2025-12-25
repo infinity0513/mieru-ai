@@ -668,133 +668,133 @@ export const DailyData: React.FC<DailyDataProps> = ({ data: propData }) => {
         ) : (
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-            <thead className="bg-gray-50 dark:bg-gray-900">
-              <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider sticky left-0 bg-gray-50 dark:bg-gray-900 z-10">
-                  日付
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider sticky left-16 bg-gray-50 dark:bg-gray-900 z-10">
-                  キャンペーン名
-                </th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  インプレッション
-                </th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  クリック数
-                </th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  費用
-                </th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  コンバージョン
-                </th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  コンバージョン価値
-                </th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  ROAS (%)
-                </th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  CTR (%)
-                </th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  CVR (%)
-                </th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  CPC (¥)
-                </th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  CPA (¥)
-                </th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  CPM (¥)
-                </th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  リーチ数
-                </th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  フリークエンシー
-                </th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  エンゲージメント率 (%)
-                </th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  リンククリック数
-                </th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  LPビュー数
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-              {dailyData.length === 0 ? (
+              <thead className="bg-gray-50 dark:bg-gray-900">
                 <tr>
-                  <td colSpan={18} className="px-4 py-8 text-center text-gray-500 dark:text-gray-400">
-                    データがありません
-                  </td>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider sticky left-0 bg-gray-50 dark:bg-gray-900 z-10">
+                    日付
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider sticky left-16 bg-gray-50 dark:bg-gray-900 z-10">
+                    キャンペーン名
+                  </th>
+                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    インプレッション
+                  </th>
+                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    クリック数
+                  </th>
+                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    費用
+                  </th>
+                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    コンバージョン
+                  </th>
+                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    コンバージョン価値
+                  </th>
+                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    ROAS (%)
+                  </th>
+                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    CTR (%)
+                  </th>
+                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    CVR (%)
+                  </th>
+                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    CPC (¥)
+                  </th>
+                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    CPA (¥)
+                  </th>
+                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    CPM (¥)
+                  </th>
+                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    リーチ数
+                  </th>
+                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    フリークエンシー
+                  </th>
+                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    エンゲージメント率 (%)
+                  </th>
+                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    リンククリック数
+                  </th>
+                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    LPビュー数
+                  </th>
                 </tr>
-              ) : (
-                dailyData.map((row, idx) => (
-                  <tr key={`${row.date}_${row.campaign_name}_${idx}`} className="hover:bg-gray-50 dark:hover:bg-gray-700">
-                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white sticky left-0 bg-white dark:bg-gray-800 z-10">
-                      {new Date(row.date).toLocaleDateString('ja-JP')}
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white sticky left-16 bg-white dark:bg-gray-800 z-10">
-                      {row.campaign_name}
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
-                      {row.impressions.toLocaleString()}
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
-                      {row.clicks.toLocaleString()}
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
-                      ¥{row.cost.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
-                      {row.conversions.toLocaleString()}
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
-                      ¥{row.conversion_value.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
-                      {row.roas.toFixed(2)}%
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
-                      {row.ctr.toFixed(2)}%
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
-                      {row.cvr.toFixed(2)}%
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
-                      ¥{row.cpc.toFixed(2)}
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
-                      ¥{row.cpa.toFixed(2)}
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
-                      ¥{row.cpm.toFixed(2)}
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
-                      {row.reach > 0 ? row.reach.toLocaleString() : '-'}
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
-                      {row.frequency > 0 ? row.frequency.toFixed(2) : '-'}
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
-                      {row.engagement_rate > 0 ? `${row.engagement_rate.toFixed(2)}%` : '-'}
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
-                      {row.link_clicks > 0 ? row.link_clicks.toLocaleString() : '-'}
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
-                      {row.landing_page_views > 0 ? row.landing_page_views.toLocaleString() : '-'}
+              </thead>
+              <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                {dailyData.length === 0 ? (
+                  <tr>
+                    <td colSpan={18} className="px-4 py-8 text-center text-gray-500 dark:text-gray-400">
+                      データがありません
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                ) : (
+                  dailyData.map((row, idx) => (
+                    <tr key={`${row.date}_${row.campaign_name}_${idx}`} className="hover:bg-gray-50 dark:hover:bg-gray-700">
+                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white sticky left-0 bg-white dark:bg-gray-800 z-10">
+                        {new Date(row.date).toLocaleDateString('ja-JP')}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white sticky left-16 bg-white dark:bg-gray-800 z-10">
+                        {row.campaign_name}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
+                        {row.impressions.toLocaleString()}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
+                        {row.clicks.toLocaleString()}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
+                        ¥{row.cost.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
+                        {row.conversions.toLocaleString()}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
+                        ¥{row.conversion_value.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
+                        {row.roas.toFixed(2)}%
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
+                        {row.ctr.toFixed(2)}%
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
+                        {row.cvr.toFixed(2)}%
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
+                        ¥{row.cpc.toFixed(2)}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
+                        ¥{row.cpa.toFixed(2)}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
+                        ¥{row.cpm.toFixed(2)}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
+                        {row.reach > 0 ? row.reach.toLocaleString() : '-'}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
+                        {row.frequency > 0 ? row.frequency.toFixed(2) : '-'}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
+                        {row.engagement_rate > 0 ? `${row.engagement_rate.toFixed(2)}%` : '-'}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
+                        {row.link_clicks > 0 ? row.link_clicks.toLocaleString() : '-'}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
+                        {row.landing_page_views > 0 ? row.landing_page_views.toLocaleString() : '-'}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
         </div>
         )}
       </div>
