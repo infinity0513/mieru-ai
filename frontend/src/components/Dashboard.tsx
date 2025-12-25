@@ -1065,42 +1065,48 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
       {/* Asset Selection - Top Row (Prominent Design) */}
       {metaAccounts.length > 0 && (
         <div className="bg-gradient-to-r from-indigo-50 to-blue-50 dark:from-indigo-900/20 dark:to-blue-900/20 p-5 rounded-xl border-2 border-indigo-200 dark:border-indigo-700 shadow-lg no-print mb-6">
-          <div className="flex items-center space-x-4">
+          <div className="flex items-center gap-4">
+            {/* ターゲットアイコン */}
             <div className="flex-shrink-0">
               <div className="p-2 bg-indigo-100 dark:bg-indigo-900/50 rounded-lg">
                 <Target size={20} className="text-indigo-600 dark:text-indigo-400" />
               </div>
             </div>
-            <div className="flex-1">
-              <label className="block text-sm font-bold text-gray-700 dark:text-gray-200 mb-2">
+            
+            {/* アセット選択ラベル */}
+            <div className="flex-shrink-0">
+              <span className="text-sm font-bold text-gray-700 dark:text-gray-200">
                 アセット選択
-              </label>
-              <div className="relative flex items-center gap-2">
-                <select
-                  value={selectedMetaAccountId || ''}
-                  onChange={async (e) => {
-                    const newAccountId = e.target.value || null;
-                    console.log('[Dashboard] Asset selection changed:', {
-                      old: selectedMetaAccountId,
-                      new: newAccountId
-                    });
-                    
-                    // アセットIDを更新
-                    setSelectedMetaAccountId(newAccountId);
-                    
-                    try {
-                      localStorage.setItem('dashboard_selectedMetaAccountId', newAccountId || '');
-                    } catch (err) {
-                      console.error('[Dashboard] Failed to save asset selection to localStorage:', err);
-                    }
-                    
-                    // useEffectが自動的に実行されるはずだが、念のため明示的にデータを再読み込み
-                    // ただし、setSelectedMetaAccountIdが非同期で更新されるため、
-                    // useEffectの依存配列にselectedMetaAccountIdが含まれているので自動的に再読み込みされる
-                    console.log('[Dashboard] Asset selection updated, useEffect should trigger data reload');
-                  }}
-                  className="w-full max-w-md pl-4 pr-12 py-3 border-2 border-indigo-300 dark:border-indigo-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white rounded-lg text-base font-semibold focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 shadow-sm hover:border-indigo-400 dark:hover:border-indigo-500 transition-colors"
-                >
+              </span>
+            </div>
+            
+            {/* ドロップダウンとカーソルアイコン */}
+            <div className="flex items-center gap-2 flex-1">
+              <select
+                value={selectedMetaAccountId || ''}
+                onChange={async (e) => {
+                  const newAccountId = e.target.value || null;
+                  console.log('[Dashboard] Asset selection changed:', {
+                    old: selectedMetaAccountId,
+                    new: newAccountId
+                  });
+                  
+                  // アセットIDを更新
+                  setSelectedMetaAccountId(newAccountId);
+                  
+                  try {
+                    localStorage.setItem('dashboard_selectedMetaAccountId', newAccountId || '');
+                  } catch (err) {
+                    console.error('[Dashboard] Failed to save asset selection to localStorage:', err);
+                  }
+                  
+                  // useEffectが自動的に実行されるはずだが、念のため明示的にデータを再読み込み
+                  // ただし、setSelectedMetaAccountIdが非同期で更新されるため、
+                  // useEffectの依存配列にselectedMetaAccountIdが含まれているので自動的に再読み込みされる
+                  console.log('[Dashboard] Asset selection updated, useEffect should trigger data reload');
+                }}
+                className="max-w-md pl-4 pr-12 py-3 border-2 border-indigo-300 dark:border-indigo-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white rounded-lg text-base font-semibold focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 shadow-sm hover:border-indigo-400 dark:hover:border-indigo-500 transition-colors"
+              >
                 <option value="">全アセットを表示</option>
                 {metaAccounts.map((account) => (
                   <option key={account.account_id} value={account.account_id}>
@@ -1109,8 +1115,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
                 ))}
               </select>
               <MousePointer size={20} className="text-indigo-600 dark:text-indigo-400 flex-shrink-0" />
-              </div>
             </div>
+            
+            {/* フィルター適用中バッジ */}
             {selectedMetaAccountId && (
               <div className="flex-shrink-0">
                 <span className="inline-flex items-center px-3 py-1.5 rounded-full text-sm font-medium bg-indigo-100 text-indigo-800 dark:bg-indigo-900/50 dark:text-indigo-200">
