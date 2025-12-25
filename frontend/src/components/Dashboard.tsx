@@ -451,6 +451,37 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
   // Selected Campaign for Modal
   const [selectedCampaignName, setSelectedCampaignName] = useState<string | null>(null);
 
+  // Meta Account (Asset) Selection
+  const [metaAccounts, setMetaAccounts] = useState<Array<{ account_id: string; name: string; data_count: number; latest_date: string | null }>>([]);
+  const [selectedMetaAccountId, setSelectedMetaAccountId] = useState<string | null>(() => {
+    // localStorageから選択されたアセットIDを復元
+    try {
+      const saved = localStorage.getItem('dashboard_selectedMetaAccountId');
+      if (saved !== null && saved !== '') {
+        return saved;
+      }
+    } catch (e) {
+      // 無視
+    }
+    return null; // nullの場合は全アセット表示
+  });
+
+  // Load Meta Accounts list
+  useEffect(() => {
+    const loadMetaAccounts = async () => {
+      try {
+        const result = await Api.getMetaAccounts();
+        setMetaAccounts(result.accounts || []);
+      } catch (error) {
+        console.error('Failed to load Meta accounts:', error);
+        // エラー時は空配列を設定
+        setMetaAccounts([]);
+      }
+    };
+    
+    loadMetaAccounts();
+  }, []);
+
   // Load dashboard data from API
   useEffect(() => {
     const loadDashboardData = async () => {
@@ -458,9 +489,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
       try {
         // 各API呼び出しを個別に処理し、1つが失敗しても他のデータは取得できるようにする
         const [summaryResult, trendsResult, campaignsResult] = await Promise.allSettled([
-          Api.getCampaignSummary(dateRange.start, dateRange.end),
-          Api.getCampaignTrends(dateRange.start, dateRange.end),
-          Api.fetchCampaignData() // Get detailed daily data
+          Api.getCampaignSummary(dateRange.start, dateRange.end, selectedMetaAccountId || undefined),
+          Api.getCampaignTrends(dateRange.start, dateRange.end, 'day', selectedMetaAccountId || undefined),
+          Api.fetchCampaignData(selectedMetaAccountId || undefined) // Get detailed daily data
         ]);
         
         // Summary data
@@ -505,7 +536,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     loadDashboardData();
     // propDataを依存配列から削除して、不要な再レンダリングを防ぐ
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dateRange.start, dateRange.end]);
+  }, [dateRange.start, dateRange.end, selectedMetaAccountId]);
 
   // Use propData if available (from App.tsx), otherwise fallback to apiData
   // propData contains all data, apiData is filtered by date range
@@ -891,6 +922,36 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
       {/* Advanced Filter Bar */}
       <div className="bg-white dark:bg-gray-800 p-3 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm no-print space-y-3 lg:space-y-0 lg:flex lg:items-start lg:gap-3 transition-colors">
         
+        {/* Meta Account (Asset) Selection */}
+        {metaAccounts.length > 0 && (
+          <div className="flex items-center space-x-2">
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap flex items-center">
+              <Target size={14} className="mr-1" />
+              アセット:
+            </label>
+            <select
+              value={selectedMetaAccountId || ''}
+              onChange={(e) => {
+                const newAccountId = e.target.value || null;
+                setSelectedMetaAccountId(newAccountId);
+                try {
+                  localStorage.setItem('dashboard_selectedMetaAccountId', newAccountId || '');
+                } catch (err) {
+                  // 無視
+                }
+              }}
+              className="block w-full pl-3 pr-10 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg text-sm focus:ring-indigo-500 focus:border-indigo-500"
+            >
+              <option value="">全アセット</option>
+              {metaAccounts.map((account) => (
+                <option key={account.account_id} value={account.account_id}>
+                  {account.name} ({account.data_count}件)
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
         {/* Campaign Selection Tabs */}
         <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">

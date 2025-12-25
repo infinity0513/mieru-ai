@@ -505,6 +505,13 @@ class ApiClient {
     return response;
   }
 
+  async getMetaAccounts(): Promise<{ accounts: Array<{ account_id: string; name: string; data_count: number; latest_date: string | null }>; total: number }> {
+    const response = await this.request<{ accounts: Array<{ account_id: string; name: string; data_count: number; latest_date: string | null }>; total: number }>('/meta/accounts', {
+      method: 'GET',
+    });
+    return response;
+  }
+
   async register(email: string, password: string, name?: string): Promise<User> {
     const response = await fetch(`${this.baseURL}/auth/register`, {
       method: 'POST',
@@ -835,7 +842,7 @@ class ApiClient {
     }
   }
 
-  async fetchCampaignData(): Promise<CampaignData[]> {
+  async fetchCampaignData(metaAccountId?: string): Promise<CampaignData[]> {
     const token = this.getToken();
     if (!token) {
       console.warn("[ApiClient] No token available for fetchCampaignData");
@@ -843,7 +850,10 @@ class ApiClient {
     }
     
     try {
-      const response = await fetch(`${this.baseURL}/campaigns/`, {
+      const params = new URLSearchParams();
+      if (metaAccountId) params.append('meta_account_id', metaAccountId);
+      
+      const response = await fetch(`${this.baseURL}/campaigns/?${params}`, {
         credentials: 'include',  // CORS credentials をサポート
         headers: this.getHeaders(),
       });
@@ -904,7 +914,7 @@ class ApiClient {
     }
   }
 
-  async getCampaignSummary(startDate?: string, endDate?: string) {
+  async getCampaignSummary(startDate?: string, endDate?: string, metaAccountId?: string) {
     const token = this.getToken();
     if (!token) {
       console.warn("[ApiClient] No token available for getCampaignSummary");
@@ -915,6 +925,7 @@ class ApiClient {
       const params = new URLSearchParams();
       if (startDate) params.append('start_date', startDate);
       if (endDate) params.append('end_date', endDate);
+      if (metaAccountId) params.append('meta_account_id', metaAccountId);
       
       const response = await fetch(
         `${this.baseURL}/campaigns/summary?${params}`,
@@ -941,7 +952,7 @@ class ApiClient {
     }
   }
 
-  async getCampaignTrends(startDate?: string, endDate?: string, groupBy = 'day') {
+  async getCampaignTrends(startDate?: string, endDate?: string, groupBy = 'day', metaAccountId?: string) {
     const token = this.getToken();
     if (!token) {
       console.warn("[ApiClient] No token available for getCampaignTrends");
@@ -952,6 +963,7 @@ class ApiClient {
       const params = new URLSearchParams({ group_by: groupBy });
       if (startDate) params.append('start_date', startDate);
       if (endDate) params.append('end_date', endDate);
+      if (metaAccountId) params.append('meta_account_id', metaAccountId);
       
       const response = await fetch(
         `${this.baseURL}/campaigns/trends?${params}`,

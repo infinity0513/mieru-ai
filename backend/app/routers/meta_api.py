@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from typing import Optional
 from datetime import datetime, timedelta
 from ..models.user import User
@@ -109,9 +110,10 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                     cvr = (conversions / clicks * 100) if clicks > 0 else 0
                     roas = (conversion_value / spend) if spend > 0 else 0
                     
-                    # 既存のレコードをチェック
+                    # 既存のレコードをチェック（meta_account_idも含める）
                     existing = db.query(Campaign).filter(
                         Campaign.user_id == user.id,
+                        Campaign.meta_account_id == account_id,
                         Campaign.date == campaign_date,
                         Campaign.campaign_name == campaign_name,
                         Campaign.ad_set_name == ad_set_name,
@@ -121,6 +123,7 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                     if existing:
                         # 更新
                         existing.upload_id = upload.id
+                        existing.meta_account_id = account_id
                         existing.cost = Decimal(str(spend))
                         existing.impressions = impressions
                         existing.clicks = clicks
@@ -138,6 +141,7 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                         campaign = Campaign(
                             user_id=user.id,
                             upload_id=upload.id,
+                            meta_account_id=account_id,
                             date=campaign_date,
                             campaign_name=campaign_name,
                             ad_set_name=ad_set_name,
@@ -174,6 +178,48 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
     except Exception as e:
         db.rollback()
         raise
+
+@router.get("/accounts")
+async def get_meta_accounts(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """ユーザーが連携しているMeta広告アカウント（アセット）一覧を取得"""
+    # Campaignテーブルからユニークなmeta_account_idを取得
+    accounts = db.query(Campaign.meta_account_id).filter(
+        Campaign.user_id == current_user.id,
+        Campaign.meta_account_id.isnot(None)
+    ).distinct().all()
+    
+    # アカウントIDのリストを作成
+    account_ids = [acc[0] for acc in accounts if acc[0]]
+    
+    # 各アカウントの統計情報を取得
+    result = []
+    for account_id in account_ids:
+        # 各アカウントのデータ件数を取得
+        count = db.query(Campaign).filter(
+            Campaign.user_id == current_user.id,
+            Campaign.meta_account_id == account_id
+        ).count()
+        
+        # 最新のデータ日付を取得
+        latest_date = db.query(func.max(Campaign.date)).filter(
+            Campaign.user_id == current_user.id,
+            Campaign.meta_account_id == account_id
+        ).scalar()
+        
+        result.append({
+            "account_id": account_id,
+            "name": account_id,  # アカウント名は後でMeta APIから取得可能
+            "data_count": count,
+            "latest_date": str(latest_date) if latest_date else None
+        })
+    
+    return {
+        "accounts": result,
+        "total": len(result)
+    }
 
 @router.get("/insights")
 async def get_meta_insights(

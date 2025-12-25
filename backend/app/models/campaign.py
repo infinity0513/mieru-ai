@@ -26,6 +26,7 @@ class Campaign(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     upload_id = Column(UUID(as_uuid=True), ForeignKey("uploads.id", ondelete="CASCADE"), nullable=False)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    meta_account_id = Column(String(255), nullable=True)  # Meta広告アカウントID (例: act_123456789)
     date = Column(Date, nullable=False)
     campaign_name = Column(String(255), nullable=False)
     ad_set_name = Column(String(255), nullable=True)
