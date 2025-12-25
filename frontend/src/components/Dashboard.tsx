@@ -1393,6 +1393,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
             </div>
           </div>
           )}
+          </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 print:block print:space-y-6">
             {/* Trend Chart */}
