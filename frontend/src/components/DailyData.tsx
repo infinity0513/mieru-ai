@@ -94,7 +94,13 @@ export const DailyData: React.FC<DailyDataProps> = ({ data: propData }) => {
   const data = useMemo(() => {
     if (selectedMetaAccountId) {
       // Asset is selected: use apiData which is filtered by asset
-      return apiData;
+      // If apiData is empty, fallback to propData (user might have uploaded CSV data)
+      if (apiData && apiData.length > 0) {
+        return apiData;
+      } else {
+        // apiData is empty, fallback to propData
+        return propData;
+      }
     } else {
       // No asset selected: use propData
       return propData;

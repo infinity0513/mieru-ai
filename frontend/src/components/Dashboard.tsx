@@ -620,8 +620,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     
     if (selectedMetaAccountId) {
       // Asset is selected: use apiData which is filtered by asset
-      // propData from CSV uploads doesn't have meta_account_id, so we can't filter it
-      sourceData = apiData;
+      // If apiData is empty, fallback to propData (user might have uploaded CSV data)
+      if (apiData && apiData.length > 0) {
+        sourceData = apiData;
+      } else {
+        // apiData is empty, fallback to propData
+        sourceData = (propData && propData.length > 0) ? propData : apiData;
+      }
     } else {
       // No asset selected: use propData if available, otherwise apiData
       sourceData = (propData && propData.length > 0) ? propData : apiData;
