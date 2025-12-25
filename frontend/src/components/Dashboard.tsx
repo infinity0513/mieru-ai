@@ -1146,10 +1146,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
                 </label>
                 <div className="relative flex-1 min-w-0">
                     <div className="block w-full pl-3 pr-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg overflow-hidden">
-                        <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-transparent dark:scrollbar-thumb-gray-600 dark:scrollbar-track-transparent hover:scrollbar-track-gray-100 dark:hover:scrollbar-track-gray-800">
+                        <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-transparent dark:scrollbar-thumb-gray-600 dark:scrollbar-track-transparent hover:scrollbar-track-gray-100 dark:hover:scrollbar-track-gray-800 [&::-webkit-scrollbar-thumb]:bg-transparent [&::-webkit-scrollbar-thumb]:hover:bg-gray-300">
                             <div className="flex items-center gap-2 min-w-fit">
                                 {/* 全体タブ */}
-                <button 
+                                <button 
                                     onClick={() => {
                                         setSelectedCampaign(null);
                                         try {
