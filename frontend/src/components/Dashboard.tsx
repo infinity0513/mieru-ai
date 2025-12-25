@@ -972,34 +972,47 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
         />
       )}
 
-      {/* Asset Selection - Top Row */}
+      {/* Asset Selection - Top Row (Prominent Design) */}
       {metaAccounts.length > 0 && (
-        <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm no-print mb-4">
-          <div className="flex items-center space-x-3">
-            <label className="text-sm font-semibold text-gray-700 dark:text-gray-300 whitespace-nowrap flex items-center">
-              <Target size={16} className="mr-2 text-indigo-600 dark:text-indigo-400" />
-              アセット:
-            </label>
-            <select
-              value={selectedMetaAccountId || ''}
-              onChange={(e) => {
-                const newAccountId = e.target.value || null;
-                setSelectedMetaAccountId(newAccountId);
-                try {
-                  localStorage.setItem('dashboard_selectedMetaAccountId', newAccountId || '');
-                } catch (err) {
-                  // 無視
-                }
-              }}
-              className="flex-1 max-w-md pl-3 pr-10 py-2.5 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg text-sm font-medium focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-            >
-              <option value="">全アセット</option>
-              {metaAccounts.map((account) => (
-                <option key={account.account_id} value={account.account_id}>
-                  {account.name} ({account.data_count}件)
-                </option>
-              ))}
-            </select>
+        <div className="bg-gradient-to-r from-indigo-50 to-blue-50 dark:from-indigo-900/20 dark:to-blue-900/20 p-5 rounded-xl border-2 border-indigo-200 dark:border-indigo-700 shadow-lg no-print mb-6">
+          <div className="flex items-center space-x-4">
+            <div className="flex-shrink-0">
+              <div className="p-2 bg-indigo-100 dark:bg-indigo-900/50 rounded-lg">
+                <Target size={20} className="text-indigo-600 dark:text-indigo-400" />
+              </div>
+            </div>
+            <div className="flex-1">
+              <label className="block text-sm font-bold text-gray-700 dark:text-gray-200 mb-2">
+                アセット選択
+              </label>
+              <select
+                value={selectedMetaAccountId || ''}
+                onChange={(e) => {
+                  const newAccountId = e.target.value || null;
+                  setSelectedMetaAccountId(newAccountId);
+                  try {
+                    localStorage.setItem('dashboard_selectedMetaAccountId', newAccountId || '');
+                  } catch (err) {
+                    // 無視
+                  }
+                }}
+                className="w-full max-w-md pl-4 pr-12 py-3 border-2 border-indigo-300 dark:border-indigo-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white rounded-lg text-base font-semibold focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 shadow-sm hover:border-indigo-400 dark:hover:border-indigo-500 transition-colors"
+              >
+                <option value="">全アセットを表示</option>
+                {metaAccounts.map((account) => (
+                  <option key={account.account_id} value={account.account_id}>
+                    {account.name} ({account.data_count}件)
+                  </option>
+                ))}
+              </select>
+            </div>
+            {selectedMetaAccountId && (
+              <div className="flex-shrink-0">
+                <span className="inline-flex items-center px-3 py-1.5 rounded-full text-sm font-medium bg-indigo-100 text-indigo-800 dark:bg-indigo-900/50 dark:text-indigo-200">
+                  フィルター適用中
+                </span>
+              </div>
+            )}
           </div>
         </div>
       )}
