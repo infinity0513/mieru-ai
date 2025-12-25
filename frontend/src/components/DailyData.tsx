@@ -1,19 +1,33 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { CampaignData } from '../types';
-import { Calendar, Table as TableIcon, ExternalLink, Download, Upload, Link as LinkIcon } from 'lucide-react';
+import { Calendar, Table as TableIcon, ExternalLink, Download, Upload, Link as LinkIcon, Target, MousePointer } from 'lucide-react';
 import { Button } from './ui/Button';
 import { useToast } from './ui/Toast';
+import { Api } from '../services/api';
 
 interface DailyDataProps {
   data: CampaignData[];
 }
 
-export const DailyData: React.FC<DailyDataProps> = ({ data }) => {
+export const DailyData: React.FC<DailyDataProps> = ({ data: propData }) => {
   const [selectedDateRange, setSelectedDateRange] = useState<{ start: string; end: string } | null>(null);
   const [selectedCampaign, setSelectedCampaign] = useState<string | null>(null);
   const [spreadsheetUrl, setSpreadsheetUrl] = useState<string>('');
   const [isSyncing, setIsSyncing] = useState(false);
   const { addToast } = useToast();
+  
+  // Asset selection state
+  const [metaAccounts, setMetaAccounts] = useState<Array<{ account_id: string; name: string; data_count: number; latest_date: string | null }>>([]);
+  const [selectedMetaAccountId, setSelectedMetaAccountId] = useState<string | null>(() => {
+    try {
+      const saved = localStorage.getItem('dailydata_selectedMetaAccountId');
+      return saved !== null && saved !== '' ? saved : null;
+    } catch (e) {
+      return null;
+    }
+  });
+  const [apiData, setApiData] = useState<CampaignData[]>([]);
+  const [loading, setLoading] = useState(false);
 
   // キャンペーン別にスプレッドシートURLを読み込む
   const loadSpreadsheetUrl = (campaign: string | null): string => {
@@ -41,6 +55,51 @@ export const DailyData: React.FC<DailyDataProps> = ({ data }) => {
     const savedUrl = loadSpreadsheetUrl(selectedCampaign);
     setSpreadsheetUrl(savedUrl);
   }, [selectedCampaign]);
+
+  // Load meta accounts on mount
+  useEffect(() => {
+    const loadMetaAccounts = async () => {
+      try {
+        const accounts = await Api.getMetaAccounts();
+        setMetaAccounts(accounts.accounts || []);
+      } catch (error) {
+        console.error('[DailyData] Failed to load meta accounts:', error);
+      }
+    };
+    loadMetaAccounts();
+  }, []);
+
+  // Load data from API when asset is selected
+  useEffect(() => {
+    const loadData = async () => {
+      if (selectedMetaAccountId) {
+        setLoading(true);
+        try {
+          const campaigns = await Api.fetchCampaignData(selectedMetaAccountId);
+          setApiData(campaigns);
+        } catch (error) {
+          console.error('[DailyData] Failed to load campaign data:', error);
+          setApiData([]);
+        } finally {
+          setLoading(false);
+        }
+      } else {
+        setApiData([]);
+      }
+    };
+    loadData();
+  }, [selectedMetaAccountId]);
+
+  // Determine which data source to use
+  const data = useMemo(() => {
+    if (selectedMetaAccountId) {
+      // Asset is selected: use apiData which is filtered by asset
+      return apiData;
+    } else {
+      // No asset selected: use propData
+      return propData;
+    }
+  }, [propData, apiData, selectedMetaAccountId]);
 
   // Get unique campaigns
   const availableCampaigns = useMemo(() => {
@@ -440,6 +499,61 @@ export const DailyData: React.FC<DailyDataProps> = ({ data }) => {
         </div>
       </div>
 
+      {/* Asset Selection */}
+      {metaAccounts.length > 0 && (
+        <div className="bg-gradient-to-r from-indigo-50 to-blue-50 dark:from-indigo-900/20 dark:to-blue-900/20 p-5 rounded-xl border-2 border-indigo-200 dark:border-indigo-700 shadow-lg no-print">
+          <div className="flex items-center gap-4">
+            {/* ターゲットアイコン */}
+            <div className="flex-shrink-0">
+              <div className="p-2 bg-indigo-100 dark:bg-indigo-900/50 rounded-lg">
+                <Target size={20} className="text-indigo-600 dark:text-indigo-400" />
+              </div>
+            </div>
+            
+            {/* アセット選択ラベル */}
+            <div className="flex-shrink-0">
+              <span className="text-sm font-bold text-gray-700 dark:text-gray-200">
+                アセット選択
+              </span>
+            </div>
+            
+            {/* ドロップダウンとカーソルアイコン */}
+            <div className="flex items-center gap-2 flex-1">
+              <select
+                value={selectedMetaAccountId || ''}
+                onChange={(e) => {
+                  const newAccountId = e.target.value || null;
+                  setSelectedMetaAccountId(newAccountId);
+                  try {
+                    localStorage.setItem('dailydata_selectedMetaAccountId', newAccountId || '');
+                  } catch (err) {
+                    console.error('[DailyData] Failed to save asset selection to localStorage:', err);
+                  }
+                }}
+                className="max-w-md pl-4 pr-12 py-3 border-2 border-indigo-300 dark:border-indigo-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white rounded-lg text-base font-semibold focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 shadow-sm hover:border-indigo-400 dark:hover:border-indigo-500 transition-colors"
+              >
+                <option value="">全アセットを表示</option>
+                {metaAccounts.map((account) => (
+                  <option key={account.account_id} value={account.account_id}>
+                    {account.name} ({account.data_count}件)
+                  </option>
+                ))}
+              </select>
+              <MousePointer size={20} className="text-indigo-600 dark:text-indigo-400 flex-shrink-0" />
+            </div>
+            
+            {/* フィルター適用中バッジ */}
+            {selectedMetaAccountId && (
+              <div className="flex-shrink-0">
+                <span className="inline-flex items-center px-3 py-1.5 rounded-full text-sm font-medium bg-indigo-100 text-indigo-800 dark:bg-indigo-900/50 dark:text-indigo-200">
+                  フィルター適用中
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Filters */}
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-4">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -542,10 +656,21 @@ export const DailyData: React.FC<DailyDataProps> = ({ data }) => {
         </div>
       </div>
 
+      {/* Loading State */}
+      {loading && (
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-8">
+          <div className="flex justify-center items-center">
+            <div className="animate-spin h-8 w-8 border-b-2 border-indigo-600 dark:border-indigo-400 rounded-full"></div>
+            <p className="ml-4 text-gray-500 dark:text-gray-400">データを読み込み中...</p>
+          </div>
+        </div>
+      )}
+
       {/* Data Table */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+      {!loading && (
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
             <thead className="bg-gray-50 dark:bg-gray-900">
               <tr>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider sticky left-0 bg-gray-50 dark:bg-gray-900 z-10">
@@ -674,10 +799,11 @@ export const DailyData: React.FC<DailyDataProps> = ({ data }) => {
             </tbody>
           </table>
         </div>
-      </div>
+        </div>
+      )}
 
       {/* Summary */}
-      {dailyData.length > 0 && (
+      {!loading && dailyData.length > 0 && (
         <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-4">
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">合計</h3>
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
