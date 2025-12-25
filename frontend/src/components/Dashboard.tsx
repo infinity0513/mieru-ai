@@ -1048,12 +1048,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
 
   // ローディング中の表示
   if (loading && data.length === 0) {
-    return (
-      <div className="text-center py-20">
-        <div className="animate-spin h-8 w-8 border-b-2 border-indigo-600 dark:border-indigo-400 rounded-full mx-auto"></div>
-        <p className="mt-4 text-gray-500 dark:text-gray-400">データを読み込み中...</p>
-      </div>
-    );
+      return (
+        <div className="text-center py-20">
+          <div className="animate-spin h-8 w-8 border-b-2 border-indigo-600 dark:border-indigo-400 rounded-full mx-auto"></div>
+          <p className="mt-4 text-gray-500 dark:text-gray-400">データを読み込み中...</p>
+        </div>
+      );
   }
 
   return (
@@ -1149,7 +1149,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
                         <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-transparent dark:scrollbar-thumb-gray-600 dark:scrollbar-track-transparent hover:scrollbar-track-gray-100 dark:hover:scrollbar-track-gray-800 [&::-webkit-scrollbar-thumb]:bg-transparent [&::-webkit-scrollbar-thumb]:hover:bg-gray-300">
                             <div className="flex items-center gap-2 min-w-fit">
                                 {/* 全体タブ */}
-                                <button 
+                <button 
                                     onClick={() => {
                                         setSelectedCampaign(null);
                                         try {
@@ -1308,16 +1308,16 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
       {/* Performance Analysis - AI分析レポートと同じ形式 */}
       {data.length > 0 && (
         <>
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-6 md:p-8 avoid-break transition-colors">
-          <div className="flex items-center mb-6">
-            <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg text-blue-600 dark:text-blue-400 mr-3">
-              <TrendingUp size={20} />
-            </div>
-            <h3 className="text-lg font-bold text-gray-900 dark:text-white">詳細パフォーマンス分析</h3>
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-6 md:p-8 avoid-break transition-colors">
+        <div className="flex items-center mb-6">
+          <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg text-blue-600 dark:text-blue-400 mr-3">
+            <TrendingUp size={20} />
           </div>
+          <h3 className="text-lg font-bold text-gray-900 dark:text-white">詳細パフォーマンス分析</h3>
+      </div>
 
-          {/* Totals - 全体サマリー */}
-          <div className="mb-6">
+        {/* Totals - 全体サマリー */}
+        <div className="mb-6">
           <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-4 break-words">全体サマリー</h4>
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
             <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-3 border border-blue-200 dark:border-blue-800 min-w-0 overflow-hidden">
@@ -1356,10 +1356,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
               <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate">合計</div>
             </div>
           </div>
-          </div>
+      </div>
 
-          {/* Averages - 計算指標（パフォーマンス指標） */}
-          <div className="mb-6">
+        {/* Averages - 計算指標（パフォーマンス指標） */}
+        <div className="mb-6">
           <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-4 break-words">計算指標（パフォーマンス指標）</h4>
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
             <div className="bg-indigo-50 dark:bg-indigo-900/20 rounded-lg p-3 border border-indigo-200 dark:border-indigo-800 min-w-0 overflow-hidden">
@@ -1405,11 +1405,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
               <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate">インプレッション単価</div>
             </div>
           </div>
-          </div>
+      </div>
 
-          {/* リーチ・エンゲージメント指標 */}
-          {(kpiData.totalReach > 0 || kpiData.frequency > 0 || kpiData.engagementRate > 0 || kpiData.totalLinkClicks > 0 || kpiData.totalLandingPageViews > 0) && (
-            <div>
+        {/* リーチ・エンゲージメント指標 */}
+        {(kpiData.totalReach > 0 || kpiData.frequency > 0 || kpiData.engagementRate > 0 || kpiData.totalLinkClicks > 0 || kpiData.totalLandingPageViews > 0) && (
+          <div>
             <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-4 break-words">リーチ・エンゲージメント指標</h4>
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
               {kpiData.totalReach > 0 && (
@@ -1459,111 +1459,111 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
               )}
             </div>
           </div>
-          )}
+        )}
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 print:block print:space-y-6">
+        {/* Trend Chart */}
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-3 transition-colors">
+          <h4 className="text-sm font-bold text-gray-900 dark:text-white mb-2 flex items-center">
+            <TrendingUp size={16} className="mr-2 text-indigo-600 dark:text-indigo-400" />
+            日次トレンド
+          </h4>
+          <div className="h-64 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={trendData}>
+                <defs>
+                  <linearGradient id="colorCost" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#6366f1" stopOpacity={0.1}/>
+                    <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={isDark ? "#374151" : "#f0f0f0"} />
+                <XAxis 
+                  dataKey="date" 
+                  tickFormatter={(val) => val.slice(5)} 
+                  stroke={isDark ? "#9ca3af" : "#9ca3af"}
+                  fontSize={11}
+                />
+                <YAxis stroke={isDark ? "#9ca3af" : "#9ca3af"} fontSize={11} />
+                <RechartsTooltip 
+                  contentStyle={{ 
+                    backgroundColor: isDark ? '#1f2937' : '#fff', 
+                    borderRadius: '8px', 
+                    border: isDark ? '1px solid #374151' : '1px solid #e5e7eb',
+                    color: isDark ? '#f3f4f6' : '#111827'
+                  }}
+                  formatter={(value: any) => `¥${value.toLocaleString()}`}
+                />
+                <Area 
+                  type="monotone" 
+                  dataKey="cost" 
+                  stroke="#6366f1" 
+                  fillOpacity={1} 
+                  fill="url(#colorCost)" 
+                />
+              </AreaChart>
+            </ResponsiveContainer>
           </div>
+        </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 print:block print:space-y-6">
-            {/* Trend Chart */}
-            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-3 transition-colors">
-              <h4 className="text-sm font-bold text-gray-900 dark:text-white mb-2 flex items-center">
-                <TrendingUp size={16} className="mr-2 text-indigo-600 dark:text-indigo-400" />
-                日次トレンド
-              </h4>
-              <div className="h-64 w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={trendData}>
-                    <defs>
-                      <linearGradient id="colorCost" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#6366f1" stopOpacity={0.1}/>
-                        <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={isDark ? "#374151" : "#f0f0f0"} />
-                    <XAxis 
-                      dataKey="date" 
-                      tickFormatter={(val) => val.slice(5)} 
-                      stroke={isDark ? "#9ca3af" : "#9ca3af"}
-                      fontSize={11}
-                    />
-                    <YAxis stroke={isDark ? "#9ca3af" : "#9ca3af"} fontSize={11} />
-                    <RechartsTooltip 
-                      contentStyle={{ 
-                        backgroundColor: isDark ? '#1f2937' : '#fff', 
-                        borderRadius: '8px', 
-                        border: isDark ? '1px solid #374151' : '1px solid #e5e7eb',
-                        color: isDark ? '#f3f4f6' : '#111827'
-                      }}
-                      formatter={(value: any) => `¥${value.toLocaleString()}`}
-                    />
-                    <Area 
-                      type="monotone" 
-                      dataKey="cost" 
-                      stroke="#6366f1" 
-                      fillOpacity={1} 
-                      fill="url(#colorCost)" 
-                    />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-
-            {/* Campaign Performance Chart */}
-            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-3 transition-colors">
-              <h4 className="text-sm font-bold text-gray-900 dark:text-white mb-2 flex items-center">
-                <PieChart size={16} className="mr-2 text-indigo-600 dark:text-indigo-400" />
-                キャンペーン別パフォーマンス
-              </h4>
-              <div className="h-64 w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={sortedCampaigns.slice(0, 10)}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={isDark ? "#374151" : "#f0f0f0"} />
-                    <XAxis 
-                      dataKey="campaign_name" 
-                      angle={-45}
-                      textAnchor="end"
-                      height={80}
-                      stroke={isDark ? "#9ca3af" : "#9ca3af"}
-                      fontSize={10}
-                    />
-                    <YAxis stroke={isDark ? "#9ca3af" : "#9ca3af"} fontSize={11} />
-                    <RechartsTooltip 
-                      contentStyle={{ 
-                        backgroundColor: isDark ? '#1f2937' : '#fff', 
-                        borderRadius: '8px', 
-                        border: isDark ? '1px solid #374151' : '1px solid #e5e7eb',
-                        color: isDark ? '#f3f4f6' : '#111827'
-                      }}
-                      formatter={(value: any) => `¥${value.toLocaleString()}`}
-                    />
-                    <Bar dataKey="cost" fill="#6366f1" />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
+        {/* Campaign Performance Chart */}
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-3 transition-colors">
+          <h4 className="text-sm font-bold text-gray-900 dark:text-white mb-2 flex items-center">
+            <PieChart size={16} className="mr-2 text-indigo-600 dark:text-indigo-400" />
+            キャンペーン別パフォーマンス
+          </h4>
+          <div className="h-64 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={sortedCampaigns.slice(0, 10)}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={isDark ? "#374151" : "#f0f0f0"} />
+                <XAxis 
+                  dataKey="campaign_name" 
+                  angle={-45}
+                  textAnchor="end"
+                  height={80}
+                  stroke={isDark ? "#9ca3af" : "#9ca3af"}
+                  fontSize={10}
+                />
+                <YAxis stroke={isDark ? "#9ca3af" : "#9ca3af"} fontSize={11} />
+                <RechartsTooltip 
+                  contentStyle={{ 
+                    backgroundColor: isDark ? '#1f2937' : '#fff', 
+                    borderRadius: '8px', 
+                    border: isDark ? '1px solid #374151' : '1px solid #e5e7eb',
+                    color: isDark ? '#f3f4f6' : '#111827'
+                  }}
+                  formatter={(value: any) => `¥${value.toLocaleString()}`}
+                />
+                <Bar dataKey="cost" fill="#6366f1" />
+              </BarChart>
+            </ResponsiveContainer>
           </div>
+        </div>
+      </div>
 
-          {/* Campaign Table */}
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden transition-colors">
-            <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
-              <h3 className="text-sm font-bold text-gray-900 dark:text-white">キャンペーン一覧</h3>
-              <Button variant="outline" icon={<Download size={16} />} onClick={handleExportCSV}>
-                CSVエクスポート
-              </Button>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                <thead className="bg-gray-50 dark:bg-gray-700">
-                  <tr>
-                    <th 
-                      className="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600"
-                      onClick={() => requestSort('campaign_name')}
-                    >
-                      <div className="flex items-center">
-                        キャンペーン名
-                        <SortIcon colKey="campaign_name" />
-                      </div>
-                    </th>
-                    <th 
+      {/* Campaign Table */}
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden transition-colors">
+        <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
+          <h3 className="text-sm font-bold text-gray-900 dark:text-white">キャンペーン一覧</h3>
+          <Button variant="outline" icon={<Download size={16} />} onClick={handleExportCSV}>
+            CSVエクスポート
+          </Button>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+            <thead className="bg-gray-50 dark:bg-gray-700">
+              <tr>
+                <th 
+                  className="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600"
+                  onClick={() => requestSort('campaign_name')}
+                >
+                  <div className="flex items-center">
+                    キャンペーン名
+                    <SortIcon colKey="campaign_name" />
+                  </div>
+                </th>
+                <th 
                   className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600"
                   onClick={() => requestSort('impressions')}
                 >
@@ -1644,13 +1644,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
                     <SortIcon colKey="cpa" />
                   </div>
                 </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                  {sortedCampaigns.map((campaign, idx) => (
-                    <tr 
-                      key={idx}
-                      className="hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer transition-colors"
+              </tr>
+            </thead>
+            <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+              {sortedCampaigns.map((campaign, idx) => (
+                <tr 
+                  key={idx}
+                  className="hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer transition-colors"
                   onClick={(e) => {
                     // テーブルヘッダーのクリックと区別するため、行のクリックのみ処理
                     e.stopPropagation();
@@ -1664,44 +1664,44 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
                     setSelectedCampaignName(campaign.campaign_name);
                   }}
                 >
-                    <td className="px-4 py-2 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
-                      {campaign.campaign_name}
-                    </td>
-                    <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400 text-right">
-                      {campaign.impressions.toLocaleString()}
-                    </td>
-                    <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400 text-right">
-                      {campaign.clicks.toLocaleString()}
-                    </td>
-                    <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right font-medium">
-                      ¥{campaign.cost.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                    </td>
-                    <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400 text-right">
-                      {campaign.conversions}
-                    </td>
-                    <td className="px-4 py-2 whitespace-nowrap text-sm text-right">
-                      <span className={`font-medium ${campaign.roas >= 100 ? 'text-green-600 dark:text-green-400' : campaign.roas >= 50 ? 'text-yellow-600 dark:text-yellow-400' : 'text-red-600 dark:text-red-400'}`}>
-                        {campaign.roas.toFixed(0)}%
-                      </span>
-                    </td>
-                    <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400 text-right">
-                      {campaign.ctr.toFixed(2)}%
-                    </td>
-                    <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400 text-right">
-                      ¥{campaign.cpc.toFixed(0)}
-                    </td>
-                    <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400 text-right">
-                      {campaign.cvr ? campaign.cvr.toFixed(2) + '%' : '-'}
-                    </td>
-                    <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400 text-right">
-                      ¥{campaign.cpa.toFixed(0)}
-                    </td>
-                  </tr>
+                  <td className="px-4 py-2 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
+                    {campaign.campaign_name}
+                  </td>
+                  <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400 text-right">
+                    {campaign.impressions.toLocaleString()}
+                  </td>
+                  <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400 text-right">
+                    {campaign.clicks.toLocaleString()}
+                  </td>
+                  <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right font-medium">
+                    ¥{campaign.cost.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                  </td>
+                  <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400 text-right">
+                    {campaign.conversions}
+                  </td>
+                  <td className="px-4 py-2 whitespace-nowrap text-sm text-right">
+                    <span className={`font-medium ${campaign.roas >= 100 ? 'text-green-600 dark:text-green-400' : campaign.roas >= 50 ? 'text-yellow-600 dark:text-yellow-400' : 'text-red-600 dark:text-red-400'}`}>
+                      {campaign.roas.toFixed(0)}%
+                    </span>
+                  </td>
+                  <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400 text-right">
+                    {campaign.ctr.toFixed(2)}%
+                  </td>
+                  <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400 text-right">
+                    ¥{campaign.cpc.toFixed(0)}
+                  </td>
+                  <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400 text-right">
+                    {campaign.cvr ? campaign.cvr.toFixed(2) + '%' : '-'}
+                  </td>
+                  <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400 text-right">
+                    ¥{campaign.cpa.toFixed(0)}
+                  </td>
+                </tr>
               ))}
-              </tbody>
-            </table>
-          </div>
+            </tbody>
+          </table>
         </div>
+      </div>
       </>
       )}
     </div>
