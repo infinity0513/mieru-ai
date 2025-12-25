@@ -896,6 +896,9 @@ class ApiClient {
         if (offset === 0) {
           total = result.total || 0;
           console.log('[ApiClient] Total campaigns available:', total);
+          if (total === 0) {
+            console.warn('[ApiClient] Total is 0, but will continue to check if there is data');
+          }
         }
         
         const campaigns = result.data || [];
@@ -905,7 +908,14 @@ class ApiClient {
           break;
         }
         
-        console.log(`[ApiClient] Fetched ${campaigns.length} campaigns (offset: ${offset})`);
+        console.log(`[ApiClient] Fetched ${campaigns.length} campaigns (offset: ${offset}, total: ${total})`);
+        
+        // データが0件の場合は終了
+        if (campaigns.length === 0) {
+          console.log('[ApiClient] No more data: campaigns.length is 0');
+          hasMore = false;
+          break;
+        }
         
         // Convert backend CampaignResponse to frontend CampaignData
         const convertedCampaigns = campaigns.map((c: any) => ({
@@ -933,16 +943,26 @@ class ApiClient {
         allCampaigns.push(...convertedCampaigns);
         
         // 次のページがあるかチェック
-        if (campaigns.length < limit || allCampaigns.length >= total) {
+        // campaigns.length < limit の場合、これ以上データがない
+        // allCampaigns.length >= total の場合、全て取得済み
+        if (campaigns.length < limit) {
+          console.log(`[ApiClient] No more data: fetched ${campaigns.length} campaigns (less than limit ${limit})`);
+          hasMore = false;
+        } else if (total > 0 && allCampaigns.length >= total) {
+          console.log(`[ApiClient] All data fetched: ${allCampaigns.length} >= ${total}`);
           hasMore = false;
         } else {
           offset += limit;
+          console.log(`[ApiClient] Continuing to next page: offset=${offset}, current count=${allCampaigns.length}, total=${total}`);
         }
       }
       
       console.log('[ApiClient] ===== All campaigns fetched =====');
       console.log('[ApiClient] Total campaigns fetched:', allCampaigns.length);
       console.log('[ApiClient] Expected total:', total);
+      if (total > 0 && allCampaigns.length < total) {
+        console.warn(`[ApiClient] WARNING: Fetched ${allCampaigns.length} campaigns but expected ${total}. Some data may be missing.`);
+      }
       
       if (allCampaigns.length > 0) {
         console.log('[ApiClient] First campaign sample:', {
