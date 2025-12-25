@@ -619,28 +619,30 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
 
   // 利用可能なキャンペーン一覧を取得
   const availableCampaigns = useMemo(() => {
-    if (!data || data.length === 0) return [];
-    
-    // アセットが選択されている場合、そのアセットのキャンペーンのみを表示
-    let filteredData = data;
-    if (selectedMetaAccountId) {
-      filteredData = data.filter((d: CampaignData) => {
-        // meta_account_idが一致するキャンペーンのみ
-        return (d as any).meta_account_id === selectedMetaAccountId;
-      });
+    // dataが既にアセットでフィルタリングされている場合は、そのまま使用
+    // dataが空の場合は、propDataから取得を試みる（アセットが選択されていない場合のみ）
+    let sourceData = data;
+    if ((!data || data.length === 0) && !selectedMetaAccountId && propData && propData.length > 0) {
+      sourceData = propData;
     }
     
-    const campaigns = Array.from(new Set(filteredData.map(d => d.campaign_name))).sort();
+    if (!sourceData || sourceData.length === 0) {
+      console.log('[Dashboard] No data available for campaigns');
+      return [];
+    }
+    
+    // dataは既にアセットでフィルタリングされているので、そのまま使用
+    const campaigns = Array.from(new Set(sourceData.map(d => d.campaign_name))).sort();
     
     console.log('[Dashboard] Available campaigns:', {
       selectedMetaAccountId,
-      totalDataCount: data.length,
-      filteredDataCount: filteredData.length,
+      dataCount: data.length,
+      sourceDataCount: sourceData.length,
       campaigns: campaigns
     });
     
     return campaigns;
-  }, [data, selectedMetaAccountId]);
+  }, [data, propData, selectedMetaAccountId]);
 
   // 初回ロード時のみ日付範囲を自動設定（localStorageに保存されていない場合のみ）
   const [isInitialLoad, setIsInitialLoad] = useState(() => {
