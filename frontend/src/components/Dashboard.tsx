@@ -531,8 +531,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
           
           if (!Array.isArray(campaignsResponse)) {
             console.error('[Dashboard] Invalid campaigns response format:', campaignsResponse);
-            // API取得失敗時は、propDataがある場合はそれを使用、なければ以前のapiDataを保持
-            if (propData && propData.length > 0) {
+            // API取得失敗時は、アセットが選択されている場合は空配列を設定
+            // propDataはアセットでフィルタリングできないため使用しない
+            if (selectedMetaAccountId) {
+              console.warn('[Dashboard] Invalid response but asset is selected, clearing apiData');
+              setApiData([]);
+            } else if (propData && propData.length > 0) {
               console.log('[Dashboard] Using propData as fallback:', propData.length);
               setApiData(propData);
             } else {
@@ -564,8 +568,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
           setApiData(filteredCampaigns);
         } else {
           console.error('[Dashboard] Failed to load campaigns:', campaignsResult.reason);
-          // API取得失敗時は、propDataがある場合はそれを使用、なければ以前のapiDataを保持
-          if (propData && propData.length > 0) {
+          // API取得失敗時は、アセットが選択されている場合は空配列を設定
+          // propDataはアセットでフィルタリングできないため使用しない
+          if (selectedMetaAccountId) {
+            console.warn('[Dashboard] API failed but asset is selected, clearing apiData');
+            setApiData([]);
+          } else if (propData && propData.length > 0) {
             console.log('[Dashboard] Using propData as fallback:', propData.length);
             setApiData(propData);
           } else {
@@ -574,8 +582,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
         }
       } catch (error) {
         console.error('[Dashboard] Error loading dashboard data:', error);
-        // エラー時も、propDataがある場合はそれを使用、なければ以前のapiDataを保持
-        if (propData && propData.length > 0) {
+        // エラー時も、アセットが選択されている場合は空配列を設定
+        // propDataはアセットでフィルタリングできないため使用しない
+        if (selectedMetaAccountId) {
+          console.warn('[Dashboard] Error occurred but asset is selected, clearing apiData');
+          setApiData([]);
+        } else if (propData && propData.length > 0) {
           console.log('[Dashboard] Using propData as fallback after error:', propData.length);
           setApiData(propData);
         } else {
@@ -608,9 +620,27 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
   // 利用可能なキャンペーン一覧を取得
   const availableCampaigns = useMemo(() => {
     if (!data || data.length === 0) return [];
-    const campaigns = Array.from(new Set(data.map(d => d.campaign_name))).sort();
+    
+    // アセットが選択されている場合、そのアセットのキャンペーンのみを表示
+    let filteredData = data;
+    if (selectedMetaAccountId) {
+      filteredData = data.filter((d: CampaignData) => {
+        // meta_account_idが一致するキャンペーンのみ
+        return (d as any).meta_account_id === selectedMetaAccountId;
+      });
+    }
+    
+    const campaigns = Array.from(new Set(filteredData.map(d => d.campaign_name))).sort();
+    
+    console.log('[Dashboard] Available campaigns:', {
+      selectedMetaAccountId,
+      totalDataCount: data.length,
+      filteredDataCount: filteredData.length,
+      campaigns: campaigns
+    });
+    
     return campaigns;
-  }, [data]);
+  }, [data, selectedMetaAccountId]);
 
   // 初回ロード時のみ日付範囲を自動設定（localStorageに保存されていない場合のみ）
   const [isInitialLoad, setIsInitialLoad] = useState(() => {
