@@ -171,17 +171,42 @@ class DataService:
         for _, row in df.iterrows():
             # Get values with defaults (safely handle NaN)
             # row.get()がNaNを返す可能性があるため、safe_int/safe_floatで直接処理
-            impressions = DataService.safe_int(row.get('インプレッション'), 0)
-            clicks = DataService.safe_int(row.get('クリック数'), 0)
-            cost = DataService.safe_float(row.get('費用'), 0.0)
-            conversions = DataService.safe_int(row.get('コンバージョン数'), 0)
+            # Meta CSVフォーマット対応: 複数の列名バリエーションをサポート
+            impressions = DataService.safe_int(
+                row.get('インプレッション') or row.get('impressions') or row.get('Impressions'), 0
+            )
+            clicks = DataService.safe_int(
+                row.get('クリック数') or row.get('clicks') or row.get('Clicks') or row.get('クリック'), 0
+            )
+            cost = DataService.safe_float(
+                row.get('費用') or row.get('cost') or row.get('Cost') or 
+                row.get('消化金額 (JPY)') or row.get('消化金額') or row.get('Spend'), 0.0
+            )
+            # コンバージョン数: Meta CSVでは「結果」列に含まれる
+            conversions = DataService.safe_int(
+                row.get('コンバージョン数') or row.get('conversions') or row.get('Conversions') or 
+                row.get('結果') or row.get('result'), 0
+            )
             # Try multiple column name variations for conversion_value
-            conversion_value = DataService.safe_float(row.get('コンバージョン価値') or row.get('コンバージョン値'), 0.0)
+            conversion_value = DataService.safe_float(
+                row.get('コンバージョン価値') or row.get('コンバージョン値') or 
+                row.get('conversion_value') or row.get('Conversion Value'), 0.0
+            )
             # Additional engagement metrics (optional)
-            reach = DataService.safe_int(row.get('リーチ') or row.get('リーチ数'), 0)
-            engagements = DataService.safe_int(row.get('エンゲージメント') or row.get('エンゲージメント数'), 0)
-            link_clicks = DataService.safe_int(row.get('リンククリック'), 0)
-            landing_page_views = DataService.safe_int(row.get('ランディングページビュー'), 0)
+            reach = DataService.safe_int(
+                row.get('リーチ') or row.get('リーチ数') or row.get('reach') or row.get('Reach'), 0
+            )
+            engagements = DataService.safe_int(
+                row.get('エンゲージメント') or row.get('エンゲージメント数') or 
+                row.get('engagements') or row.get('Engagements'), 0
+            )
+            link_clicks = DataService.safe_int(
+                row.get('リンククリック') or row.get('link_clicks') or row.get('Link Clicks'), 0
+            )
+            landing_page_views = DataService.safe_int(
+                row.get('ランディングページビュー') or row.get('landing_page_views') or 
+                row.get('Landing Page Views'), 0
+            )
             
             # Calculate metrics
             row_dict = {
@@ -194,7 +219,12 @@ class DataService:
             metrics = DataService.calculate_metrics(row_dict)
             
             # Parse date - handle empty/NaT values
-            date_value = row.get('日付', '')
+            # Meta CSVフォーマット対応: レポート開始日を使用
+            date_value = (
+                row.get('日付') or row.get('date') or row.get('Date') or 
+                row.get('レポート開始日') or row.get('レポート終了日') or
+                row.get('date_start') or row.get('date_end')
+            )
             if pd.isna(date_value) or date_value == '' or str(date_value).lower() == 'nat':
                 continue  # Skip rows with invalid dates
             try:
@@ -203,9 +233,19 @@ class DataService:
                 continue  # Skip rows with invalid dates
             
             # Handle NaN values in string fields
-            campaign_name = str(row.get('キャンペーン名', '') or '').replace('nan', '').replace('NaN', '')
-            ad_set_name = str(row.get('広告セット名', '') or '').replace('nan', '').replace('NaN', '')
-            ad_name = str(row.get('広告名', '') or '').replace('nan', '').replace('NaN', '')
+            # Meta CSVフォーマット対応
+            campaign_name = str(
+                row.get('キャンペーン名', '') or row.get('campaign_name', '') or 
+                row.get('Campaign Name', '') or ''
+            ).replace('nan', '').replace('NaN', '')
+            ad_set_name = str(
+                row.get('広告セット名', '') or row.get('ad_set_name', '') or 
+                row.get('Ad Set Name', '') or row.get('広告セットの名前', '') or ''
+            ).replace('nan', '').replace('NaN', '')
+            ad_name = str(
+                row.get('広告名', '') or row.get('ad_name', '') or 
+                row.get('Ad Name', '') or row.get('広告の名前', '') or ''
+            ).replace('nan', '').replace('NaN', '')
             
             # Check for duplicate (same date, campaign_name, ad_set_name, ad_name)
             existing_campaign = db.query(Campaign).filter(
