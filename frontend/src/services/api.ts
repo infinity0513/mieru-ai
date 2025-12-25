@@ -850,91 +850,109 @@ class ApiClient {
     }
     
     try {
-      const params = new URLSearchParams();
-      if (metaAccountId) params.append('meta_account_id', metaAccountId);
-      if (startDate) params.append('start_date', startDate);
-      if (endDate) params.append('end_date', endDate);
-      // 最大1000件まで取得可能（バックエンドのlimit上限）
-      params.append('limit', '1000');
+      const allCampaigns: CampaignData[] = [];
+      const limit = 1000; // バックエンドのlimit上限
+      let offset = 0;
+      let total = 0;
+      let hasMore = true;
       
-      const url = `${this.baseURL}/campaigns/?${params}`;
-      console.log('[ApiClient] ===== Fetching campaigns =====');
-      console.log('[ApiClient] URL:', url);
+      console.log('[ApiClient] ===== Fetching all campaigns (with pagination) =====');
       console.log('[ApiClient] Parameters:', { metaAccountId, startDate, endDate });
-      console.log('[ApiClient] URLSearchParams:', params.toString());
       
-      const response = await fetch(url, {
-        credentials: 'include',  // CORS credentials をサポート
-        headers: this.getHeaders(),
-      });
-      
-      console.log('[ApiClient] Response status:', response.status, response.statusText);
-      
-      if (!response.ok) {
-        // 401エラーは統一処理
-        if (response.status === 401) {
-          this.handle401Error(response);
-        } else {
-          const errorText = await response.text();
-          console.error(`[ApiClient] Failed to fetch campaigns: ${response.status} ${response.statusText}`, errorText);
+      // ページネーションで全てのデータを取得
+      while (hasMore) {
+        const params = new URLSearchParams();
+        if (metaAccountId) params.append('meta_account_id', metaAccountId);
+        if (startDate) params.append('start_date', startDate);
+        if (endDate) params.append('end_date', endDate);
+        params.append('limit', String(limit));
+        params.append('offset', String(offset));
+        
+        const url = `${this.baseURL}/campaigns/?${params}`;
+        console.log(`[ApiClient] Fetching page: offset=${offset}, limit=${limit}`);
+        
+        const response = await fetch(url, {
+          credentials: 'include',  // CORS credentials をサポート
+          headers: this.getHeaders(),
+        });
+        
+        console.log('[ApiClient] Response status:', response.status, response.statusText);
+        
+        if (!response.ok) {
+          // 401エラーは統一処理
+          if (response.status === 401) {
+            this.handle401Error(response);
+          } else {
+            const errorText = await response.text();
+            console.error(`[ApiClient] Failed to fetch campaigns: ${response.status} ${response.statusText}`, errorText);
+          }
+          // If no campaigns found or error, return what we have so far
+          break;
         }
-        // If no campaigns found or error, return empty array
-        return [];
+        
+        const result = await response.json();
+        
+        // 初回リクエストでtotalを取得
+        if (offset === 0) {
+          total = result.total || 0;
+          console.log('[ApiClient] Total campaigns available:', total);
+        }
+        
+        const campaigns = result.data || [];
+        
+        if (!Array.isArray(campaigns)) {
+          console.warn("[ApiClient] Invalid campaigns response format:", result);
+          break;
+        }
+        
+        console.log(`[ApiClient] Fetched ${campaigns.length} campaigns (offset: ${offset})`);
+        
+        // Convert backend CampaignResponse to frontend CampaignData
+        const convertedCampaigns = campaigns.map((c: any) => ({
+          id: String(c.id),
+          date: c.date,
+          campaign_name: c.campaign_name,
+          impressions: c.impressions,
+          clicks: c.clicks,
+          cost: Number(c.cost),
+          conversions: c.conversions,
+          conversion_value: Number(c.conversion_value),
+          ctr: Number(c.ctr || 0),
+          cpc: Number(c.cpc || 0),
+          cpa: Number(c.cpa || 0),
+          roas: Number(c.roas || 0),
+          cpm: Number(c.cpm || 0),
+          cvr: Number(c.cvr || 0),
+          // Additional engagement metrics
+          reach: Number(c.reach || 0),
+          engagements: Number(c.engagements || 0),
+          link_clicks: Number(c.link_clicks || 0),
+          landing_page_views: Number(c.landing_page_views || 0)
+        }));
+        
+        allCampaigns.push(...convertedCampaigns);
+        
+        // 次のページがあるかチェック
+        if (campaigns.length < limit || allCampaigns.length >= total) {
+          hasMore = false;
+        } else {
+          offset += limit;
+        }
       }
       
-      const result = await response.json();
-      console.log('[ApiClient] ===== Campaigns response received =====');
-      console.log('[ApiClient] Response data:', {
-        hasData: !!result.data,
-        dataType: Array.isArray(result.data) ? 'array' : typeof result.data,
-        dataLength: Array.isArray(result.data) ? result.data.length : 'N/A',
-        total: result.total,
-        metaAccountId: metaAccountId,
-        sampleData: result.data && result.data.length > 0 ? {
-          firstCampaign: result.data[0],
-          meta_account_id: result.data[0]?.meta_account_id
-        } : null
-      });
+      console.log('[ApiClient] ===== All campaigns fetched =====');
+      console.log('[ApiClient] Total campaigns fetched:', allCampaigns.length);
+      console.log('[ApiClient] Expected total:', total);
       
-      const campaigns = result.data || result; // Handle both paginated and list responses
-      
-      if (!Array.isArray(campaigns)) {
-        console.warn("[ApiClient] Invalid campaigns response format:", result);
-        return [];
-      }
-      
-      console.log('[ApiClient] ===== Returning campaigns array =====');
-      console.log('[ApiClient] Campaigns array length:', campaigns.length);
-      if (campaigns.length > 0) {
+      if (allCampaigns.length > 0) {
         console.log('[ApiClient] First campaign sample:', {
-          campaign_name: campaigns[0].campaign_name,
-          meta_account_id: campaigns[0].meta_account_id,
-          date: campaigns[0].date
+          campaign_name: allCampaigns[0].campaign_name,
+          meta_account_id: (allCampaigns[0] as any).meta_account_id,
+          date: allCampaigns[0].date
         });
       }
       
-      // Convert backend CampaignResponse to frontend CampaignData
-      return campaigns.map((c: any) => ({
-        id: String(c.id),
-        date: c.date,
-        campaign_name: c.campaign_name,
-        impressions: c.impressions,
-        clicks: c.clicks,
-        cost: Number(c.cost),
-        conversions: c.conversions,
-        conversion_value: Number(c.conversion_value),
-        ctr: Number(c.ctr || 0),
-        cpc: Number(c.cpc || 0),
-        cpa: Number(c.cpa || 0),
-        roas: Number(c.roas || 0),
-        cpm: Number(c.cpm || 0),
-        cvr: Number(c.cvr || 0),
-        // Additional engagement metrics
-        reach: Number(c.reach || 0),
-        engagements: Number(c.engagements || 0),
-        link_clicks: Number(c.link_clicks || 0),
-        landing_page_views: Number(c.landing_page_views || 0)
-      }));
+      return allCampaigns;
     } catch (error: any) {
       console.error("Failed to fetch campaigns:", error);
       
