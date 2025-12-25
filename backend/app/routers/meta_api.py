@@ -42,6 +42,45 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
         async with httpx.AsyncClient() as client:
             all_insights = []
             all_adsets = []
+            all_campaigns = []
+            
+            # キャンペーン一覧を取得（ページネーション対応）
+            print(f"[Meta API] Fetching campaigns from account: {account_id}")
+            campaigns_url = f"https://graph.facebook.com/v24.0/{account_id}/campaigns"
+            campaigns_params = {
+                "access_token": access_token,
+                "fields": "id,name,status,objective,created_time,updated_time",
+                "limit": 100  # Meta APIの最大取得件数
+            }
+            
+            # ページネーション処理（すべてのcampaignsを取得）
+            campaigns_page_count = 0
+            while True:
+                campaigns_page_count += 1
+                print(f"[Meta API] Fetching campaigns page {campaigns_page_count}...")
+                campaigns_response = await client.get(campaigns_url, params=campaigns_params)
+                campaigns_response.raise_for_status()
+                campaigns_data = campaigns_response.json()
+                
+                # 取得したキャンペーンを追加
+                page_campaigns = campaigns_data.get('data', [])
+                all_campaigns.extend(page_campaigns)
+                print(f"[Meta API] Retrieved {len(page_campaigns)} campaigns (total: {len(all_campaigns)})")
+                
+                # 次のページがあるかチェック
+                paging = campaigns_data.get('paging', {})
+                next_url = paging.get('next')
+                
+                if not next_url:
+                    # 次のページがない場合は終了
+                    print(f"[Meta API] No more campaign pages. Total campaigns retrieved: {len(all_campaigns)}")
+                    break
+                
+                # 次のページのURLを設定（パラメータをクリア）
+                campaigns_url = next_url
+                campaigns_params = {}  # URLにパラメータが含まれているためクリア
+            
+            print(f"[Meta API] Total campaigns fetched: {len(all_campaigns)}")
             
             # 広告セット一覧を取得（ページネーション対応）
             print(f"[Meta API] Fetching adsets from account: {account_id}")
