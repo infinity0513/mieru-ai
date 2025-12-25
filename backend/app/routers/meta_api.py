@@ -194,6 +194,31 @@ async def get_meta_accounts(
     # アカウントIDのリストを作成
     account_ids = [acc[0] for acc in accounts if acc[0]]
     
+    # Meta APIからアカウント名を取得（アクセストークンがある場合）
+    account_names = {}
+    if current_user.meta_access_token:
+        try:
+            async with httpx.AsyncClient() as client:
+                # すべての広告アカウント情報を取得
+                accounts_url = "https://graph.facebook.com/v24.0/me/adaccounts"
+                accounts_params = {
+                    "access_token": current_user.meta_access_token,
+                    "fields": "account_id,id,name"
+                }
+                
+                accounts_response = await client.get(accounts_url, params=accounts_params)
+                accounts_response.raise_for_status()
+                accounts_data = accounts_response.json()
+                
+                if "data" in accounts_data:
+                    for account in accounts_data["data"]:
+                        account_id = account.get("id")
+                        account_name = account.get("name", account_id)
+                        account_names[account_id] = account_name
+        except Exception as e:
+            print(f"[Meta Accounts] Error fetching account names: {str(e)}")
+            # エラーが発生しても続行（アカウントIDをそのまま使用）
+    
     # 各アカウントの統計情報を取得
     result = []
     for account_id in account_ids:
@@ -209,9 +234,12 @@ async def get_meta_accounts(
             Campaign.meta_account_id == account_id
         ).scalar()
         
+        # アカウント名を取得（Meta APIから取得できた場合はそれを使用、なければアカウントID）
+        account_name = account_names.get(account_id, account_id)
+        
         result.append({
             "account_id": account_id,
-            "name": account_id,  # アカウント名は後でMeta APIから取得可能
+            "name": account_name,
             "data_count": count,
             "latest_date": str(latest_date) if latest_date else None
         })

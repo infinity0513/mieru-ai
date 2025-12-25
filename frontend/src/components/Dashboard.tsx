@@ -972,14 +972,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
         />
       )}
 
-      {/* Advanced Filter Bar */}
-      <div className="bg-white dark:bg-gray-800 p-3 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm no-print space-y-3 lg:space-y-0 lg:flex lg:items-start lg:gap-3 transition-colors">
-        
-        {/* Meta Account (Asset) Selection */}
-        {metaAccounts.length > 0 && (
-          <div className="flex items-center space-x-2">
-            <label className="text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap flex items-center">
-              <Target size={14} className="mr-1" />
+      {/* Asset Selection - Top Row */}
+      {metaAccounts.length > 0 && (
+        <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm no-print mb-4">
+          <div className="flex items-center space-x-3">
+            <label className="text-sm font-semibold text-gray-700 dark:text-gray-300 whitespace-nowrap flex items-center">
+              <Target size={16} className="mr-2 text-indigo-600 dark:text-indigo-400" />
               アセット:
             </label>
             <select
@@ -993,7 +991,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
                   // 無視
                 }
               }}
-              className="block w-full pl-3 pr-10 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg text-sm focus:ring-indigo-500 focus:border-indigo-500"
+              className="flex-1 max-w-md pl-3 pr-10 py-2.5 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg text-sm font-medium focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
             >
               <option value="">全アセット</option>
               {metaAccounts.map((account) => (
@@ -1003,8 +1001,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
               ))}
             </select>
           </div>
-        )}
+        </div>
+      )}
 
+      {/* Advanced Filter Bar - Campaign and Date Selection */}
+      <div className="bg-white dark:bg-gray-800 p-3 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm no-print space-y-3 lg:space-y-0 lg:flex lg:items-start lg:gap-3 transition-colors">
+        
         {/* Campaign Selection Tabs */}
         <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
