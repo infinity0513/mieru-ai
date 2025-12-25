@@ -242,11 +242,9 @@ const CampaignDetailModal = ({ campaignName, allData, onClose }: { campaignName:
               </div>
 
               {/* リーチ・エンゲージメント指標 */}
-              {(stats.totalReach > 0 || stats.frequency > 0 || stats.engagementRate > 0 || stats.totalLinkClicks > 0 || stats.totalLandingPageViews > 0) && (
                 <div>
                   <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-4 break-words">リーチ・エンゲージメント指標</h4>
-                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-              {stats.totalReach > 0 && (
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
                       <div className="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-3 border border-purple-200 dark:border-purple-800 min-w-0 overflow-hidden">
                         <div className="text-xs text-purple-600 dark:text-purple-400 mb-1 font-medium truncate">リーチ数</div>
                         <div className="text-lg font-bold text-purple-700 dark:text-purple-300 break-words leading-tight">
@@ -254,8 +252,6 @@ const CampaignDetailModal = ({ campaignName, allData, onClose }: { campaignName:
                         </div>
                         <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate">合計</div>
                 </div>
-              )}
-              {stats.frequency > 0 && (
                       <div className="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-3 border border-purple-200 dark:border-purple-800 min-w-0 overflow-hidden">
                         <div className="text-xs text-purple-600 dark:text-purple-400 mb-1 font-medium truncate">フリークエンシー</div>
                         <div className="text-lg font-bold text-purple-700 dark:text-purple-300 break-words leading-tight">
@@ -263,8 +259,13 @@ const CampaignDetailModal = ({ campaignName, allData, onClose }: { campaignName:
                 </div>
                         <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate">平均</div>
             </div>
-                    )}
-                {stats.engagementRate > 0 && (
+                  <div className="bg-pink-50 dark:bg-pink-900/20 rounded-lg p-3 border border-pink-200 dark:border-pink-800 min-w-0 overflow-hidden">
+                    <div className="text-xs text-pink-600 dark:text-pink-400 mb-1 font-medium truncate">エンゲージメント数</div>
+                    <div className="text-lg font-bold text-pink-700 dark:text-pink-300 break-words leading-tight">
+                      {(stats.totalEngagements || 0).toLocaleString()}
+                    </div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate">合計</div>
+                  </div>
                       <div className="bg-pink-50 dark:bg-pink-900/20 rounded-lg p-3 border border-pink-200 dark:border-pink-800 min-w-0 overflow-hidden">
                         <div className="text-xs text-pink-600 dark:text-pink-400 mb-1 font-medium truncate">エンゲージメント率</div>
                         <div className="text-lg font-bold text-pink-700 dark:text-pink-300 break-words leading-tight">
@@ -272,8 +273,6 @@ const CampaignDetailModal = ({ campaignName, allData, onClose }: { campaignName:
                         </div>
                         <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate">平均</div>
                   </div>
-                )}
-                {stats.totalLinkClicks > 0 && (
                       <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-3 border border-blue-200 dark:border-blue-800 min-w-0 overflow-hidden">
                         <div className="text-xs text-blue-600 dark:text-blue-400 mb-1 font-medium truncate">リンククリック数</div>
                         <div className="text-lg font-bold text-blue-700 dark:text-blue-300 break-words leading-tight">
@@ -281,8 +280,6 @@ const CampaignDetailModal = ({ campaignName, allData, onClose }: { campaignName:
                         </div>
                         <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate">合計</div>
                   </div>
-                )}
-                {stats.totalLandingPageViews > 0 && (
                       <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-3 border border-green-200 dark:border-green-800 min-w-0 overflow-hidden">
                         <div className="text-xs text-green-600 dark:text-green-400 mb-1 font-medium truncate">LPビュー数</div>
                         <div className="text-lg font-bold text-green-700 dark:text-green-300 break-words leading-tight">
@@ -290,10 +287,8 @@ const CampaignDetailModal = ({ campaignName, allData, onClose }: { campaignName:
                         </div>
                         <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate">合計</div>
                   </div>
-                )}
                   </div>
               </div>
-            )}
             </div>
 
             {/* Detailed Chart */}
@@ -1149,7 +1144,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
                         <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-transparent dark:scrollbar-thumb-gray-600 dark:scrollbar-track-transparent hover:scrollbar-track-gray-100 dark:hover:scrollbar-track-gray-800 [&::-webkit-scrollbar-thumb]:bg-transparent [&::-webkit-scrollbar-thumb]:hover:bg-gray-300">
                             <div className="flex items-center gap-2 min-w-fit">
                                 {/* 全体タブ */}
-                                <button 
+                <button 
                                     onClick={() => {
                                         setSelectedCampaign(null);
                                         try {
@@ -1165,7 +1160,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
                                     }`}
                                 >
                                     全体
-                                </button>
+                </button>
                                 {/* キャンペーンタブ */}
                                 {availableCampaigns.map(campaign => (
                                     <button
@@ -1408,11 +1403,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
       </div>
 
         {/* リーチ・エンゲージメント指標 */}
-        {(kpiData.totalReach > 0 || kpiData.frequency > 0 || kpiData.engagementRate > 0 || kpiData.totalLinkClicks > 0 || kpiData.totalLandingPageViews > 0) && (
           <div>
             <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-4 break-words">リーチ・エンゲージメント指標</h4>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-              {kpiData.totalReach > 0 && (
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
                 <div className="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-3 border border-purple-200 dark:border-purple-800 min-w-0 overflow-hidden">
                   <div className="text-xs text-purple-600 dark:text-purple-400 mb-1 font-medium truncate">リーチ数</div>
                   <div className="text-lg font-bold text-purple-700 dark:text-purple-300 break-words leading-tight">
@@ -1420,8 +1413,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
                   </div>
                   <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate">合計</div>
                 </div>
-              )}
-              {kpiData.frequency > 0 && (
                 <div className="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-3 border border-purple-200 dark:border-purple-800 min-w-0 overflow-hidden">
                   <div className="text-xs text-purple-600 dark:text-purple-400 mb-1 font-medium truncate">フリークエンシー</div>
                   <div className="text-lg font-bold text-purple-700 dark:text-purple-300 break-words leading-tight">
@@ -1429,8 +1420,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
                   </div>
                   <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate">平均</div>
                 </div>
-              )}
-              {kpiData.engagementRate > 0 && (
+            <div className="bg-pink-50 dark:bg-pink-900/20 rounded-lg p-3 border border-pink-200 dark:border-pink-800 min-w-0 overflow-hidden">
+              <div className="text-xs text-pink-600 dark:text-pink-400 mb-1 font-medium truncate">エンゲージメント数</div>
+              <div className="text-lg font-bold text-pink-700 dark:text-pink-300 break-words leading-tight">
+                {kpiData.totalEngagements.toLocaleString()}
+              </div>
+              <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate">合計</div>
+            </div>
                 <div className="bg-pink-50 dark:bg-pink-900/20 rounded-lg p-3 border border-pink-200 dark:border-pink-800 min-w-0 overflow-hidden">
                   <div className="text-xs text-pink-600 dark:text-pink-400 mb-1 font-medium truncate">エンゲージメント率</div>
                   <div className="text-lg font-bold text-pink-700 dark:text-pink-300 break-words leading-tight">
@@ -1438,8 +1434,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
                   </div>
                   <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate">平均</div>
                 </div>
-              )}
-              {kpiData.totalLinkClicks > 0 && (
                 <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-3 border border-blue-200 dark:border-blue-800 min-w-0 overflow-hidden">
                   <div className="text-xs text-blue-600 dark:text-blue-400 mb-1 font-medium truncate">リンククリック数</div>
                   <div className="text-lg font-bold text-blue-700 dark:text-blue-300 break-words leading-tight">
@@ -1447,8 +1441,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
                   </div>
                   <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate">合計</div>
                 </div>
-              )}
-              {kpiData.totalLandingPageViews > 0 && (
                 <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-3 border border-green-200 dark:border-green-800 min-w-0 overflow-hidden">
                   <div className="text-xs text-green-600 dark:text-green-400 mb-1 font-medium truncate">LPビュー数</div>
                   <div className="text-lg font-bold text-green-700 dark:text-green-300 break-words leading-tight">
@@ -1456,10 +1448,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
                   </div>
                   <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate">合計</div>
                 </div>
-              )}
             </div>
           </div>
-        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 print:block print:space-y-6">
