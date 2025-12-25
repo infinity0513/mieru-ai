@@ -1130,14 +1130,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
       )}
 
       {/* Advanced Filter Bar - Campaign and Date Selection */}
-      <div className="bg-white dark:bg-gray-800 p-3 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm no-print space-y-3 lg:space-y-0 lg:flex lg:items-start lg:gap-3 transition-colors">
+      <div className="bg-white dark:bg-gray-800 p-3 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm no-print space-y-3 lg:space-y-0 lg:flex lg:items-center lg:gap-3 transition-colors">
         
         {/* Campaign Selection Tabs */}
         <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
                 <label className="text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap flex items-center shrink-0">
                     <Filter size={14} className="mr-1" />
-                    キャンペーン:
+                    キャンペーン
                 </label>
                 <div className="relative flex-1 min-w-0">
                     <div className="block w-full pl-3 pr-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg overflow-hidden">
