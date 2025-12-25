@@ -1072,35 +1072,35 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
               </div>
             </div>
             <div className="flex-1">
-              <label className="block text-sm font-bold text-gray-700 dark:text-gray-200 mb-2 flex items-center gap-2">
+              <label className="block text-sm font-bold text-gray-700 dark:text-gray-200 mb-2">
                 アセット選択
-                <MousePointer size={16} className="text-indigo-600 dark:text-indigo-400" />
               </label>
-              <select
-                value={selectedMetaAccountId || ''}
-                onChange={async (e) => {
-                  const newAccountId = e.target.value || null;
-                  console.log('[Dashboard] Asset selection changed:', {
-                    old: selectedMetaAccountId,
-                    new: newAccountId
-                  });
-                  
-                  // アセットIDを更新
-                  setSelectedMetaAccountId(newAccountId);
-                  
-                  try {
-                    localStorage.setItem('dashboard_selectedMetaAccountId', newAccountId || '');
-                  } catch (err) {
-                    console.error('[Dashboard] Failed to save asset selection to localStorage:', err);
-                  }
-                  
-                  // useEffectが自動的に実行されるはずだが、念のため明示的にデータを再読み込み
-                  // ただし、setSelectedMetaAccountIdが非同期で更新されるため、
-                  // useEffectの依存配列にselectedMetaAccountIdが含まれているので自動的に再読み込みされる
-                  console.log('[Dashboard] Asset selection updated, useEffect should trigger data reload');
-                }}
-                className="w-full max-w-md pl-4 pr-12 py-3 border-2 border-indigo-300 dark:border-indigo-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white rounded-lg text-base font-semibold focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 shadow-sm hover:border-indigo-400 dark:hover:border-indigo-500 transition-colors"
-              >
+              <div className="relative flex items-center gap-2">
+                <select
+                  value={selectedMetaAccountId || ''}
+                  onChange={async (e) => {
+                    const newAccountId = e.target.value || null;
+                    console.log('[Dashboard] Asset selection changed:', {
+                      old: selectedMetaAccountId,
+                      new: newAccountId
+                    });
+                    
+                    // アセットIDを更新
+                    setSelectedMetaAccountId(newAccountId);
+                    
+                    try {
+                      localStorage.setItem('dashboard_selectedMetaAccountId', newAccountId || '');
+                    } catch (err) {
+                      console.error('[Dashboard] Failed to save asset selection to localStorage:', err);
+                    }
+                    
+                    // useEffectが自動的に実行されるはずだが、念のため明示的にデータを再読み込み
+                    // ただし、setSelectedMetaAccountIdが非同期で更新されるため、
+                    // useEffectの依存配列にselectedMetaAccountIdが含まれているので自動的に再読み込みされる
+                    console.log('[Dashboard] Asset selection updated, useEffect should trigger data reload');
+                  }}
+                  className="w-full max-w-md pl-4 pr-12 py-3 border-2 border-indigo-300 dark:border-indigo-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white rounded-lg text-base font-semibold focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 shadow-sm hover:border-indigo-400 dark:hover:border-indigo-500 transition-colors"
+                >
                 <option value="">全アセットを表示</option>
                 {metaAccounts.map((account) => (
                   <option key={account.account_id} value={account.account_id}>
@@ -1108,6 +1108,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
                   </option>
                 ))}
               </select>
+              <MousePointer size={20} className="text-indigo-600 dark:text-indigo-400 flex-shrink-0" />
+              </div>
             </div>
             {selectedMetaAccountId && (
               <div className="flex-shrink-0">
