@@ -656,19 +656,16 @@ export const DailyData: React.FC<DailyDataProps> = ({ data: propData }) => {
         </div>
       </div>
 
-      {/* Loading State */}
-      {loading && (
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-8">
-          <div className="flex justify-center items-center">
-            <div className="animate-spin h-8 w-8 border-b-2 border-indigo-600 dark:border-indigo-400 rounded-full"></div>
-            <p className="ml-4 text-gray-500 dark:text-gray-400">データを読み込み中...</p>
-          </div>
-        </div>
-      )}
-
       {/* Data Table */}
-      {!loading && (
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
+        {loading ? (
+          <div className="p-8">
+            <div className="flex justify-center items-center">
+              <div className="animate-spin h-8 w-8 border-b-2 border-indigo-600 dark:border-indigo-400 rounded-full"></div>
+              <p className="ml-4 text-gray-500 dark:text-gray-400">データを読み込み中...</p>
+            </div>
+          </div>
+        ) : (
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
             <thead className="bg-gray-50 dark:bg-gray-900">
@@ -799,8 +796,8 @@ export const DailyData: React.FC<DailyDataProps> = ({ data: propData }) => {
             </tbody>
           </table>
         </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Summary */}
       {!loading && dailyData.length > 0 && (
