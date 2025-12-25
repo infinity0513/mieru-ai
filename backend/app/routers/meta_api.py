@@ -38,7 +38,8 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
     # Meta APIは1回のリクエストで最大37ヶ月（約3年）のデータを取得可能
     # より長期間のデータが必要な場合は、複数回に分けて取得する必要がある
     # ここでは最大37ヶ月（約1125日）を設定
-    since = (datetime.utcnow() - timedelta(days=1125)).strftime('%Y-%m-%d')
+    # Meta APIの推奨期間は90日以内に制限
+    since = (datetime.utcnow() - timedelta(days=90)).strftime('%Y-%m-%d')
     
     try:
         async with httpx.AsyncClient() as client:
