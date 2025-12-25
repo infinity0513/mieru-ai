@@ -658,16 +658,8 @@ export const DailyData: React.FC<DailyDataProps> = ({ data: propData }) => {
 
       {/* Data Table */}
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
-        {loading ? (
-          <div className="p-8">
-            <div className="flex justify-center items-center">
-              <div className="animate-spin h-8 w-8 border-b-2 border-indigo-600 dark:border-indigo-400 rounded-full"></div>
-              <p className="ml-4 text-gray-500 dark:text-gray-400">データを読み込み中...</p>
-            </div>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
               <thead className="bg-gray-50 dark:bg-gray-900">
                 <tr>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider sticky left-0 bg-gray-50 dark:bg-gray-900 z-10">
@@ -726,77 +718,85 @@ export const DailyData: React.FC<DailyDataProps> = ({ data: propData }) => {
                   </th>
                 </tr>
               </thead>
-              <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                {dailyData.length === 0 ? (
-                  <tr>
-                    <td colSpan={18} className="px-4 py-8 text-center text-gray-500 dark:text-gray-400">
-                      データがありません
+            <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+              {loading ? (
+                <tr>
+                  <td colSpan={18} className="px-4 py-8 text-center text-gray-500 dark:text-gray-400">
+                    <div className="flex justify-center items-center">
+                      <div className="animate-spin h-8 w-8 border-b-2 border-indigo-600 dark:border-indigo-400 rounded-full"></div>
+                      <p className="ml-4">データを読み込み中...</p>
+                    </div>
+                  </td>
+                </tr>
+              ) : dailyData.length === 0 ? (
+                <tr>
+                  <td colSpan={18} className="px-4 py-8 text-center text-gray-500 dark:text-gray-400">
+                    データがありません
+                  </td>
+                </tr>
+              ) : (
+                dailyData.map((row, idx) => (
+                  <tr key={`${row.date}_${row.campaign_name}_${idx}`} className="hover:bg-gray-50 dark:hover:bg-gray-700">
+                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white sticky left-0 bg-white dark:bg-gray-800 z-10">
+                      {new Date(row.date).toLocaleDateString('ja-JP')}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white sticky left-16 bg-white dark:bg-gray-800 z-10">
+                      {row.campaign_name}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
+                      {row.impressions.toLocaleString()}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
+                      {row.clicks.toLocaleString()}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
+                      ¥{row.cost.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
+                      {row.conversions.toLocaleString()}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
+                      ¥{row.conversion_value.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
+                      {row.roas.toFixed(2)}%
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
+                      {row.ctr.toFixed(2)}%
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
+                      {row.cvr.toFixed(2)}%
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
+                      ¥{row.cpc.toFixed(2)}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
+                      ¥{row.cpa.toFixed(2)}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
+                      ¥{row.cpm.toFixed(2)}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
+                      {row.reach > 0 ? row.reach.toLocaleString() : '-'}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
+                      {row.frequency > 0 ? row.frequency.toFixed(2) : '-'}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
+                      {row.engagement_rate > 0 ? `${row.engagement_rate.toFixed(2)}%` : '-'}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
+                      {row.link_clicks > 0 ? row.link_clicks.toLocaleString() : '-'}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
+                      {row.landing_page_views > 0 ? row.landing_page_views.toLocaleString() : '-'}
                     </td>
                   </tr>
-                ) : (
-                  dailyData.map((row, idx) => (
-                    <tr key={`${row.date}_${row.campaign_name}_${idx}`} className="hover:bg-gray-50 dark:hover:bg-gray-700">
-                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white sticky left-0 bg-white dark:bg-gray-800 z-10">
-                        {new Date(row.date).toLocaleDateString('ja-JP')}
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white sticky left-16 bg-white dark:bg-gray-800 z-10">
-                        {row.campaign_name}
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
-                        {row.impressions.toLocaleString()}
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
-                        {row.clicks.toLocaleString()}
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
-                        ¥{row.cost.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
-                        {row.conversions.toLocaleString()}
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
-                        ¥{row.conversion_value.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
-                        {row.roas.toFixed(2)}%
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
-                        {row.ctr.toFixed(2)}%
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
-                        {row.cvr.toFixed(2)}%
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
-                        ¥{row.cpc.toFixed(2)}
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
-                        ¥{row.cpa.toFixed(2)}
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
-                        ¥{row.cpm.toFixed(2)}
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
-                        {row.reach > 0 ? row.reach.toLocaleString() : '-'}
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
-                        {row.frequency > 0 ? row.frequency.toFixed(2) : '-'}
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
-                        {row.engagement_rate > 0 ? `${row.engagement_rate.toFixed(2)}%` : '-'}
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
-                        {row.link_clicks > 0 ? row.link_clicks.toLocaleString() : '-'}
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
-                        {row.landing_page_views > 0 ? row.landing_page_views.toLocaleString() : '-'}
-                      </td>
-                    </tr>
-                  ))
-                )}
+                ))
+              )}
               </tbody>
-            </table>
+          </table>
         </div>
-        )}
       </div>
 
       {/* Summary */}
