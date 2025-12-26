@@ -1237,8 +1237,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
                 <button 
                                     onClick={() => {
                                         setSelectedCampaign(null);
+                                        setSelectedAdSet(null); // 全体を選択したら広告セットと広告をクリア
+                                        setSelectedAd(null);
                                         try {
                                             localStorage.setItem('dashboard_selectedCampaign', '');
+                                            localStorage.setItem('dashboard_selectedAdSet', '');
+                                            localStorage.setItem('dashboard_selectedAd', '');
                                         } catch (err) {
                                             // 無視
                                         }
@@ -1255,14 +1259,18 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
                                 {availableCampaigns.map(campaign => (
                                     <button
                                         key={campaign}
-                                        onClick={() => {
-                                            setSelectedCampaign(campaign);
-                                            try {
-                                                localStorage.setItem('dashboard_selectedCampaign', campaign);
-                                            } catch (err) {
-                                                // 無視
-                                            }
-                                        }}
+                                    onClick={() => {
+                                        setSelectedCampaign(campaign);
+                                        setSelectedAdSet(null); // キャンペーンを変更したら広告セットと広告をクリア
+                                        setSelectedAd(null);
+                                        try {
+                                            localStorage.setItem('dashboard_selectedCampaign', campaign);
+                                            localStorage.setItem('dashboard_selectedAdSet', '');
+                                            localStorage.setItem('dashboard_selectedAd', '');
+                                        } catch (err) {
+                                            // 無視
+                                        }
+                                    }}
                                         className={`px-3 py-1.5 text-sm font-medium rounded-lg border transition-colors whitespace-nowrap shrink-0 ${
                                             selectedCampaign === campaign
                                                 ? 'bg-indigo-50 border-indigo-500 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300 dark:border-indigo-500'
@@ -1278,6 +1286,128 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
                 </div>
             </div>
         </div>
+        
+        {/* Ad Set Selection - キャンペーンが選択されている場合のみ表示 */}
+        {selectedCampaign && availableAdSets.length > 0 && (
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap flex items-center shrink-0">
+                <Filter size={14} className="mr-1" />
+                広告セット
+              </label>
+              <div className="relative flex-1 min-w-0">
+                <div className="block w-full pl-3 pr-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg overflow-hidden">
+                  <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-transparent dark:scrollbar-thumb-gray-600 dark:scrollbar-track-transparent hover:scrollbar-track-gray-100 dark:hover:scrollbar-track-gray-800 [&::-webkit-scrollbar-thumb]:bg-transparent [&::-webkit-scrollbar-thumb]:hover:bg-gray-300">
+                    <div className="flex items-center gap-2 min-w-fit">
+                      {/* 全体タブ */}
+                      <button 
+                        onClick={() => {
+                          setSelectedAdSet(null);
+                          setSelectedAd(null); // 広告セットをクリアしたら広告もクリア
+                          try {
+                            localStorage.setItem('dashboard_selectedAdSet', '');
+                            localStorage.setItem('dashboard_selectedAd', '');
+                          } catch (err) {
+                            // 無視
+                          }
+                        }}
+                        className={`px-3 py-1.5 text-sm font-medium rounded-lg border transition-colors whitespace-nowrap shrink-0 ${
+                          selectedAdSet === null
+                            ? 'bg-indigo-50 border-indigo-500 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300 dark:border-indigo-500'
+                            : 'border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300'
+                        }`}
+                      >
+                        全体
+                      </button>
+                      {/* 広告セットタブ */}
+                      {availableAdSets.map(adSet => (
+                        <button
+                          key={adSet}
+                          onClick={() => {
+                            setSelectedAdSet(adSet);
+                            setSelectedAd(null); // 広告セットを変更したら広告をクリア
+                            try {
+                              localStorage.setItem('dashboard_selectedAdSet', adSet);
+                              localStorage.setItem('dashboard_selectedAd', '');
+                            } catch (err) {
+                              // 無視
+                            }
+                          }}
+                          className={`px-3 py-1.5 text-sm font-medium rounded-lg border transition-colors whitespace-nowrap shrink-0 ${
+                            selectedAdSet === adSet
+                              ? 'bg-indigo-50 border-indigo-500 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300 dark:border-indigo-500'
+                              : 'border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300'
+                          }`}
+                        >
+                          {adSet}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+        
+        {/* Ad Selection - 広告セットが選択されている場合のみ表示 */}
+        {selectedAdSet && availableAds.length > 0 && (
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap flex items-center shrink-0">
+                <Filter size={14} className="mr-1" />
+                広告
+              </label>
+              <div className="relative flex-1 min-w-0">
+                <div className="block w-full pl-3 pr-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg overflow-hidden">
+                  <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-transparent dark:scrollbar-thumb-gray-600 dark:scrollbar-track-transparent hover:scrollbar-track-gray-100 dark:hover:scrollbar-track-gray-800 [&::-webkit-scrollbar-thumb]:bg-transparent [&::-webkit-scrollbar-thumb]:hover:bg-gray-300">
+                    <div className="flex items-center gap-2 min-w-fit">
+                      {/* 全体タブ */}
+                      <button 
+                        onClick={() => {
+                          setSelectedAd(null);
+                          try {
+                            localStorage.setItem('dashboard_selectedAd', '');
+                          } catch (err) {
+                            // 無視
+                          }
+                        }}
+                        className={`px-3 py-1.5 text-sm font-medium rounded-lg border transition-colors whitespace-nowrap shrink-0 ${
+                          selectedAd === null
+                            ? 'bg-indigo-50 border-indigo-500 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300 dark:border-indigo-500'
+                            : 'border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300'
+                        }`}
+                      >
+                        全体
+                      </button>
+                      {/* 広告タブ */}
+                      {availableAds.map(ad => (
+                        <button
+                          key={ad}
+                          onClick={() => {
+                            setSelectedAd(ad);
+                            try {
+                              localStorage.setItem('dashboard_selectedAd', ad);
+                            } catch (err) {
+                              // 無視
+                            }
+                          }}
+                          className={`px-3 py-1.5 text-sm font-medium rounded-lg border transition-colors whitespace-nowrap shrink-0 ${
+                            selectedAd === ad
+                              ? 'bg-indigo-50 border-indigo-500 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300 dark:border-indigo-500'
+                              : 'border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300'
+                          }`}
+                        >
+                          {ad}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="flex flex-col sm:flex-row sm:items-center space-y-3 sm:space-y-0 sm:space-x-4">
             {/* Date Range Inputs */}
