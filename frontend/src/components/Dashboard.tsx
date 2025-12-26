@@ -449,6 +449,33 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     }
     return null; // nullの場合は全キャンペーン表示
   });
+  
+  // 広告セット選択
+  const [selectedAdSet, setSelectedAdSet] = useState<string | null>(() => {
+    try {
+      const saved = localStorage.getItem('dashboard_selectedAdSet');
+      if (saved !== null && saved !== '') {
+        return saved;
+      }
+    } catch (e) {
+      // 無視
+    }
+    return null;
+  });
+  
+  // 広告選択
+  const [selectedAd, setSelectedAd] = useState<string | null>(() => {
+    try {
+      const saved = localStorage.getItem('dashboard_selectedAd');
+      if (saved !== null && saved !== '') {
+        return saved;
+      }
+    } catch (e) {
+      // 無視
+    }
+    return null;
+  });
+  
   const [sortConfig, setSortConfig] = useState<{ key: keyof CampaignData; direction: 'asc' | 'desc' } | null>({ key: 'cost', direction: 'desc' });
   
   // Selected Campaign for Modal
