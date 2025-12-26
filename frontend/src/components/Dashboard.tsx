@@ -1190,8 +1190,19 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
       const hasAdSetName = d.ad_set_name && d.ad_set_name.trim() !== '';
       
       let key: string;
-      if (hasAdName) {
-        // 広告レベルのデータ: キャンペーン+広告セット+広告でグループ化
+      // 広告が「全体」の場合、広告レベルのデータを集計して表示
+      if (selectedAd === null && hasAdName) {
+        // 広告が「全体」の場合: 広告セットごとに集計（広告セットが選択されている場合）
+        // または、キャンペーン全体で集計（広告セットも「全体」の場合）
+        if (selectedAdSet) {
+          // 広告セットが選択されている場合: その広告セットのすべての広告を集計
+          key = `${d.campaign_name}_${d.ad_set_name || ''}_全体`;
+        } else {
+          // 広告セットも「全体」の場合: キャンペーンのすべての広告を集計
+          key = `${d.campaign_name}_全体_全体`;
+        }
+      } else if (hasAdName) {
+        // 広告が選択されている場合: キャンペーン+広告セット+広告でグループ化
         key = `${d.campaign_name}_${d.ad_set_name || ''}_${d.ad_name}`;
       } else if (hasAdSetName) {
         // 広告セットレベルのデータ: キャンペーン+広告セットでグループ化
