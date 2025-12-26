@@ -941,12 +941,26 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
       console.log('[Dashboard] Sample ad set data (first 5):', adSetData.slice(0, 5).map(d => ({
         campaign_name: d.campaign_name,
         ad_set_name: d.ad_set_name || '(empty)',
-        ad_name: d.ad_name || '(empty)'
+        ad_name: d.ad_name || '(empty)',
+        hasAdName: !!(d.ad_name && d.ad_name.trim() !== '')
       })));
+      
+      // 広告名の有無を確認
+      const adsWithNames = adSetData.filter(d => d.ad_name && d.ad_name.trim() !== '');
+      const adsWithoutNames = adSetData.filter(d => !d.ad_name || d.ad_name.trim() === '');
+      console.log(`[Dashboard] Ad set data breakdown: ${adsWithNames.length} with ad_name, ${adsWithoutNames.length} without ad_name`);
     }
     const ads = new Set(adSetData.map(d => d.ad_name).filter(name => name && name.trim() !== ''));
     const adsArray = Array.from(ads).sort();
     console.log(`[Dashboard] Available ads for "${selectedAdSet}":`, adsArray.length, 'ads:', adsArray);
+    if (adsArray.length === 0 && adSetData.length > 0) {
+      console.warn('[Dashboard] No ads found but ad set data exists. Checking ad_name values:');
+      adSetData.forEach((d, idx) => {
+        if (idx < 5) {
+          console.warn(`  Record ${idx}: ad_name="${d.ad_name}" (type: ${typeof d.ad_name}, length: ${d.ad_name?.length || 0})`);
+        }
+      });
+    }
     return adsArray;
   }, [apiData, propData, selectedCampaign, selectedAdSet, selectedMetaAccountId]);
 
