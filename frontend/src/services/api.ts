@@ -931,6 +931,8 @@ class ApiClient {
           id: String(c.id),
           date: c.date,
           campaign_name: c.campaign_name,
+          ad_set_name: c.ad_set_name || '',  // 広告セット名を追加
+          ad_name: c.ad_name || '',  // 広告名を追加
           impressions: c.impressions,
           clicks: c.clicks,
           cost: Number(c.cost),
