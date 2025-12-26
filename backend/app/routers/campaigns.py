@@ -342,7 +342,14 @@ def get_summary(
     print(f"  Total engagements: {total_engagements}")
     print(f"  Total landing_page_views: {total_landing_page_views}")
     print(f"  Total link_clicks: {total_link_clicks}")
-    print(f"  Filtered by campaign-level only: ad_set_name is empty or NULL")
+    
+    # データレベルの統計を確認
+    level_stats_query = query.with_entities(
+        func.sum(func.case((or_(Campaign.ad_set_name == '', Campaign.ad_set_name.is_(None)), 1), else_=0)).label('campaign_level'),
+        func.sum(func.case((and_(Campaign.ad_set_name != '', Campaign.ad_set_name.isnot(None), or_(Campaign.ad_name == '', Campaign.ad_name.is_(None))), 1), else_=0)).label('adset_level'),
+        func.sum(func.case((and_(Campaign.ad_name != '', Campaign.ad_name.isnot(None)), 1), else_=0)).label('ad_level')
+    ).first()
+    print(f"  Data level breakdown: campaign={level_stats_query.campaign_level or 0}, adset={level_stats_query.adset_level or 0}, ad={level_stats_query.ad_level or 0}")
     
     # Calculate averages（Meta広告マネージャの定義に合わせる）
     # CTR = (clicks / impressions) * 100（clicksはinline_link_clicks）
