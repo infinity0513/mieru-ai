@@ -198,6 +198,9 @@ def get_campaigns(
     start_date: Optional[date] = Query(None),
     end_date: Optional[date] = Query(None),
     campaign_name: Optional[str] = Query(None),
+    campaign_id: Optional[str] = Query(None, description="Meta APIのキャンペーンIDでフィルタリング"),
+    adset_id: Optional[str] = Query(None, description="Meta APIの広告セットIDでフィルタリング"),
+    ad_id: Optional[str] = Query(None, description="Meta APIの広告IDでフィルタリング"),
     meta_account_id: Optional[str] = Query(None, description="Meta広告アカウントIDでフィルタリング"),
     level: Optional[str] = Query(None, description="データレベル: 'campaign', 'adset', 'ad'"),
     limit: int = Query(100, le=1000),
@@ -215,40 +218,49 @@ def get_campaigns(
         query = query.filter(Campaign.date <= end_date)
     if campaign_name:
         query = query.filter(Campaign.campaign_name.ilike(f"%{campaign_name}%"))
+    if campaign_id:
+        query = query.filter(Campaign.campaign_id == campaign_id)
+    if adset_id:
+        query = query.filter(Campaign.adset_id == adset_id)
+    if ad_id:
+        query = query.filter(Campaign.ad_id == ad_id)
     if meta_account_id:
         query = query.filter(Campaign.meta_account_id == meta_account_id)
     
-    # Filter by level
-    if level == 'campaign':
-        # キャンペーンレベルのみ（ad_set_nameとad_nameが空）
-        query = query.filter(
-            or_(
-                Campaign.ad_set_name == '',
-                Campaign.ad_set_name.is_(None)
-            )
-        ).filter(
-            or_(
-                Campaign.ad_name == '',
-                Campaign.ad_name.is_(None)
-            )
-        )
-    elif level == 'adset':
-        # 広告セットレベルのみ（ad_set_nameは存在、ad_nameは空）
-        query = query.filter(
-            Campaign.ad_set_name != '',
-            Campaign.ad_set_name.isnot(None)
-        ).filter(
-            or_(
-                Campaign.ad_name == '',
-                Campaign.ad_name.is_(None)
-            )
-        )
-    elif level == 'ad':
-        # 広告レベルのみ（ad_nameが存在）
-        query = query.filter(
-            Campaign.ad_name != '',
-            Campaign.ad_name.isnot(None)
-        )
+    # Filter by level (levelフィールドが存在する場合はそれを使用、なければ従来の方法で判定)
+    if level:
+        if hasattr(Campaign, 'level'):
+            # levelフィールドが存在する場合はそれを使用
+            query = query.filter(Campaign.level == level)
+        else:
+            # levelフィールドが存在しない場合は従来の方法で判定（後方互換性のため）
+            if level == 'campaign':
+                query = query.filter(
+                    or_(
+                        Campaign.ad_set_name == '',
+                        Campaign.ad_set_name.is_(None)
+                    )
+                ).filter(
+                    or_(
+                        Campaign.ad_name == '',
+                        Campaign.ad_name.is_(None)
+                    )
+                )
+            elif level == 'adset':
+                query = query.filter(
+                    Campaign.ad_set_name != '',
+                    Campaign.ad_set_name.isnot(None)
+                ).filter(
+                    or_(
+                        Campaign.ad_name == '',
+                        Campaign.ad_name.is_(None)
+                    )
+                )
+            elif level == 'ad':
+                query = query.filter(
+                    Campaign.ad_name != '',
+                    Campaign.ad_name.isnot(None)
+                )
     
     # Get total count
     total = query.count()
