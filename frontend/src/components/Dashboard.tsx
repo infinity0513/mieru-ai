@@ -923,18 +923,45 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     return grouped;
   }, [trendsData, filteredData]);
 
-  // Group by Campaign for Table (全キャンペーンを表示するため、dateFilteredDataを使用)
+  // Group by Campaign/AdSet/Ad for Table (広告レベルのデータも表示するため、個別にグループ化)
   const campaignStats = useMemo(() => {
     const stats: { [key: string]: CampaignData } = {};
     dateFilteredData.forEach(d => {
-      if (!stats[d.campaign_name]) {
-        stats[d.campaign_name] = { ...d, impressions: 0, clicks: 0, cost: 0, conversions: 0, conversion_value: 0 };
+      // 広告レベルのデータは個別に表示（ad_nameが存在する場合）
+      // 広告セットレベルのデータも個別に表示（ad_set_nameが存在し、ad_nameが存在しない場合）
+      // キャンペーンレベルのデータはキャンペーン名で集計
+      const hasAdName = d.ad_name && d.ad_name.trim() !== '';
+      const hasAdSetName = d.ad_set_name && d.ad_set_name.trim() !== '';
+      
+      let key: string;
+      if (hasAdName) {
+        // 広告レベルのデータ: キャンペーン+広告セット+広告でグループ化
+        key = `${d.campaign_name}_${d.ad_set_name || ''}_${d.ad_name}`;
+      } else if (hasAdSetName) {
+        // 広告セットレベルのデータ: キャンペーン+広告セットでグループ化
+        key = `${d.campaign_name}_${d.ad_set_name}`;
+      } else {
+        // キャンペーンレベルのデータ: キャンペーン名でグループ化
+        key = d.campaign_name;
       }
-      stats[d.campaign_name].impressions += d.impressions;
-      stats[d.campaign_name].clicks += d.clicks;
-      stats[d.campaign_name].cost += d.cost;
-      stats[d.campaign_name].conversions += d.conversions;
-      stats[d.campaign_name].conversion_value += d.conversion_value;
+      
+      if (!stats[key]) {
+        stats[key] = { 
+          ...d, 
+          impressions: 0, 
+          clicks: 0, 
+          cost: 0, 
+          conversions: 0, 
+          conversion_value: 0,
+          ad_set_name: d.ad_set_name || '',
+          ad_name: d.ad_name || ''
+        };
+      }
+      stats[key].impressions += d.impressions;
+      stats[key].clicks += d.clicks;
+      stats[key].cost += d.cost;
+      stats[key].conversions += d.conversions;
+      stats[key].conversion_value += d.conversion_value;
     });
 
     return Object.values(stats).map(s => ({
@@ -1712,6 +1739,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
                 >
                   <td className="px-4 py-2 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
                     {campaign.campaign_name}
+                  </td>
+                  <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                    {campaign.ad_set_name || '-'}
+                  </td>
+                  <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                    {campaign.ad_name || '-'}
                   </td>
                   <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400 text-right">
                     {campaign.impressions.toLocaleString()}
