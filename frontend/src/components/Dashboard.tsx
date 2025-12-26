@@ -392,7 +392,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
   const { isDark } = useContext(ThemeContext);
 
   // State for API data
-  const [apiData, setApiData] = useState<CampaignData[]>([]);
+  const [apiData, setApiData] = useState<CampaignData[]>([]); // 日付範囲でフィルタリングされたデータ（表示用）
+  const [allApiData, setAllApiData] = useState<CampaignData[]>([]); // 全データ（キャンペーン/広告セット/広告一覧用）
   const [summaryData, setSummaryData] = useState<any>(null);
   const [trendsData, setTrendsData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -532,10 +533,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
         console.log('[Dashboard] Calling APIs with metaAccountId:', metaAccountParam);
         console.log('[Dashboard] API URLs will be called with meta_account_id:', metaAccountParam);
         
-        const [summaryResult, trendsResult, campaignsResult] = await Promise.allSettled([
+        const [summaryResult, trendsResult, campaignsResult, allCampaignsResult] = await Promise.allSettled([
           Api.getCampaignSummary(dateRange.start, dateRange.end, metaAccountParam),
           Api.getCampaignTrends(dateRange.start, dateRange.end, 'day', metaAccountParam),
-          Api.fetchCampaignData(metaAccountParam, dateRange.start, dateRange.end) // Get detailed daily data with date range filter
+          Api.fetchCampaignData(metaAccountParam, dateRange.start, dateRange.end), // Get detailed daily data with date range filter
+          Api.fetchCampaignData(metaAccountParam) // Get all data without date range filter (for campaign/ad set/ad lists)
         ]);
         
         // Summary data
@@ -571,9 +573,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
             if (selectedMetaAccountId) {
               console.warn('[Dashboard] Invalid response but asset is selected, clearing apiData');
               setApiData([]);
+              setAllApiData([]);
             } else if (propData && propData.length > 0) {
               console.log('[Dashboard] Using propData as fallback:', propData.length);
               setApiData(propData);
+              setAllApiData(propData);
             } else {
               console.warn('[Dashboard] No propData available, keeping previous apiData');
             }
@@ -605,6 +609,21 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
           
           setApiData(campaignsResponse);
           console.log('[Dashboard] apiData state updated with', campaignsResponse.length, 'campaigns');
+          
+          // 全データも取得（キャンペーン/広告セット/広告一覧用）
+          if (allCampaignsResult.status === 'fulfilled') {
+            const allCampaignsResponse = allCampaignsResult.value;
+            if (Array.isArray(allCampaignsResponse)) {
+              console.log('[Dashboard] All campaigns loaded (for lists):', allCampaignsResponse.length, 'campaigns');
+              setAllApiData(allCampaignsResponse);
+            } else {
+              console.warn('[Dashboard] Invalid all campaigns response format:', allCampaignsResponse);
+              setAllApiData(campaignsResponse); // Fallback to filtered data
+            }
+          } else {
+            console.warn('[Dashboard] Failed to load all campaigns, using filtered data as fallback');
+            setAllApiData(campaignsResponse); // Fallback to filtered data
+          }
         } else {
           console.error('[Dashboard] Failed to load campaigns:', campaignsResult.reason);
           // API取得失敗時は、アセットが選択されている場合は空配列を設定
@@ -612,9 +631,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
           if (selectedMetaAccountId) {
             console.warn('[Dashboard] API failed but asset is selected, clearing apiData');
             setApiData([]);
+            setAllApiData([]);
           } else if (propData && propData.length > 0) {
             console.log('[Dashboard] Using propData as fallback:', propData.length);
             setApiData(propData);
+            setAllApiData(propData);
           } else {
             console.warn('[Dashboard] No propData available, keeping previous apiData');
           }
@@ -626,9 +647,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
         if (selectedMetaAccountId) {
           console.warn('[Dashboard] Error occurred but asset is selected, clearing apiData');
           setApiData([]);
+          setAllApiData([]);
         } else if (propData && propData.length > 0) {
           console.log('[Dashboard] Using propData as fallback after error:', propData.length);
           setApiData(propData);
+          setAllApiData(propData);
         } else {
           console.warn('[Dashboard] No propData available after error, keeping previous apiData');
         }
@@ -834,19 +857,23 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
       return [];
     }
     // 日付範囲でフィルタリングされていない元のデータを使用
-    // アセットが選択されている場合はapiData、そうでない場合はpropData
+    // アセットが選択されている場合はallApiData、そうでない場合はpropData
     let sourceData: CampaignData[] = [];
     if (selectedMetaAccountId) {
-      // アセットが選択されている場合: apiDataを使用（日付範囲でフィルタリングされていない）
-      if (apiData && apiData.length > 0) {
-        sourceData = apiData;
+      // アセットが選択されている場合: allApiDataを使用（全データ）
+      if (allApiData && allApiData.length > 0) {
+        sourceData = allApiData;
+      } else if (apiData && apiData.length > 0) {
+        sourceData = apiData; // Fallback to filtered data
       } else if (propData && propData.length > 0) {
         sourceData = propData;
       }
     } else {
-      // アセットが選択されていない場合: propDataを優先、なければapiData
+      // アセットが選択されていない場合: propDataを優先、なければallApiData
       if (propData && propData.length > 0) {
         sourceData = propData;
+      } else if (allApiData && allApiData.length > 0) {
+        sourceData = allApiData;
       } else if (apiData && apiData.length > 0) {
         sourceData = apiData;
       }
@@ -870,7 +897,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     const adSetsArray = Array.from(adSets).sort();
     console.log(`[Dashboard] Available ad sets for "${selectedCampaign}":`, adSetsArray.length, 'ad sets:', adSetsArray);
     return adSetsArray;
-  }, [apiData, propData, selectedCampaign, selectedMetaAccountId]);
+  }, [allApiData, apiData, propData, selectedCampaign, selectedMetaAccountId]);
   
   // Get unique ads for selected campaign and ad set
   const availableAds = useMemo(() => {
@@ -879,19 +906,23 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
       return [];
     }
     // 日付範囲でフィルタリングされていない元のデータを使用
-    // アセットが選択されている場合はapiData、そうでない場合はpropData
+    // アセットが選択されている場合はallApiData、そうでない場合はpropData
     let sourceData: CampaignData[] = [];
     if (selectedMetaAccountId) {
-      // アセットが選択されている場合: apiDataを使用（日付範囲でフィルタリングされていない）
-      if (apiData && apiData.length > 0) {
-        sourceData = apiData;
+      // アセットが選択されている場合: allApiDataを使用（全データ）
+      if (allApiData && allApiData.length > 0) {
+        sourceData = allApiData;
+      } else if (apiData && apiData.length > 0) {
+        sourceData = apiData; // Fallback to filtered data
       } else if (propData && propData.length > 0) {
         sourceData = propData;
       }
     } else {
-      // アセットが選択されていない場合: propDataを優先、なければapiData
+      // アセットが選択されていない場合: propDataを優先、なければallApiData
       if (propData && propData.length > 0) {
         sourceData = propData;
+      } else if (allApiData && allApiData.length > 0) {
+        sourceData = allApiData;
       } else if (apiData && apiData.length > 0) {
         sourceData = apiData;
       }
