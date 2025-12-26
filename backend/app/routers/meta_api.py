@@ -225,6 +225,24 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                     page_campaign_insights = campaign_insights_data.get('data', [])
                     all_insights.extend(page_campaign_insights)
                     
+                    # サンプルデータをログ出力（最初のキャンペーンの最初のページのみ）
+                    if idx == 0 and len(page_campaign_insights) > 0:
+                        sample = page_campaign_insights[0]
+                        print(f"[Meta API] Sample insight data for campaign {campaign_name}:")
+                        print(f"  impressions: {sample.get('impressions')}")
+                        print(f"  clicks: {sample.get('clicks')}")
+                        print(f"  inline_link_clicks: {sample.get('inline_link_clicks')}")
+                        print(f"  spend: {sample.get('spend')}")
+                        print(f"  reach: {sample.get('reach')}")
+                        print(f"  frequency: {sample.get('frequency')}")
+                        print(f"  actions: {sample.get('actions')}")
+                        print(f"  conversions: {sample.get('conversions')}")
+                        print(f"  action_values: {sample.get('action_values')}")
+                        print(f"  engagements: {sample.get('engagements')}")
+                        print(f"  landing_page_views: {sample.get('landing_page_views')}")
+                        print(f"  link_clicks: {sample.get('link_clicks')}")
+                        print(f"[Meta API] Requesting fields: campaign_id,campaign_name,date_start,spend,impressions,clicks,inline_link_clicks,reach,actions,conversions,action_values,engagements,landing_page_views,link_clicks,frequency")
+                    
                     # デバッグログ（最初の数件のみ）
                     if idx < 3:
                         if len(page_campaign_insights) > 0:
@@ -341,6 +359,24 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                     page_insights = insights_data.get('data', [])
                     all_insights.extend(page_insights)
                     
+                    # サンプルデータをログ出力（最初の広告セットの最初のページのみ）
+                    if idx == 0 and len(page_insights) > 0:
+                        sample = page_insights[0]
+                        print(f"[Meta API] Sample insight data for adset {adset_name}:")
+                        print(f"  impressions: {sample.get('impressions')}")
+                        print(f"  clicks: {sample.get('clicks')}")
+                        print(f"  inline_link_clicks: {sample.get('inline_link_clicks')}")
+                        print(f"  spend: {sample.get('spend')}")
+                        print(f"  reach: {sample.get('reach')}")
+                        print(f"  frequency: {sample.get('frequency')}")
+                        print(f"  actions: {sample.get('actions')}")
+                        print(f"  conversions: {sample.get('conversions')}")
+                        print(f"  action_values: {sample.get('action_values')}")
+                        print(f"  engagements: {sample.get('engagements')}")
+                        print(f"  landing_page_views: {sample.get('landing_page_views')}")
+                        print(f"  link_clicks: {sample.get('link_clicks')}")
+                        print(f"[Meta API] Requesting fields: adset_id,adset_name,ad_id,ad_name,campaign_id,campaign_name,date_start,spend,impressions,clicks,inline_link_clicks,reach,actions,conversions,action_values,engagements,landing_page_views,link_clicks,frequency")
+                    
                     # デバッグログ（最初の数件のみ）
                     if idx < 3:
                         if len(page_insights) > 0:
@@ -413,22 +449,27 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                     
                     spend = float(insight.get('spend', 0))
                     impressions = int(insight.get('impressions', 0))
-                    clicks = int(insight.get('clicks', 0))
-                    inline_link_clicks = int(insight.get('inline_link_clicks', 0))
+                    all_clicks = int(insight.get('clicks', 0))  # 全クリック（いいね、シェア、リンククリックなど全て）
+                    inline_link_clicks = int(insight.get('inline_link_clicks', 0))  # リンククリック（Meta広告マネージャの「クリック数」）
                     reach = int(insight.get('reach', 0))
                     
+                    # クリック数はinline_link_clicksを使用（Meta広告マネージャの「クリック数」に相当）
+                    clicks = inline_link_clicks if inline_link_clicks > 0 else all_clicks
+                    link_clicks = inline_link_clicks if inline_link_clicks > 0 else all_clicks
+                    
                     # エンゲージメント関連のデータを取得
+                    # engagementsフィールドが直接取得できない場合は、actionsからpost_engagementを抽出
                     engagements = int(insight.get('engagements', 0))
-                    link_clicks = int(insight.get('link_clicks', 0))
+                    if engagements == 0:
+                        # actionsからpost_engagementを抽出
+                        actions = insight.get('actions', [])
+                        for action in actions:
+                            if action.get('action_type') == 'post_engagement':
+                                engagements += int(action.get('value', 0))
+                    
+                    link_clicks_field = int(insight.get('link_clicks', 0))
                     landing_page_views = int(insight.get('landing_page_views', 0))
                     frequency = float(insight.get('frequency', 0))
-                    
-                    # link_clicksが取得できない場合は、inline_link_clicksまたはclicksを使用
-                    if link_clicks == 0:
-                        if inline_link_clicks > 0:
-                            link_clicks = inline_link_clicks
-                        elif clicks > 0:
-                            link_clicks = clicks
                     
                     # frequencyが取得できない場合は計算（impressions / reach）
                     if frequency == 0 and reach > 0:
@@ -442,13 +483,24 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                         # conversionsが配列の場合
                         for conv in conversions_data:
                             if isinstance(conv, dict):
-                                conversions += int(conv.get('value', 0))
+                                action_type = conv.get('action_type', '')
+                                # コンバージョン関連のアクションタイプをチェック
+                                if (action_type.startswith('offsite_conversion') or 
+                                    action_type.startswith('onsite_conversion') or 
+                                    action_type in ['omni_purchase', 'purchase'] or
+                                    'complete_registration' in action_type or
+                                    'lead' in action_type or
+                                    'purchase' in action_type):
+                                    value = conv.get('value', 0)
+                                    try:
+                                        conversions += int(value) if isinstance(value, (int, str)) else 0
+                                    except (ValueError, TypeError):
+                                        pass
                             else:
                                 conversions += int(conv)
-                    else:
-                        # フォールバック: actionsから取得
-                        # Meta APIのactionsフィールドからコンバージョンを取得
-                        # offsite_conversion.fb_pixel_complete_registration などのサブタイプにも対応
+                    
+                    # フォールバック: actionsから取得
+                    if conversions == 0:
                         actions = insight.get('actions', [])
                         for action in actions:
                             action_type = action.get('action_type', '')
@@ -467,9 +519,9 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                                 except (ValueError, TypeError):
                                     pass
                     
-                    # conversion_valueを取得
+                    # conversion_valueを取得（action_valuesから）
                     action_values = insight.get('action_values', [])
-                    conversion_value = 0
+                    conversion_value = 0.0
                     if action_values:
                         # action_valuesが配列の場合
                         for av in action_values:
@@ -482,11 +534,12 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                                     'purchase' in av_type):
                                     value = av.get('value', 0)
                                     try:
-                                        conversion_value += float(value) if isinstance(value, (int, float, str)) else 0
+                                        conversion_value += float(value) if isinstance(value, (int, float, str)) else 0.0
                                     except (ValueError, TypeError):
                                         pass
-                    else:
-                        # フォールバック: actionsから取得
+                    
+                    # フォールバック: actionsから取得（通常はaction_valuesを使用）
+                    if conversion_value == 0:
                         actions = insight.get('actions', [])
                         for action in actions:
                             action_type = action.get('action_type', '')
@@ -495,34 +548,44 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                                 'purchase' in action_type):
                                 value = action.get('value', 0)
                                 try:
-                                    conversion_value += float(value) if isinstance(value, (int, float, str)) else 0
+                                    conversion_value += float(value) if isinstance(value, (int, float, str)) else 0.0
                                 except (ValueError, TypeError):
                                     pass
                     
                     
                     # メトリクスを計算（Meta広告マネージャの定義に合わせる）
-                    # CTR = (link_clicks / impressions) * 100
-                    ctr = (link_clicks / impressions * 100) if impressions > 0 else 0
-                    # CPC = spend / link_clicks
-                    cpc = (spend / link_clicks) if link_clicks > 0 else 0
+                    # CTR = (inline_link_clicks / impressions) * 100
+                    ctr = (clicks / impressions * 100) if impressions > 0 else 0
+                    # CPC = spend / inline_link_clicks
+                    cpc = (spend / clicks) if clicks > 0 else 0
                     # CPM = (spend / impressions) * 1000
                     cpm = (spend / impressions * 1000) if impressions > 0 else 0
                     # CPA = spend / conversions
                     cpa = (spend / conversions) if conversions > 0 else 0
-                    # CVR = (conversions / link_clicks) * 100
-                    cvr = (conversions / link_clicks * 100) if link_clicks > 0 else 0
-                    # ROASはパーセンテージで計算（conversion_value / spend * 100）
-                    roas = (conversion_value / spend * 100) if spend > 0 else 0
+                    # CVR = (conversions / inline_link_clicks) * 100
+                    cvr = (conversions / clicks * 100) if clicks > 0 else 0
+                    # ROAS = conversion_value / spend（比率、パーセンテージではない）
+                    roas = (conversion_value / spend) if spend > 0 else 0
+                    # エンゲージメント率 = (engagements / impressions) * 100
+                    engagement_rate = (engagements / impressions * 100) if impressions > 0 else 0
                     
                     # デバッグログ：計算結果を確認（最初の数件のみ）
                     if saved_count < 3:
                         print(f"[Meta API Debug] Calculated metrics:")
-                        print(f"  - CTR: {ctr:.2f}% (link_clicks={link_clicks} / impressions={impressions})")
-                        print(f"  - CVR: {cvr:.2f}% (conversions={conversions} / link_clicks={link_clicks})")
-                        print(f"  - CPC: {cpc:.2f} (spend={spend} / link_clicks={link_clicks})")
+                        print(f"  - CTR: {ctr:.2f}% (clicks={clicks} / impressions={impressions})")
+                        print(f"  - CVR: {cvr:.2f}% (conversions={conversions} / clicks={clicks})")
+                        print(f"  - CPC: {cpc:.2f} (spend={spend} / clicks={clicks})")
                         print(f"  - CPA: {cpa:.2f} (spend={spend} / conversions={conversions})")
                         print(f"  - CPM: {cpm:.2f} (spend={spend} / impressions={impressions} * 1000)")
-                        print(f"  - ROAS: {roas:.2f}% (conversion_value={conversion_value} / spend={spend} * 100)")
+                        print(f"  - ROAS: {roas:.2f} (conversion_value={conversion_value} / spend={spend})")
+                        print(f"  - Engagement Rate: {engagement_rate:.2f}% (engagements={engagements} / impressions={impressions} * 100)")
+                        print(f"[Meta API Debug] Mapped data for DB:")
+                        print(f"  - clicks (inline_link_clicks): {inline_link_clicks} → {clicks}")
+                        print(f"  - conversions: {conversions}")
+                        print(f"  - conversion_value: {conversion_value}")
+                        print(f"  - engagements: {engagements}")
+                        print(f"  - landing_page_views: {landing_page_views}")
+                        print(f"  - frequency: {frequency}")
                     
                     # 既存のレコードをチェック（meta_account_idも含める）
                     existing = db.query(Campaign).filter(
