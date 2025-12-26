@@ -1541,18 +1541,18 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
                         availableAdSets.map(adSet => (
                           <button
                             key={adSet}
-                          onClick={() => {
-                            console.log('[Dashboard] Ad set selected:', adSet);
-                            setSelectedAdSet(adSet);
-                            setSelectedAd(null); // 広告セットを変更したら広告をクリア
-                            try {
-                              localStorage.setItem('dashboard_selectedAdSet', adSet);
-                              localStorage.setItem('dashboard_selectedAd', '');
-                            } catch (err) {
-                              // 無視
-                            }
-                            console.log('[Dashboard] selectedAdSet after update:', adSet);
-                          }}
+                            onClick={() => {
+                              console.log('[Dashboard] Ad set selected:', adSet);
+                              setSelectedAdSet(adSet);
+                              setSelectedAd(null); // 広告セットを変更したら広告をクリア
+                              try {
+                                localStorage.setItem('dashboard_selectedAdSet', adSet);
+                                localStorage.setItem('dashboard_selectedAd', '');
+                              } catch (err) {
+                                // 無視
+                              }
+                              console.log('[Dashboard] selectedAdSet after update:', adSet);
+                            }}
                             className={`px-3 py-1.5 text-sm font-medium rounded-lg border transition-colors whitespace-nowrap shrink-0 ${
                               selectedAdSet === adSet
                                 ? 'bg-indigo-50 border-indigo-500 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300 dark:border-indigo-500'
@@ -1577,7 +1577,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
         
         {/* Ad Selection - キャンペーンが選択されている場合、常に表示 */}
         {selectedCampaign && (
-          <div className="flex-1 min-w-0 mt-3">
+          <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
               <label className="text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap flex items-center shrink-0">
                 <Filter size={14} className="mr-1" />
@@ -1587,103 +1587,50 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
                 <div className="block w-full pl-3 pr-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg overflow-hidden">
                   <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-transparent dark:scrollbar-thumb-gray-600 dark:scrollbar-track-transparent hover:scrollbar-track-gray-100 dark:hover:scrollbar-track-gray-800 [&::-webkit-scrollbar-thumb]:bg-transparent [&::-webkit-scrollbar-thumb]:hover:bg-gray-300">
                     <div className="flex items-center gap-2 min-w-fit">
-                      {selectedAdSet ? (
-                        <>
-                          {/* 全体タブ */}
-                          <button 
+                      {/* 全体タブ */}
+                      <button 
+                        onClick={() => {
+                          setSelectedAd(null);
+                          try {
+                            localStorage.setItem('dashboard_selectedAd', '');
+                          } catch (err) {
+                            // 無視
+                          }
+                        }}
+                        className={`px-3 py-1.5 text-sm font-medium rounded-lg border transition-colors whitespace-nowrap shrink-0 ${
+                          selectedAd === null
+                            ? 'bg-indigo-50 border-indigo-500 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300 dark:border-indigo-500'
+                            : 'border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300'
+                        }`}
+                      >
+                        全体
+                      </button>
+                      {/* 広告タブ */}
+                      {availableAds.length > 0 ? (
+                        availableAds.map(ad => (
+                          <button
+                            key={ad}
                             onClick={() => {
-                              setSelectedAd(null);
+                              setSelectedAd(ad);
                               try {
-                                localStorage.setItem('dashboard_selectedAd', '');
+                                localStorage.setItem('dashboard_selectedAd', ad);
                               } catch (err) {
                                 // 無視
                               }
                             }}
                             className={`px-3 py-1.5 text-sm font-medium rounded-lg border transition-colors whitespace-nowrap shrink-0 ${
-                              selectedAd === null
+                              selectedAd === ad
                                 ? 'bg-indigo-50 border-indigo-500 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300 dark:border-indigo-500'
                                 : 'border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300'
                             }`}
                           >
-                            全体
+                            {ad}
                           </button>
-                          {/* 広告タブ */}
-                          {availableAds.length > 0 ? (
-                            availableAds.map(ad => (
-                              <button
-                                key={ad}
-                                onClick={() => {
-                                  setSelectedAd(ad);
-                                  try {
-                                    localStorage.setItem('dashboard_selectedAd', ad);
-                                  } catch (err) {
-                                    // 無視
-                                  }
-                                }}
-                                className={`px-3 py-1.5 text-sm font-medium rounded-lg border transition-colors whitespace-nowrap shrink-0 ${
-                                  selectedAd === ad
-                                    ? 'bg-indigo-50 border-indigo-500 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300 dark:border-indigo-500'
-                                    : 'border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300'
-                                }`}
-                              >
-                                {ad}
-                              </button>
-                            ))
-                          ) : (
-                            <span className="px-3 py-1.5 text-sm text-gray-500 dark:text-gray-400">
-                              広告データがありません
-                            </span>
-                          )}
-                        </>
+                        ))
                       ) : (
-                        // 広告セットが選択されていない場合でも、キャンペーンのすべての広告を表示
-                        <>
-                          {/* 全体タブ */}
-                          <button 
-                            onClick={() => {
-                              setSelectedAd(null);
-                              try {
-                                localStorage.setItem('dashboard_selectedAd', '');
-                              } catch (err) {
-                                // 無視
-                              }
-                            }}
-                            className={`px-3 py-1.5 text-sm font-medium rounded-lg border transition-colors whitespace-nowrap shrink-0 ${
-                              selectedAd === null
-                                ? 'bg-indigo-50 border-indigo-500 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300 dark:border-indigo-500'
-                                : 'border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300'
-                            }`}
-                          >
-                            全体
-                          </button>
-                          {/* 広告タブ */}
-                          {availableAds.length > 0 ? (
-                            availableAds.map(ad => (
-                              <button
-                                key={ad}
-                                onClick={() => {
-                                  setSelectedAd(ad);
-                                  try {
-                                    localStorage.setItem('dashboard_selectedAd', ad);
-                                  } catch (err) {
-                                    // 無視
-                                  }
-                                }}
-                                className={`px-3 py-1.5 text-sm font-medium rounded-lg border transition-colors whitespace-nowrap shrink-0 ${
-                                  selectedAd === ad
-                                    ? 'bg-indigo-50 border-indigo-500 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300 dark:border-indigo-500'
-                                    : 'border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300'
-                                }`}
-                              >
-                                {ad}
-                              </button>
-                            ))
-                          ) : (
-                            <span className="px-3 py-1.5 text-sm text-gray-500 dark:text-gray-400">
-                              広告データがありません
-                            </span>
-                          )}
-                        </>
+                        <span className="px-3 py-1.5 text-sm text-gray-500 dark:text-gray-400">
+                          広告データがありません
+                        </span>
                       )}
                     </div>
                   </div>
