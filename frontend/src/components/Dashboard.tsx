@@ -884,24 +884,40 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
       return [];
     }
     
-    // キャンペーンレベルのデータ（ad_set_nameが空）を除外し、広告セットレベルのデータのみを取得
-    const campaignData = sourceData.filter(
-      d => d.campaign_name === selectedCampaign && 
-           d.ad_set_name && 
-           d.ad_set_name.trim() !== '' &&
-           (!d.ad_name || d.ad_name.trim() === '') // 広告セットレベルのデータ（ad_nameが空）のみ
-    );
-    console.log(`[Dashboard] Campaign "${selectedCampaign}" adset-level data:`, campaignData.length, 'records (from', sourceData.length, 'total records)');
-    if (campaignData.length > 0) {
-      console.log('[Dashboard] Sample adset-level data (first 5):', campaignData.slice(0, 5).map(d => ({
-        campaign_name: d.campaign_name,
-        ad_set_name: d.ad_set_name || '(empty)',
-        ad_name: d.ad_name || '(empty)'
-      })));
-    }
-    const adSets = new Set(campaignData.map(d => d.ad_set_name).filter(name => name && name.trim() !== ''));
-    const adSetsArray = Array.from(adSets).sort();
+    // 選択されたキャンペーンのデータを取得
+    const campaignData = sourceData.filter(d => d.campaign_name === selectedCampaign);
+    console.log(`[Dashboard] Campaign "${selectedCampaign}" total data:`, campaignData.length, 'records (from', sourceData.length, 'total records)');
+    
+    // 広告セット名を取得（広告セットレベルのデータと広告レベルのデータの両方から）
+    // 広告セットレベルのデータ: ad_set_nameが存在し、ad_nameが空
+    // 広告レベルのデータ: ad_set_nameが存在し、ad_nameも存在
+    const adSetNames = new Set<string>();
+    
+    campaignData.forEach(d => {
+      // ad_set_nameが存在する場合、広告セット名として追加
+      if (d.ad_set_name && d.ad_set_name.trim() !== '') {
+        adSetNames.add(d.ad_set_name);
+      }
+    });
+    
+    const adSetsArray = Array.from(adSetNames).sort();
     console.log(`[Dashboard] Available ad sets for "${selectedCampaign}":`, adSetsArray.length, 'ad sets:', adSetsArray);
+    
+    // デバッグ: 広告セットレベルのデータと広告レベルのデータの内訳を確認
+    const adsetLevelCount = campaignData.filter(d => 
+      d.ad_set_name && d.ad_set_name.trim() !== '' && 
+      (!d.ad_name || d.ad_name.trim() === '')
+    ).length;
+    const adLevelCount = campaignData.filter(d => 
+      d.ad_set_name && d.ad_set_name.trim() !== '' && 
+      d.ad_name && d.ad_name.trim() !== ''
+    ).length;
+    console.log(`[Dashboard] Data breakdown for "${selectedCampaign}":`, {
+      adsetLevel: adsetLevelCount,
+      adLevel: adLevelCount,
+      total: campaignData.length
+    });
+    
     return adSetsArray;
   }, [allApiData, apiData, propData, selectedCampaign, selectedMetaAccountId]);
   
