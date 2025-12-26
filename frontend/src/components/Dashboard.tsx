@@ -800,17 +800,55 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     });
   }, [data, dateRange.start, dateRange.end]);
 
-  // Filter Data - パフォーマンス最適化版（KPIカード用：日付範囲 + キャンペーン）
+  // Get unique ad sets for selected campaign
+  const availableAdSets = useMemo(() => {
+    if (!selectedCampaign) return [];
+    let sourceData = data;
+    if ((!data || data.length === 0) && !selectedMetaAccountId && propData && propData.length > 0) {
+      sourceData = propData;
+    }
+    const campaignData = sourceData.filter(d => d.campaign_name === selectedCampaign);
+    const adSets = new Set(campaignData.map(d => d.ad_set_name).filter(Boolean));
+    return Array.from(adSets).sort();
+  }, [data, propData, selectedCampaign, selectedMetaAccountId]);
+  
+  // Get unique ads for selected campaign and ad set
+  const availableAds = useMemo(() => {
+    if (!selectedCampaign || !selectedAdSet) return [];
+    let sourceData = data;
+    if ((!data || data.length === 0) && !selectedMetaAccountId && propData && propData.length > 0) {
+      sourceData = propData;
+    }
+    const adSetData = sourceData.filter(
+      d => d.campaign_name === selectedCampaign && d.ad_set_name === selectedAdSet
+    );
+    const ads = new Set(adSetData.map(d => d.ad_name).filter(Boolean));
+    return Array.from(ads).sort();
+  }, [data, propData, selectedCampaign, selectedAdSet, selectedMetaAccountId]);
+
+  // Filter Data - パフォーマンス最適化版（KPIカード用：日付範囲 + キャンペーン + 広告セット + 広告）
   const filteredData = useMemo(() => {
     if (dateFilteredData.length === 0) return [];
     
-    // キャンペーンフィルタを適用
-    if (selectedCampaign === null) {
-      return dateFilteredData;
+    let filtered = dateFilteredData;
+    
+    // キャンペーンフィルタ
+    if (selectedCampaign) {
+      filtered = filtered.filter(d => d.campaign_name === selectedCampaign);
     }
     
-    return dateFilteredData.filter(d => d.campaign_name === selectedCampaign);
-  }, [dateFilteredData, selectedCampaign]);
+    // 広告セットフィルタ
+    if (selectedAdSet) {
+      filtered = filtered.filter(d => d.ad_set_name === selectedAdSet);
+    }
+    
+    // 広告フィルタ
+    if (selectedAd) {
+      filtered = filtered.filter(d => d.ad_name === selectedAd);
+    }
+    
+    return filtered;
+  }, [dateFilteredData, selectedCampaign, selectedAdSet, selectedAd]);
 
   // Aggregate for KPI Cards - 常にfilteredDataから計算（AnomalyDetectorと整合性を保つため）
   const kpiData = useMemo(() => {
