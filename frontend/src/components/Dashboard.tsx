@@ -884,10 +884,16 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
       return [];
     }
     
-    const campaignData = sourceData.filter(d => d.campaign_name === selectedCampaign);
-    console.log(`[Dashboard] Campaign "${selectedCampaign}" data:`, campaignData.length, 'records (from', sourceData.length, 'total records)');
+    // キャンペーンレベルのデータ（ad_set_nameが空）を除外し、広告セットレベルのデータのみを取得
+    const campaignData = sourceData.filter(
+      d => d.campaign_name === selectedCampaign && 
+           d.ad_set_name && 
+           d.ad_set_name.trim() !== '' &&
+           (!d.ad_name || d.ad_name.trim() === '') // 広告セットレベルのデータ（ad_nameが空）のみ
+    );
+    console.log(`[Dashboard] Campaign "${selectedCampaign}" adset-level data:`, campaignData.length, 'records (from', sourceData.length, 'total records)');
     if (campaignData.length > 0) {
-      console.log('[Dashboard] Sample campaign data (first 5):', campaignData.slice(0, 5).map(d => ({
+      console.log('[Dashboard] Sample adset-level data (first 5):', campaignData.slice(0, 5).map(d => ({
         campaign_name: d.campaign_name,
         ad_set_name: d.ad_set_name || '(empty)',
         ad_name: d.ad_name || '(empty)'
@@ -934,11 +940,22 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
       return [];
     }
     
-    // selectedAdSetがnullの場合は、キャンペーン全体の広告を取得
-    // そうでない場合は、選択された広告セットの広告のみを取得
+    // selectedAdSetがnullの場合は、キャンペーン全体の広告を取得（広告レベルのデータのみ）
+    // そうでない場合は、選択された広告セットの広告のみを取得（広告レベルのデータのみ）
     const adSetData = selectedAdSet === null
-      ? sourceData.filter(d => d.campaign_name === selectedCampaign && d.ad_name && d.ad_name.trim() !== '')
-      : sourceData.filter(d => d.campaign_name === selectedCampaign && d.ad_set_name === selectedAdSet && d.ad_name && d.ad_name.trim() !== '');
+      ? sourceData.filter(d => 
+          d.campaign_name === selectedCampaign && 
+          d.ad_name && 
+          d.ad_name.trim() !== '' &&
+          d.ad_set_name && 
+          d.ad_set_name.trim() !== '' // 広告セットが存在する広告のみ（キャンペーンレベルのデータを除外）
+        )
+      : sourceData.filter(d => 
+          d.campaign_name === selectedCampaign && 
+          d.ad_set_name === selectedAdSet && 
+          d.ad_name && 
+          d.ad_name.trim() !== '' // 広告レベルのデータのみ
+        );
     console.log(`[Dashboard] Ad set "${selectedAdSet}" data:`, adSetData.length, 'records (from', sourceData.length, 'total records)');
     if (adSetData.length > 0) {
       console.log('[Dashboard] Sample ad set data (first 5):', adSetData.slice(0, 5).map(d => ({
