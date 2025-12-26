@@ -1490,8 +1490,16 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
         )}
         
         {/* Ad Selection - 広告セットが選択されている場合のみ表示 */}
+        {(() => {
+          console.log('[Dashboard] Checking ad selection UI render condition:', {
+            selectedAdSet,
+            hasSelectedAdSet: !!selectedAdSet,
+            availableAdsLength: availableAds.length
+          });
+          return null;
+        })()}
         {selectedAdSet && (
-          <div className="flex-1 min-w-0 mt-3 lg:mt-0">
+          <div className="flex-1 min-w-0 mt-3">
             <div className="flex items-center gap-2">
               <label className="text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap flex items-center shrink-0">
                 <Filter size={14} className="mr-1" />
