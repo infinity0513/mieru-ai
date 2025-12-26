@@ -160,110 +160,106 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
             end_date_str = current_until.strftime('%Y-%m-%d')
             print(f"[Meta API] Date range: {start_date_str} to {end_date_str} ({(current_until - current_since).days} days)")
             
-            for idx, campaign in enumerate(all_campaigns):
-                campaign_id = campaign.get('id')
-                campaign_name = campaign.get('name', 'Unknown')
+            # バッチリクエストでキャンペーンレベルInsightsを取得（最大50件/バッチ）
+            campaign_fields = "campaign_id,campaign_name,date_start,spend,impressions,clicks,inline_link_clicks,reach,actions,conversions,action_values,engagements,landing_page_views,link_clicks,frequency"
+            time_range_dict = {
+                "since": start_date_str,
+                "until": end_date_str
+            }
+            time_range_json = json.dumps(time_range_dict, separators=(',', ':'))  # スペースなしJSON
+            
+            # キャンペーンを50件ずつのバッチに分割
+            batch_size = 50  # Meta APIのバッチリクエスト最大数
+            for batch_start in range(0, len(all_campaigns), batch_size):
+                batch_end = min(batch_start + batch_size, len(all_campaigns))
+                batch_campaigns = all_campaigns[batch_start:batch_end]
+                batch_num = (batch_start // batch_size) + 1
+                total_batches = (len(all_campaigns) + batch_size - 1) // batch_size
                 
-                if (idx + 1) % 10 == 0 or idx == 0:
-                    print(f"[Meta API] Fetching insights for campaign {idx + 1}/{len(all_campaigns)}: {campaign_name} (ID: {campaign_id})")
+                print(f"[Meta API] Processing campaign batch {batch_num}/{total_batches} ({len(batch_campaigns)} campaigns)")
                 
-                campaign_insights_url = f"https://graph.facebook.com/v24.0/{campaign_id}/insights"
-                
-                # 1回のリクエストで全期間を取得
-                time_range_dict = {
-                    "since": start_date_str,
-                    "until": end_date_str
-                }
-                time_range_json = json.dumps(time_range_dict, separators=(',', ':'))  # スペースなしJSON
-                
-                campaign_insights_params = {
-                    "access_token": access_token,
-                    "fields": "campaign_id,campaign_name,date_start,spend,impressions,clicks,inline_link_clicks,reach,actions,conversions,action_values,engagements,landing_page_views,link_clicks,frequency",
-                    "time_range": time_range_json,  # JSON文字列（スペースなし）
-                    "limit": 100
-                }
-                
-                # デバッグログ（最初の数件のみ）
-                if idx < 3:
-                    print(f"[Meta API] Fetching insights for campaign: {campaign_name}")
-                    print(f"  Campaign ID: {campaign_id}")
-                    print(f"  Date range: {start_date_str} to {end_date_str}")
-                    print(f"  time_range param: {time_range_json}")
+                # バッチリクエストの作成
+                batch_requests = []
+                for campaign in batch_campaigns:
+                    campaign_id = campaign.get('id')
+                    # 相対URLを作成（access_tokenとtime_rangeを含む）
+                    relative_url = f"{campaign_id}/insights?fields={campaign_fields}&time_range={time_range_json}&limit=100"
+                    batch_requests.append({
+                        "method": "GET",
+                        "relative_url": relative_url
+                    })
                 
                 try:
-                    # デバッグログ：リクエストURLを出力（最初の数件のみ）
-                    if idx < 3:
-                        from urllib.parse import urlencode
-                        test_params = campaign_insights_params.copy()
-                        test_url = f"{campaign_insights_url}?{urlencode(test_params)}"
-                        print(f"  Request URL: {test_url}")
+                    # バッチリクエストを送信
+                    batch_url = "https://graph.facebook.com/v24.0/"
+                    batch_params = {
+                        "access_token": access_token,
+                        "batch": json.dumps(batch_requests, separators=(',', ':'))
+                    }
                     
-                    campaign_insights_response = await client.get(campaign_insights_url, params=campaign_insights_params)
+                    batch_response = await client.post(batch_url, params=batch_params)
+                    batch_response.raise_for_status()
+                    batch_data = batch_response.json()
                     
-                    # デバッグログ：レスポンスステータスを出力（最初の数件のみ）
-                    if idx < 3:
-                        print(f"  Response status: {campaign_insights_response.status_code}")
-                        if campaign_insights_response.status_code != 200:
-                            # エラーレスポンスを解析
+                    # バッチレスポンスを処理
+                    for idx, batch_item in enumerate(batch_data):
+                        campaign = batch_campaigns[idx]
+                        campaign_name = campaign.get('name', 'Unknown')
+                        campaign_id = campaign.get('id')
+                        
+                        if batch_item.get('code') == 200:
                             try:
-                                error_data = campaign_insights_response.json()
-                                error_text = str(error_data)
-                                print(f"  Error response: {error_text}")
-                                if 'error' in error_data:
-                                    print(f"  Meta Error Code: {error_data['error'].get('code')}")
-                                    print(f"  Meta Error Message: {error_data['error'].get('message')}")
-                                    print(f"  Meta Error Type: {error_data['error'].get('type')}")
-                            except Exception as parse_error:
-                                error_text = await campaign_insights_response.aread()
-                                print(f"  Error response (raw): {error_text.decode('utf-8')}")
-                                print(f"  Parse error: {str(parse_error)}")
-                    
-                    campaign_insights_response.raise_for_status()
-                    campaign_insights_data = campaign_insights_response.json()
-                    
-                    # 最初のページのデータを追加
-                    page_campaign_insights = campaign_insights_data.get('data', [])
-                    all_insights.extend(page_campaign_insights)
-                    
-                    # サンプルデータをログ出力（最初のキャンペーンの最初のページのみ）
-                    if idx == 0 and len(page_campaign_insights) > 0:
-                        sample = page_campaign_insights[0]
-                        print(f"[Meta API] Sample insight data for campaign {campaign_name}:")
-                        print(f"  impressions: {sample.get('impressions')}")
-                        print(f"  clicks: {sample.get('clicks')}")
-                        print(f"  inline_link_clicks: {sample.get('inline_link_clicks')}")
-                        print(f"  spend: {sample.get('spend')}")
-                        print(f"  reach: {sample.get('reach')}")
-                        print(f"  frequency: {sample.get('frequency')}")
-                        print(f"  actions: {sample.get('actions')}")
-                        print(f"  conversions: {sample.get('conversions')}")
-                        print(f"  action_values: {sample.get('action_values')}")
-                        print(f"  engagements: {sample.get('engagements')}")
-                        print(f"  landing_page_views: {sample.get('landing_page_views')}")
-                        print(f"  link_clicks: {sample.get('link_clicks')}")
-                        print(f"[Meta API] Requesting fields: campaign_id,campaign_name,date_start,spend,impressions,clicks,inline_link_clicks,reach,actions,conversions,action_values,engagements,landing_page_views,link_clicks,frequency")
-                    
-                    # デバッグログ（最初の数件のみ）
-                    if idx < 3:
-                        if len(page_campaign_insights) > 0:
-                            sample_insight = page_campaign_insights[0]
-                            print(f"  ✓ Success: Retrieved {len(page_campaign_insights)} insights")
-                            print(f"  Sample data: spend={sample_insight.get('spend')}, impressions={sample_insight.get('impressions')}, clicks={sample_insight.get('clicks')}")
+                                item_body = json.loads(batch_item.get('body', '{}'))
+                                page_insights = item_body.get('data', [])
+                                
+                                if len(page_insights) > 0:
+                                    all_insights.extend(page_insights)
+                                    
+                                    # サンプルデータをログ出力（最初のバッチの最初のキャンペーンのみ）
+                                    if batch_start == 0 and idx == 0:
+                                        sample = page_insights[0]
+                                        print(f"[Meta API] Sample insight data for campaign {campaign_name}:")
+                                        print(f"  impressions: {sample.get('impressions')}")
+                                        print(f"  clicks: {sample.get('clicks')}")
+                                        print(f"  inline_link_clicks: {sample.get('inline_link_clicks')}")
+                                        print(f"  spend: {sample.get('spend')}")
+                                        print(f"  reach: {sample.get('reach')}")
+                                        print(f"  frequency: {sample.get('frequency')}")
+                                    
+                                    # ページネーション処理（pagingがある場合）
+                                    paging = item_body.get('paging', {})
+                                    while 'next' in paging:
+                                        next_url = paging['next']
+                                        # next_urlには既にaccess_tokenが含まれている可能性があるため、そのまま使用
+                                        next_response = await client.get(next_url)
+                                        next_response.raise_for_status()
+                                        next_data = next_response.json()
+                                        next_insights = next_data.get('data', [])
+                                        all_insights.extend(next_insights)
+                                        paging = next_data.get('paging', {})
+                                        print(f"[Meta API] Retrieved {len(next_insights)} more insights for {campaign_name} (total: {len(all_insights)})")
+                                    
+                                    if idx < 3 or (batch_start == 0 and idx == 0):
+                                        print(f"  ✓ Success: Retrieved {len(page_insights)} insights for {campaign_name}")
+                                else:
+                                    if idx < 3:
+                                        print(f"  ⚠ No insights data returned for {campaign_name}")
+                            except json.JSONDecodeError as e:
+                                print(f"[Meta API] Error parsing batch response for {campaign_name}: {str(e)}")
+                                print(f"  Response body: {batch_item.get('body', '')[:200]}")
                         else:
-                            print(f"  ⚠ No insights data returned")
-                    
-                    # ページネーション処理（すべてのページを取得）
-                    while 'paging' in campaign_insights_data and 'next' in campaign_insights_data['paging']:
-                        next_url = campaign_insights_data['paging']['next']
-                        next_response = await client.get(next_url)
-                        next_response.raise_for_status()
-                        campaign_insights_data = next_response.json()
-                        page_campaign_insights = campaign_insights_data.get('data', [])
-                        all_insights.extend(page_campaign_insights)
-                        print(f"[Meta API] Retrieved {len(page_campaign_insights)} more insights for {campaign_name} (total: {len(all_insights)})")
+                            error_body = batch_item.get('body', '{}')
+                            try:
+                                error_data = json.loads(error_body) if isinstance(error_body, str) else error_body
+                                error_msg = error_data.get('error', {}).get('message', str(error_body))
+                                print(f"[Meta API] Error fetching insights for {campaign_name} ({campaign_id}): {error_msg}")
+                            except:
+                                print(f"[Meta API] Error fetching insights for {campaign_name} ({campaign_id}): {error_body}")
+                
                 except Exception as e:
-                    print(f"[Meta API] Error fetching campaign insights for {campaign_name} ({campaign_id}): {str(e)}")
-                    # エラーが発生しても次のキャンペーンの取得を続行
+                    print(f"[Meta API] Error processing campaign batch {batch_num}: {str(e)}")
+                    # バッチエラーが発生しても次のバッチの処理を続行
+                    continue
             
             print(f"[Meta API] Campaign-level insights retrieved: {len([i for i in all_insights if 'adset_id' not in i or not i.get('adset_id')])}")
             
@@ -292,110 +288,107 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
             end_date_str_adset = current_until.strftime('%Y-%m-%d')
             print(f"[Meta API] Adset date range: {start_date_str_adset} to {end_date_str_adset} ({(current_until - current_since_adset).days} days)")
             
-            for idx, adset in enumerate(all_adsets):
-                adset_id = adset['id']
-                adset_name = adset.get('name', 'Unknown')
-                campaign_id = adset.get('campaign_id', 'Unknown')
+            # バッチリクエストで広告セットレベルInsightsを取得（最大50件/バッチ）
+            adset_fields = "adset_id,adset_name,ad_id,ad_name,campaign_id,campaign_name,date_start,spend,impressions,clicks,inline_link_clicks,reach,actions,conversions,action_values,engagements,landing_page_views,link_clicks,frequency"
+            time_range_dict_adset = {
+                "since": start_date_str_adset,
+                "until": end_date_str_adset
+            }
+            time_range_json_adset = json.dumps(time_range_dict_adset, separators=(',', ':'))  # スペースなしJSON
+            
+            # 広告セットを50件ずつのバッチに分割
+            batch_size = 50  # Meta APIのバッチリクエスト最大数
+            for batch_start in range(0, len(all_adsets), batch_size):
+                batch_end = min(batch_start + batch_size, len(all_adsets))
+                batch_adsets = all_adsets[batch_start:batch_end]
+                batch_num = (batch_start // batch_size) + 1
+                total_batches = (len(all_adsets) + batch_size - 1) // batch_size
                 
-                if (idx + 1) % 10 == 0 or idx == 0:
-                    print(f"[Meta API] Processing adset {idx + 1}/{len(all_adsets)}: {adset_name} (campaign_id: {campaign_id})")
+                print(f"[Meta API] Processing adset batch {batch_num}/{total_batches} ({len(batch_adsets)} adsets)")
                 
-                insights_url = f"https://graph.facebook.com/v24.0/{adset_id}/insights"
-                
-                # 1回のリクエストで全期間を取得
-                time_range_dict = {
-                    "since": start_date_str_adset,
-                    "until": end_date_str_adset
-                }
-                time_range_json = json.dumps(time_range_dict, separators=(',', ':'))  # スペースなしJSON
-                
-                insights_params = {
-                    "access_token": access_token,
-                    "fields": "adset_id,adset_name,ad_id,ad_name,campaign_id,campaign_name,date_start,spend,impressions,clicks,inline_link_clicks,reach,actions,conversions,action_values,engagements,landing_page_views,link_clicks,frequency",
-                    "time_range": time_range_json,  # JSON文字列（スペースなし）
-                    "limit": 100
-                }
-                
-                # デバッグログ（最初の数件のみ）
-                if idx < 3:
-                    print(f"[Meta API] Fetching insights for adset: {adset_name}")
-                    print(f"  Adset ID: {adset_id}")
-                    print(f"  Campaign ID: {campaign_id}")
-                    print(f"  Date range: {start_date_str_adset} to {end_date_str_adset}")
-                    print(f"  time_range param: {time_range_json}")
+                # バッチリクエストの作成
+                batch_requests = []
+                for adset in batch_adsets:
+                    adset_id = adset['id']
+                    # 相対URLを作成（access_tokenとtime_rangeを含む）
+                    relative_url = f"{adset_id}/insights?fields={adset_fields}&time_range={time_range_json_adset}&limit=100"
+                    batch_requests.append({
+                        "method": "GET",
+                        "relative_url": relative_url
+                    })
                 
                 try:
-                    # デバッグログ：リクエストURLを出力（最初の数件のみ）
-                    if idx < 3:
-                        from urllib.parse import urlencode
-                        test_params = insights_params.copy()
-                        test_url = f"{insights_url}?{urlencode(test_params)}"
-                        print(f"  Request URL: {test_url}")
+                    # バッチリクエストを送信
+                    batch_url = "https://graph.facebook.com/v24.0/"
+                    batch_params = {
+                        "access_token": access_token,
+                        "batch": json.dumps(batch_requests, separators=(',', ':'))
+                    }
                     
-                    insights_response = await client.get(insights_url, params=insights_params)
+                    batch_response = await client.post(batch_url, params=batch_params)
+                    batch_response.raise_for_status()
+                    batch_data = batch_response.json()
                     
-                    # デバッグログ：レスポンスステータスを出力（最初の数件のみ）
-                    if idx < 3:
-                        print(f"  Response status: {insights_response.status_code}")
-                        if insights_response.status_code != 200:
-                            # エラーレスポンスを解析
+                    # バッチレスポンスを処理
+                    for idx, batch_item in enumerate(batch_data):
+                        adset = batch_adsets[idx]
+                        adset_name = adset.get('name', 'Unknown')
+                        adset_id = adset['id']
+                        campaign_id = adset.get('campaign_id', 'Unknown')
+                        
+                        if batch_item.get('code') == 200:
                             try:
-                                error_data = insights_response.json()
-                                error_text = str(error_data)
-                                print(f"  Error response: {error_text}")
-                                if 'error' in error_data:
-                                    print(f"  Meta Error Code: {error_data['error'].get('code')}")
-                                    print(f"  Meta Error Message: {error_data['error'].get('message')}")
-                                    print(f"  Meta Error Type: {error_data['error'].get('type')}")
-                            except Exception as parse_error:
-                                error_text = await insights_response.aread()
-                                print(f"  Error response (raw): {error_text.decode('utf-8')}")
-                                print(f"  Parse error: {str(parse_error)}")
-                    
-                    insights_response.raise_for_status()
-                    insights_data = insights_response.json()
-                    
-                    # 最初のページのデータを追加
-                    page_insights = insights_data.get('data', [])
-                    all_insights.extend(page_insights)
-                    
-                    # サンプルデータをログ出力（最初の広告セットの最初のページのみ）
-                    if idx == 0 and len(page_insights) > 0:
-                        sample = page_insights[0]
-                        print(f"[Meta API] Sample insight data for adset {adset_name}:")
-                        print(f"  impressions: {sample.get('impressions')}")
-                        print(f"  clicks: {sample.get('clicks')}")
-                        print(f"  inline_link_clicks: {sample.get('inline_link_clicks')}")
-                        print(f"  spend: {sample.get('spend')}")
-                        print(f"  reach: {sample.get('reach')}")
-                        print(f"  frequency: {sample.get('frequency')}")
-                        print(f"  actions: {sample.get('actions')}")
-                        print(f"  conversions: {sample.get('conversions')}")
-                        print(f"  action_values: {sample.get('action_values')}")
-                        print(f"  engagements: {sample.get('engagements')}")
-                        print(f"  landing_page_views: {sample.get('landing_page_views')}")
-                        print(f"  link_clicks: {sample.get('link_clicks')}")
-                        print(f"[Meta API] Requesting fields: adset_id,adset_name,ad_id,ad_name,campaign_id,campaign_name,date_start,spend,impressions,clicks,inline_link_clicks,reach,actions,conversions,action_values,engagements,landing_page_views,link_clicks,frequency")
-                    
-                    # デバッグログ（最初の数件のみ）
-                    if idx < 3:
-                        if len(page_insights) > 0:
-                            print(f"  ✓ Success: Retrieved {len(page_insights)} insights")
+                                item_body = json.loads(batch_item.get('body', '{}'))
+                                page_insights = item_body.get('data', [])
+                                
+                                if len(page_insights) > 0:
+                                    all_insights.extend(page_insights)
+                                    
+                                    # サンプルデータをログ出力（最初のバッチの最初の広告セットのみ）
+                                    if batch_start == 0 and idx == 0:
+                                        sample = page_insights[0]
+                                        print(f"[Meta API] Sample insight data for adset {adset_name}:")
+                                        print(f"  impressions: {sample.get('impressions')}")
+                                        print(f"  clicks: {sample.get('clicks')}")
+                                        print(f"  inline_link_clicks: {sample.get('inline_link_clicks')}")
+                                        print(f"  spend: {sample.get('spend')}")
+                                        print(f"  reach: {sample.get('reach')}")
+                                        print(f"  frequency: {sample.get('frequency')}")
+                                    
+                                    # ページネーション処理（pagingがある場合）
+                                    paging = item_body.get('paging', {})
+                                    while 'next' in paging:
+                                        next_url = paging['next']
+                                        # next_urlには既にaccess_tokenが含まれている可能性があるため、そのまま使用
+                                        next_response = await client.get(next_url)
+                                        next_response.raise_for_status()
+                                        next_data = next_response.json()
+                                        next_insights = next_data.get('data', [])
+                                        all_insights.extend(next_insights)
+                                        paging = next_data.get('paging', {})
+                                        print(f"[Meta API] Retrieved {len(next_insights)} more insights for {adset_name} (total: {len(all_insights)})")
+                                    
+                                    if idx < 3 or (batch_start == 0 and idx == 0):
+                                        print(f"  ✓ Success: Retrieved {len(page_insights)} insights for {adset_name}")
+                                else:
+                                    if idx < 3:
+                                        print(f"  ⚠ No insights data returned for {adset_name}")
+                            except json.JSONDecodeError as e:
+                                print(f"[Meta API] Error parsing batch response for {adset_name}: {str(e)}")
+                                print(f"  Response body: {batch_item.get('body', '')[:200]}")
                         else:
-                            print(f"  ⚠ No insights data returned")
-                    
-                    # ページネーション処理（すべてのページを取得）
-                    while 'paging' in insights_data and 'next' in insights_data['paging']:
-                        next_url = insights_data['paging']['next']
-                        next_response = await client.get(next_url)
-                        next_response.raise_for_status()
-                        insights_data = next_response.json()
-                        page_insights = insights_data.get('data', [])
-                        all_insights.extend(page_insights)
-                        print(f"[Meta API] Retrieved {len(page_insights)} more insights for {adset_name} (total: {len(all_insights)})")
+                            error_body = batch_item.get('body', '{}')
+                            try:
+                                error_data = json.loads(error_body) if isinstance(error_body, str) else error_body
+                                error_msg = error_data.get('error', {}).get('message', str(error_body))
+                                print(f"[Meta API] Error fetching insights for {adset_name} ({adset_id}): {error_msg}")
+                            except:
+                                print(f"[Meta API] Error fetching insights for {adset_name} ({adset_id}): {error_body}")
+                
                 except Exception as e:
-                    print(f"[Meta API] Error fetching adset insights for {adset_name} ({adset_id}): {str(e)}")
-                    # エラーが発生しても次の広告セットの取得を続行
+                    print(f"[Meta API] Error processing adset batch {batch_num}: {str(e)}")
+                    # バッチエラーが発生しても次のバッチの処理を続行
+                    continue
             
             print(f"[Meta API] Total insights retrieved: {len(all_insights)}")
             
