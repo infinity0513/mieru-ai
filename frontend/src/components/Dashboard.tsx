@@ -616,7 +616,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
             if (Array.isArray(allCampaignsResponse)) {
               console.log('[Dashboard] All campaigns loaded (for lists):', allCampaignsResponse.length, 'campaigns');
               setAllApiData(allCampaignsResponse);
-            } else {
+        } else {
               console.warn('[Dashboard] Invalid all campaigns response format:', allCampaignsResponse);
               setAllApiData(campaignsResponse); // Fallback to filtered data
             }
@@ -901,10 +901,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
   
   // Get unique ads for selected campaign and ad set
   const availableAds = useMemo(() => {
-    if (!selectedCampaign || !selectedAdSet) {
-      console.log('[Dashboard] Campaign or ad set not selected, returning empty ads');
+    if (!selectedCampaign) {
+      console.log('[Dashboard] Campaign not selected, returning empty ads');
       return [];
     }
+    // selectedAdSetがnullの場合は、キャンペーン全体の広告を表示
     // 日付範囲でフィルタリングされていない元のデータを使用
     // アセットが選択されている場合はallApiData、そうでない場合はpropData
     let sourceData: CampaignData[] = [];
@@ -933,9 +934,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
       return [];
     }
     
-    const adSetData = sourceData.filter(
-      d => d.campaign_name === selectedCampaign && d.ad_set_name === selectedAdSet
-    );
+    // selectedAdSetがnullの場合は、キャンペーン全体の広告を取得
+    // そうでない場合は、選択された広告セットの広告のみを取得
+    const adSetData = selectedAdSet === null
+      ? sourceData.filter(d => d.campaign_name === selectedCampaign && d.ad_name && d.ad_name.trim() !== '')
+      : sourceData.filter(d => d.campaign_name === selectedCampaign && d.ad_set_name === selectedAdSet && d.ad_name && d.ad_name.trim() !== '');
     console.log(`[Dashboard] Ad set "${selectedAdSet}" data:`, adSetData.length, 'records (from', sourceData.length, 'total records)');
     if (adSetData.length > 0) {
       console.log('[Dashboard] Sample ad set data (first 5):', adSetData.slice(0, 5).map(d => ({
