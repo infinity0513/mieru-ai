@@ -915,6 +915,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
       campaign_name: d.campaign_name,
       ad_set_name: d.ad_set_name || '(empty)',
       ad_name: d.ad_name || '(empty)',
+      ad_set_name_type: typeof d.ad_set_name,
+      ad_set_name_length: d.ad_set_name?.length || 0,
+      ad_set_name_trimmed: d.ad_set_name?.trim() || '(empty after trim)',
       hasAdSetName: !!(d.ad_set_name && d.ad_set_name.trim() !== ''),
       hasAdName: !!(d.ad_name && d.ad_name.trim() !== '')
     })));
@@ -923,13 +926,29 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     // 広告セットレベルのデータ: ad_set_nameが存在し、ad_nameが空
     // 広告レベルのデータ: ad_set_nameが存在し、ad_nameも存在
     const adSetNames = new Set<string>();
+    const adSetNamesFound: string[] = [];
     
-    campaignData.forEach(d => {
+    campaignData.forEach((d, idx) => {
       // ad_set_nameが存在する場合、広告セット名として追加
-      if (d.ad_set_name && d.ad_set_name.trim() !== '') {
-        adSetNames.add(d.ad_set_name);
+      const adSetName = d.ad_set_name;
+      if (adSetName && typeof adSetName === 'string' && adSetName.trim() !== '') {
+        adSetNames.add(adSetName.trim());
+        if (idx < 10) {
+          adSetNamesFound.push(adSetName.trim());
+        }
+      } else if (idx < 5) {
+        // 最初の5件でad_set_nameが空のデータをログ出力
+        console.log(`[Dashboard] Record ${idx} has empty ad_set_name:`, {
+          campaign_name: d.campaign_name,
+          ad_set_name: adSetName,
+          ad_set_name_type: typeof adSetName,
+          ad_name: d.ad_name || '(empty)'
+        });
       }
     });
+    
+    console.log('[Dashboard] Ad set names found:', adSetNamesFound);
+    console.log('[Dashboard] Unique ad set names (Set):', Array.from(adSetNames));
     
     const adSetsArray = Array.from(adSetNames).sort();
     console.log(`[Dashboard] Available ad sets for "${selectedCampaign}":`, adSetsArray.length, 'ad sets:', adSetsArray);
