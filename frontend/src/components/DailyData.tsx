@@ -162,7 +162,24 @@ export const DailyData: React.FC<DailyDataProps> = ({ data: propData }) => {
     }>();
 
     filteredData.forEach(d => {
-      const key = `${d.date}_${d.campaign_name}`;
+      // 広告レベルのデータは個別に表示（ad_nameが存在する場合）
+      // 広告セットレベルのデータも個別に表示（ad_set_nameが存在し、ad_nameが存在しない場合）
+      // キャンペーンレベルのデータは日付+キャンペーンで集計
+      const hasAdName = d.ad_name && d.ad_name.trim() !== '';
+      const hasAdSetName = d.ad_set_name && d.ad_set_name.trim() !== '';
+      
+      let key: string;
+      if (hasAdName) {
+        // 広告レベルのデータ: 日付+キャンペーン+広告セット+広告でグループ化
+        key = `${d.date}_${d.campaign_name}_${d.ad_set_name || ''}_${d.ad_name}`;
+      } else if (hasAdSetName) {
+        // 広告セットレベルのデータ: 日付+キャンペーン+広告セットでグループ化
+        key = `${d.date}_${d.campaign_name}_${d.ad_set_name}`;
+      } else {
+        // キャンペーンレベルのデータ: 日付+キャンペーンでグループ化
+        key = `${d.date}_${d.campaign_name}`;
+      }
+      
       const existing = grouped.get(key);
       
       if (existing) {
@@ -179,6 +196,8 @@ export const DailyData: React.FC<DailyDataProps> = ({ data: propData }) => {
         grouped.set(key, {
           date: d.date,
           campaign_name: d.campaign_name,
+          ad_set_name: d.ad_set_name || '',
+          ad_name: d.ad_name || '',
           impressions: d.impressions,
           clicks: d.clicks,
           cost: d.cost,
@@ -212,9 +231,19 @@ export const DailyData: React.FC<DailyDataProps> = ({ data: propData }) => {
       day.engagement_rate = day.impressions > 0 ? (day.engagements / day.impressions * 100) : 0;
     });
 
-    return Array.from(grouped.values()).sort((a, b) => 
-      new Date(b.date).getTime() - new Date(a.date).getTime()
-    );
+    return Array.from(grouped.values()).sort((a, b) => {
+      // 日付でソート、同じ日付の場合はキャンペーン名、広告セット名、広告名でソート
+      const dateCompare = new Date(b.date).getTime() - new Date(a.date).getTime();
+      if (dateCompare !== 0) return dateCompare;
+      
+      const campaignCompare = (a.campaign_name || '').localeCompare(b.campaign_name || '');
+      if (campaignCompare !== 0) return campaignCompare;
+      
+      const adSetCompare = (a.ad_set_name || '').localeCompare(b.ad_set_name || '');
+      if (adSetCompare !== 0) return adSetCompare;
+      
+      return (a.ad_name || '').localeCompare(b.ad_name || '');
+    });
   }, [filteredData]);
 
   // Set default date range (last 30 days or all data)
@@ -241,6 +270,8 @@ export const DailyData: React.FC<DailyDataProps> = ({ data: propData }) => {
     const headers = [
       '日付',
       'キャンペーン名',
+      '広告セット名',
+      '広告名',
       'インプレッション',
       'クリック数',
       '費用',
@@ -262,6 +293,8 @@ export const DailyData: React.FC<DailyDataProps> = ({ data: propData }) => {
     const rows = dailyData.map(d => [
       d.date,
       d.campaign_name,
+      d.ad_set_name || '',
+      d.ad_name || '',
       d.impressions,
       d.clicks,
       d.cost,
@@ -337,6 +370,8 @@ export const DailyData: React.FC<DailyDataProps> = ({ data: propData }) => {
       const headers = [
         '日付',
         'キャンペーン名',
+        '広告セット名',
+        '広告名',
         'インプレッション',
         'クリック数',
         '費用',
@@ -358,6 +393,8 @@ export const DailyData: React.FC<DailyDataProps> = ({ data: propData }) => {
       const values = dailyData.map(d => [
         d.date,
         d.campaign_name,
+        d.ad_set_name || '',
+        d.ad_name || '',
         d.impressions.toString(),
         d.clicks.toString(),
         d.cost.toString(),
@@ -674,6 +711,12 @@ export const DailyData: React.FC<DailyDataProps> = ({ data: propData }) => {
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider sticky left-16 bg-gray-50 dark:bg-gray-900 z-10 whitespace-nowrap">
                   キャンペーン名
                 </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">
+                  広告セット名
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">
+                  広告名
+                </th>
                 <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">
                   インプレッション
                 </th>
@@ -727,7 +770,7 @@ export const DailyData: React.FC<DailyDataProps> = ({ data: propData }) => {
             <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
               {loading ? (
                 <tr>
-                  <td colSpan={18} className="px-4 py-8 text-center text-gray-500 dark:text-gray-400">
+                  <td colSpan={20} className="px-4 py-8 text-center text-gray-500 dark:text-gray-400">
                     <div className="flex justify-center items-center">
                       <div className="animate-spin h-8 w-8 border-b-2 border-indigo-600 dark:border-indigo-400 rounded-full"></div>
                       <p className="ml-4">データを読み込み中...</p>
@@ -736,18 +779,24 @@ export const DailyData: React.FC<DailyDataProps> = ({ data: propData }) => {
                 </tr>
               ) : dailyData.length === 0 ? (
                 <tr>
-                  <td colSpan={18} className="px-4 py-8 text-center text-gray-500 dark:text-gray-400">
+                  <td colSpan={20} className="px-4 py-8 text-center text-gray-500 dark:text-gray-400">
                     データがありません
                   </td>
                 </tr>
               ) : (
                 dailyData.map((row, idx) => (
-                  <tr key={`${row.date}_${row.campaign_name}_${idx}`} className="hover:bg-gray-50 dark:hover:bg-gray-700">
+                  <tr key={`${row.date}_${row.campaign_name}_${row.ad_set_name || ''}_${row.ad_name || ''}_${idx}`} className="hover:bg-gray-50 dark:hover:bg-gray-700">
                     <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white sticky left-0 bg-white dark:bg-gray-800 z-10">
                       {new Date(row.date).toLocaleDateString('ja-JP')}
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white sticky left-16 bg-white dark:bg-gray-800 z-10">
                       {row.campaign_name}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                      {row.ad_set_name || '-'}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                      {row.ad_name || '-'}
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
                       {row.impressions.toLocaleString()}
