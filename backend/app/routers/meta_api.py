@@ -802,11 +802,16 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                             print(f"[Meta API Debug] Updating existing record:")
                             print(f"  Before: impressions={existing.impressions}, clicks={existing.clicks}, cost={existing.cost}")
                             print(f"  Before: conversions={existing.conversions}, conversion_value={existing.conversion_value}")
+                            print(f"  Before: ad_set_name={existing.ad_set_name}, ad_name={existing.ad_name}")
                             print(f"  After: impressions={impressions}, clicks={clicks}, cost={spend}")
                             print(f"  After: conversions={conversions}, conversion_value={conversion_value}")
+                            print(f"  After: ad_set_name={ad_set_name}, ad_name={ad_name}")
                         
                         existing.upload_id = upload.id
                         existing.meta_account_id = account_id
+                        existing.campaign_name = campaign_name  # キャンペーン名も更新（変更される可能性があるため）
+                        existing.ad_set_name = ad_set_name if ad_set_name else ''  # 広告セット名を更新
+                        existing.ad_name = ad_name if ad_name else ''  # 広告名を更新
                         existing.cost = Decimal(str(spend))
                         existing.impressions = impressions
                         existing.clicks = clicks
