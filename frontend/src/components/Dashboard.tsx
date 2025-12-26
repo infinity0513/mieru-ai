@@ -1637,6 +1637,16 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
                   </div>
                 </th>
                 <th 
+                  className="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+                >
+                  広告セット名
+                </th>
+                <th 
+                  className="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+                >
+                  広告名
+                </th>
+                <th 
                   className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600"
                   onClick={() => requestSort('impressions')}
                 >
