@@ -257,23 +257,23 @@ const CampaignDetailModal = ({ campaignName, allData, onClose }: { campaignName:
               </div>
 
               {/* リーチ・エンゲージメント指標 */}
-              <div>
-                <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-4 break-words">リーチ・エンゲージメント指標</h4>
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-                  <div className="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-3 border border-purple-200 dark:border-purple-800 min-w-0 overflow-hidden">
-                    <div className="text-xs text-purple-600 dark:text-purple-400 mb-1 font-medium truncate">リーチ数</div>
-                    <div className="text-lg font-bold text-purple-700 dark:text-purple-300 break-words leading-tight">
-                      {(stats.totalReach || 0).toLocaleString()}
-                    </div>
-                    <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate">合計</div>
-                  </div>
-                  <div className="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-3 border border-purple-200 dark:border-purple-800 min-w-0 overflow-hidden">
-                    <div className="text-xs text-purple-600 dark:text-purple-400 mb-1 font-medium truncate">フリークエンシー</div>
-                    <div className="text-lg font-bold text-purple-700 dark:text-purple-300 break-words leading-tight">
-                      {(stats.frequency || 0).toFixed(2)}
-                    </div>
-                    <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate">平均</div>
-                  </div>
+                <div>
+                  <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-4 break-words">リーチ・エンゲージメント指標</h4>
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+                      <div className="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-3 border border-purple-200 dark:border-purple-800 min-w-0 overflow-hidden">
+                        <div className="text-xs text-purple-600 dark:text-purple-400 mb-1 font-medium truncate">リーチ数</div>
+                        <div className="text-lg font-bold text-purple-700 dark:text-purple-300 break-words leading-tight">
+                          {(stats.totalReach || 0).toLocaleString()}
+                        </div>
+                        <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate">合計</div>
+                </div>
+                      <div className="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-3 border border-purple-200 dark:border-purple-800 min-w-0 overflow-hidden">
+                        <div className="text-xs text-purple-600 dark:text-purple-400 mb-1 font-medium truncate">フリークエンシー</div>
+                        <div className="text-lg font-bold text-purple-700 dark:text-purple-300 break-words leading-tight">
+                          {(stats.frequency || 0).toFixed(2)}
+                </div>
+                        <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate">平均</div>
+            </div>
                   <div className="bg-pink-50 dark:bg-pink-900/20 rounded-lg p-3 border border-pink-200 dark:border-pink-800 min-w-0 overflow-hidden">
                     <div className="text-xs text-pink-600 dark:text-pink-400 mb-1 font-medium truncate">エンゲージメント数</div>
                     <div className="text-lg font-bold text-pink-700 dark:text-pink-300 break-words leading-tight">
@@ -281,21 +281,21 @@ const CampaignDetailModal = ({ campaignName, allData, onClose }: { campaignName:
                     </div>
                     <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate">合計</div>
                   </div>
-                  <div className="bg-pink-50 dark:bg-pink-900/20 rounded-lg p-3 border border-pink-200 dark:border-pink-800 min-w-0 overflow-hidden">
-                    <div className="text-xs text-pink-600 dark:text-pink-400 mb-1 font-medium truncate">エンゲージメント率</div>
-                    <div className="text-lg font-bold text-pink-700 dark:text-pink-300 break-words leading-tight">
-                      {(stats.engagementRate || 0).toFixed(2)}%
-                    </div>
-                    <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate">平均</div>
+                      <div className="bg-pink-50 dark:bg-pink-900/20 rounded-lg p-3 border border-pink-200 dark:border-pink-800 min-w-0 overflow-hidden">
+                        <div className="text-xs text-pink-600 dark:text-pink-400 mb-1 font-medium truncate">エンゲージメント率</div>
+                        <div className="text-lg font-bold text-pink-700 dark:text-pink-300 break-words leading-tight">
+                          {(stats.engagementRate || 0).toFixed(2)}%
+                        </div>
+                        <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate">平均</div>
                   </div>
-                  <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-3 border border-green-200 dark:border-green-800 min-w-0 overflow-hidden">
-                    <div className="text-xs text-green-600 dark:text-green-400 mb-1 font-medium truncate">LPビュー数</div>
-                    <div className="text-lg font-bold text-green-700 dark:text-green-300 break-words leading-tight">
-                      {(stats.totalLandingPageViews || 0).toLocaleString()}
-                    </div>
-                    <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate">合計</div>
+                      <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-3 border border-green-200 dark:border-green-800 min-w-0 overflow-hidden">
+                        <div className="text-xs text-green-600 dark:text-green-400 mb-1 font-medium truncate">LPビュー数</div>
+                        <div className="text-lg font-bold text-green-700 dark:text-green-300 break-words leading-tight">
+                          {(stats.totalLandingPageViews || 0).toLocaleString()}
+                        </div>
+                        <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate">合計</div>
                   </div>
-                </div>
+                  </div>
               </div>
             </div>
 
@@ -829,19 +829,33 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
 
   // Get unique ad sets for selected campaign
   const availableAdSets = useMemo(() => {
-    if (!selectedCampaign) return [];
+    if (!selectedCampaign) {
+      console.log('[Dashboard] No campaign selected, returning empty ad sets');
+      return [];
+    }
     let sourceData = data;
     if ((!data || data.length === 0) && !selectedMetaAccountId && propData && propData.length > 0) {
       sourceData = propData;
     }
     const campaignData = sourceData.filter(d => d.campaign_name === selectedCampaign);
-    const adSets = new Set(campaignData.map(d => d.ad_set_name).filter(Boolean));
-    return Array.from(adSets).sort();
+    console.log(`[Dashboard] Campaign "${selectedCampaign}" data:`, campaignData.length, 'records');
+    console.log('[Dashboard] Sample campaign data:', campaignData.slice(0, 3).map(d => ({
+      campaign_name: d.campaign_name,
+      ad_set_name: d.ad_set_name,
+      ad_name: d.ad_name
+    })));
+    const adSets = new Set(campaignData.map(d => d.ad_set_name).filter(name => name && name.trim() !== ''));
+    const adSetsArray = Array.from(adSets).sort();
+    console.log(`[Dashboard] Available ad sets for "${selectedCampaign}":`, adSetsArray);
+    return adSetsArray;
   }, [data, propData, selectedCampaign, selectedMetaAccountId]);
   
   // Get unique ads for selected campaign and ad set
   const availableAds = useMemo(() => {
-    if (!selectedCampaign || !selectedAdSet) return [];
+    if (!selectedCampaign || !selectedAdSet) {
+      console.log('[Dashboard] Campaign or ad set not selected, returning empty ads');
+      return [];
+    }
     let sourceData = data;
     if ((!data || data.length === 0) && !selectedMetaAccountId && propData && propData.length > 0) {
       sourceData = propData;
@@ -849,8 +863,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     const adSetData = sourceData.filter(
       d => d.campaign_name === selectedCampaign && d.ad_set_name === selectedAdSet
     );
-    const ads = new Set(adSetData.map(d => d.ad_name).filter(Boolean));
-    return Array.from(ads).sort();
+    console.log(`[Dashboard] Ad set "${selectedAdSet}" data:`, adSetData.length, 'records');
+    const ads = new Set(adSetData.map(d => d.ad_name).filter(name => name && name.trim() !== ''));
+    const adsArray = Array.from(ads).sort();
+    console.log(`[Dashboard] Available ads for "${selectedAdSet}":`, adsArray);
+    return adsArray;
   }, [data, propData, selectedCampaign, selectedAdSet, selectedMetaAccountId]);
 
   // Filter Data - パフォーマンス最適化版（KPIカード用：日付範囲 + キャンペーン + 広告セット + 広告）
@@ -1213,7 +1230,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
         <CampaignDetailModal 
             campaignName={selectedCampaignName} 
             allData={filteredData} 
-            onClose={() => setSelectedCampaignName(null)}
+            onClose={() => setSelectedCampaignName(null)} 
         />
       )}
 
@@ -1324,18 +1341,18 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
                                 {availableCampaigns.map(campaign => (
                                     <button
                                         key={campaign}
-                                    onClick={() => {
-                                        setSelectedCampaign(campaign);
+                                        onClick={() => {
+                                            setSelectedCampaign(campaign);
                                         setSelectedAdSet(null); // キャンペーンを変更したら広告セットと広告をクリア
                                         setSelectedAd(null);
-                                        try {
-                                            localStorage.setItem('dashboard_selectedCampaign', campaign);
+                                            try {
+                                                localStorage.setItem('dashboard_selectedCampaign', campaign);
                                             localStorage.setItem('dashboard_selectedAdSet', '');
                                             localStorage.setItem('dashboard_selectedAd', '');
-                                        } catch (err) {
-                                            // 無視
-                                        }
-                                    }}
+                                            } catch (err) {
+                                                // 無視
+                                            }
+                                        }}
                                         className={`px-3 py-1.5 text-sm font-medium rounded-lg border transition-colors whitespace-nowrap shrink-0 ${
                                             selectedCampaign === campaign
                                                 ? 'bg-indigo-50 border-indigo-500 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300 dark:border-indigo-500'
@@ -1353,7 +1370,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
         </div>
         
         {/* Ad Set Selection - キャンペーンが選択されている場合のみ表示 */}
-        {selectedCampaign && availableAdSets.length > 0 && (
+        {selectedCampaign && (
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
               <label className="text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap flex items-center shrink-0">
@@ -1385,28 +1402,34 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
                         全体
                       </button>
                       {/* 広告セットタブ */}
-                      {availableAdSets.map(adSet => (
-                        <button
-                          key={adSet}
-                          onClick={() => {
-                            setSelectedAdSet(adSet);
-                            setSelectedAd(null); // 広告セットを変更したら広告をクリア
-                            try {
-                              localStorage.setItem('dashboard_selectedAdSet', adSet);
-                              localStorage.setItem('dashboard_selectedAd', '');
-                            } catch (err) {
-                              // 無視
-                            }
-                          }}
-                          className={`px-3 py-1.5 text-sm font-medium rounded-lg border transition-colors whitespace-nowrap shrink-0 ${
-                            selectedAdSet === adSet
-                              ? 'bg-indigo-50 border-indigo-500 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300 dark:border-indigo-500'
-                              : 'border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300'
-                          }`}
-                        >
-                          {adSet}
-                        </button>
-                      ))}
+                      {availableAdSets.length > 0 ? (
+                        availableAdSets.map(adSet => (
+                          <button
+                            key={adSet}
+                            onClick={() => {
+                              setSelectedAdSet(adSet);
+                              setSelectedAd(null); // 広告セットを変更したら広告をクリア
+                              try {
+                                localStorage.setItem('dashboard_selectedAdSet', adSet);
+                                localStorage.setItem('dashboard_selectedAd', '');
+                              } catch (err) {
+                                // 無視
+                              }
+                            }}
+                            className={`px-3 py-1.5 text-sm font-medium rounded-lg border transition-colors whitespace-nowrap shrink-0 ${
+                              selectedAdSet === adSet
+                                ? 'bg-indigo-50 border-indigo-500 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300 dark:border-indigo-500'
+                                : 'border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300'
+                            }`}
+                          >
+                            {adSet}
+                          </button>
+                        ))
+                      ) : (
+                        <span className="px-3 py-1.5 text-sm text-gray-500 dark:text-gray-400">
+                          広告セットデータがありません
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1416,7 +1439,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
         )}
         
         {/* Ad Selection - 広告セットが選択されている場合のみ表示 */}
-        {selectedAdSet && availableAds.length > 0 && (
+        {selectedAdSet && (
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
               <label className="text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap flex items-center shrink-0">
@@ -1446,26 +1469,32 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
                         全体
                       </button>
                       {/* 広告タブ */}
-                      {availableAds.map(ad => (
-                        <button
-                          key={ad}
-                          onClick={() => {
-                            setSelectedAd(ad);
-                            try {
-                              localStorage.setItem('dashboard_selectedAd', ad);
-                            } catch (err) {
-                              // 無視
-                            }
-                          }}
-                          className={`px-3 py-1.5 text-sm font-medium rounded-lg border transition-colors whitespace-nowrap shrink-0 ${
-                            selectedAd === ad
-                              ? 'bg-indigo-50 border-indigo-500 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300 dark:border-indigo-500'
-                              : 'border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300'
-                          }`}
-                        >
-                          {ad}
-                        </button>
-                      ))}
+                      {availableAds.length > 0 ? (
+                        availableAds.map(ad => (
+                          <button
+                            key={ad}
+                            onClick={() => {
+                              setSelectedAd(ad);
+                              try {
+                                localStorage.setItem('dashboard_selectedAd', ad);
+                              } catch (err) {
+                                // 無視
+                              }
+                            }}
+                            className={`px-3 py-1.5 text-sm font-medium rounded-lg border transition-colors whitespace-nowrap shrink-0 ${
+                              selectedAd === ad
+                                ? 'bg-indigo-50 border-indigo-500 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300 dark:border-indigo-500'
+                                : 'border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300'
+                            }`}
+                          >
+                            {ad}
+                          </button>
+                        ))
+                      ) : (
+                        <span className="px-3 py-1.5 text-sm text-gray-500 dark:text-gray-400">
+                          広告データがありません
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1688,23 +1717,23 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
       </div>
 
         {/* リーチ・エンゲージメント指標 */}
-        <div>
-          <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-4 break-words">リーチ・エンゲージメント指標</h4>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-            <div className="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-3 border border-purple-200 dark:border-purple-800 min-w-0 overflow-hidden">
-              <div className="text-xs text-purple-600 dark:text-purple-400 mb-1 font-medium truncate">リーチ数</div>
-              <div className="text-lg font-bold text-purple-700 dark:text-purple-300 break-words leading-tight">
-                {kpiData.totalReach.toLocaleString()}
-              </div>
-              <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate">合計</div>
-            </div>
-            <div className="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-3 border border-purple-200 dark:border-purple-800 min-w-0 overflow-hidden">
-              <div className="text-xs text-purple-600 dark:text-purple-400 mb-1 font-medium truncate">フリークエンシー</div>
-              <div className="text-lg font-bold text-purple-700 dark:text-purple-300 break-words leading-tight">
-                {kpiData.frequency.toFixed(2)}
-              </div>
-              <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate">平均</div>
-            </div>
+          <div>
+            <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-4 break-words">リーチ・エンゲージメント指標</h4>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+                <div className="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-3 border border-purple-200 dark:border-purple-800 min-w-0 overflow-hidden">
+                  <div className="text-xs text-purple-600 dark:text-purple-400 mb-1 font-medium truncate">リーチ数</div>
+                  <div className="text-lg font-bold text-purple-700 dark:text-purple-300 break-words leading-tight">
+                    {kpiData.totalReach.toLocaleString()}
+                  </div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate">合計</div>
+                </div>
+                <div className="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-3 border border-purple-200 dark:border-purple-800 min-w-0 overflow-hidden">
+                  <div className="text-xs text-purple-600 dark:text-purple-400 mb-1 font-medium truncate">フリークエンシー</div>
+                  <div className="text-lg font-bold text-purple-700 dark:text-purple-300 break-words leading-tight">
+                    {kpiData.frequency.toFixed(2)}
+                  </div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate">平均</div>
+                </div>
             <div className="bg-pink-50 dark:bg-pink-900/20 rounded-lg p-3 border border-pink-200 dark:border-pink-800 min-w-0 overflow-hidden">
               <div className="text-xs text-pink-600 dark:text-pink-400 mb-1 font-medium truncate">エンゲージメント数</div>
               <div className="text-lg font-bold text-pink-700 dark:text-pink-300 break-words leading-tight">
@@ -1712,22 +1741,22 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
               </div>
               <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate">合計</div>
             </div>
-            <div className="bg-pink-50 dark:bg-pink-900/20 rounded-lg p-3 border border-pink-200 dark:border-pink-800 min-w-0 overflow-hidden">
-              <div className="text-xs text-pink-600 dark:text-pink-400 mb-1 font-medium truncate">エンゲージメント率</div>
-              <div className="text-lg font-bold text-pink-700 dark:text-pink-300 break-words leading-tight">
-                {kpiData.engagementRate.toFixed(2)}%
-              </div>
-              <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate">平均</div>
-            </div>
-            <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-3 border border-green-200 dark:border-green-800 min-w-0 overflow-hidden">
-              <div className="text-xs text-green-600 dark:text-green-400 mb-1 font-medium truncate">LPビュー数</div>
-              <div className="text-lg font-bold text-green-700 dark:text-green-300 break-words leading-tight">
-                {kpiData.totalLandingPageViews.toLocaleString()}
-              </div>
-              <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate">合計</div>
+                <div className="bg-pink-50 dark:bg-pink-900/20 rounded-lg p-3 border border-pink-200 dark:border-pink-800 min-w-0 overflow-hidden">
+                  <div className="text-xs text-pink-600 dark:text-pink-400 mb-1 font-medium truncate">エンゲージメント率</div>
+                  <div className="text-lg font-bold text-pink-700 dark:text-pink-300 break-words leading-tight">
+                    {kpiData.engagementRate.toFixed(2)}%
+                  </div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate">平均</div>
+                </div>
+                <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-3 border border-green-200 dark:border-green-800 min-w-0 overflow-hidden">
+                  <div className="text-xs text-green-600 dark:text-green-400 mb-1 font-medium truncate">LPビュー数</div>
+                  <div className="text-lg font-bold text-green-700 dark:text-green-300 break-words leading-tight">
+                    {kpiData.totalLandingPageViews.toLocaleString()}
+                  </div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate">合計</div>
+                </div>
             </div>
           </div>
-        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 print:block print:space-y-6">
