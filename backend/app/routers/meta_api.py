@@ -135,7 +135,6 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
             
             # Meta APIの期間制限を確認
             # - Reachフィールドを使用しているが、Breakdownは使用していないため、37ヶ月（1,095日）が可能
-            # - パフォーマンスのため、1回のリクエストは90日ごとに分割
             campaign_fields = "campaign_id,campaign_name,date_start,spend,impressions,clicks,inline_link_clicks,reach,actions,conversions,action_values,engagements,landing_page_views,link_clicks,frequency"
             has_reach = "reach" in campaign_fields.lower()
             has_breakdowns = False  # 現在の実装ではbreakdownsパラメータを使用していない
@@ -156,8 +155,10 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                 current_since = current_until - timedelta(days=max_days_total)
                 print(f"[Meta API] Date range limited to {max_days_total} days: {current_since.strftime('%Y-%m-%d')} to {current_until.strftime('%Y-%m-%d')}")
             
-            # 1回のリクエストは90日ごとに分割（パフォーマンスのため）
-            max_days_per_request = 90  # パフォーマンスのための推奨期間
+            # 日付範囲を文字列に変換
+            start_date_str = current_since.strftime('%Y-%m-%d')
+            end_date_str = current_until.strftime('%Y-%m-%d')
+            print(f"[Meta API] Date range: {start_date_str} to {end_date_str} ({(current_until - current_since).days} days)")
             
             for idx, campaign in enumerate(all_campaigns):
                 campaign_id = campaign.get('id')
@@ -168,100 +169,83 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                 
                 campaign_insights_url = f"https://graph.facebook.com/v24.0/{campaign_id}/insights"
                 
-                # 期間を分割して取得（90日ごと）
-                request_since = current_since
-                while request_since < current_until:
-                    request_until = min(request_since + timedelta(days=max_days_per_request), current_until)
+                # 1回のリクエストで全期間を取得
+                time_range_dict = {
+                    "since": start_date_str,
+                    "until": end_date_str
+                }
+                time_range_json = json.dumps(time_range_dict, separators=(',', ':'))  # スペースなしJSON
+                
+                campaign_insights_params = {
+                    "access_token": access_token,
+                    "fields": "campaign_id,campaign_name,date_start,spend,impressions,clicks,inline_link_clicks,reach,actions,conversions,action_values,engagements,landing_page_views,link_clicks,frequency",
+                    "time_range": time_range_json,  # JSON文字列（スペースなし）
+                    "limit": 100
+                }
+                
+                # デバッグログ（最初の数件のみ）
+                if idx < 3:
+                    print(f"[Meta API] Fetching insights for campaign: {campaign_name}")
+                    print(f"  Campaign ID: {campaign_id}")
+                    print(f"  Date range: {start_date_str} to {end_date_str}")
+                    print(f"  time_range param: {time_range_json}")
+                
+                try:
+                    # デバッグログ：リクエストURLを出力（最初の数件のみ）
+                    if idx < 3:
+                        from urllib.parse import urlencode
+                        test_params = campaign_insights_params.copy()
+                        test_url = f"{campaign_insights_url}?{urlencode(test_params)}"
+                        print(f"  Request URL: {test_url}")
                     
-                    # JSON形式でtime_rangeを作成（スペースなし）
-                    time_range_dict = {
-                        "since": request_since.strftime('%Y-%m-%d'),
-                        "until": request_until.strftime('%Y-%m-%d')
-                    }
-                    time_range_json = json.dumps(time_range_dict, separators=(',', ':'))  # スペースなしJSON
+                    campaign_insights_response = await client.get(campaign_insights_url, params=campaign_insights_params)
                     
-                    campaign_insights_params = {
-                        "access_token": access_token,
-                        "fields": "campaign_id,campaign_name,date_start,spend,impressions,clicks,inline_link_clicks,reach,actions,conversions,action_values,engagements,landing_page_views,link_clicks,frequency",
-                        "time_range": time_range_json,  # JSON文字列（スペースなし）
-                        "limit": 100
-                    }
+                    # デバッグログ：レスポンスステータスを出力（最初の数件のみ）
+                    if idx < 3:
+                        print(f"  Response status: {campaign_insights_response.status_code}")
+                        if campaign_insights_response.status_code != 200:
+                            # エラーレスポンスを解析
+                            try:
+                                error_data = campaign_insights_response.json()
+                                error_text = str(error_data)
+                                print(f"  Error response: {error_text}")
+                                if 'error' in error_data:
+                                    print(f"  Meta Error Code: {error_data['error'].get('code')}")
+                                    print(f"  Meta Error Message: {error_data['error'].get('message')}")
+                                    print(f"  Meta Error Type: {error_data['error'].get('type')}")
+                            except Exception as parse_error:
+                                error_text = await campaign_insights_response.aread()
+                                print(f"  Error response (raw): {error_text.decode('utf-8')}")
+                                print(f"  Parse error: {str(parse_error)}")
+                    
+                    campaign_insights_response.raise_for_status()
+                    campaign_insights_data = campaign_insights_response.json()
+                    
+                    # 最初のページのデータを追加
+                    page_campaign_insights = campaign_insights_data.get('data', [])
+                    all_insights.extend(page_campaign_insights)
                     
                     # デバッグログ（最初の数件のみ）
                     if idx < 3:
-                        print(f"[Meta API] Fetching insights for campaign: {campaign_name}")
-                        print(f"  Campaign ID: {campaign_id}")
-                        print(f"  Date range: {request_since.strftime('%Y-%m-%d')} to {request_until.strftime('%Y-%m-%d')}")
-                        print(f"  time_range param: {time_range_json}")
+                        if len(page_campaign_insights) > 0:
+                            sample_insight = page_campaign_insights[0]
+                            print(f"  ✓ Success: Retrieved {len(page_campaign_insights)} insights")
+                            print(f"  Sample data: spend={sample_insight.get('spend')}, impressions={sample_insight.get('impressions')}, clicks={sample_insight.get('clicks')}")
+                        else:
+                            print(f"  ⚠ No insights data returned")
                     
-                    try:
-                        # デバッグログ：リクエストURLを出力（最初の数件のみ）
-                        if idx < 3:
-                            from urllib.parse import urlencode
-                            test_params = campaign_insights_params.copy()
-                            test_url = f"{campaign_insights_url}?{urlencode(test_params)}"
-                            print(f"  Request URL: {test_url}")
-                        
-                        campaign_insights_response = await client.get(campaign_insights_url, params=campaign_insights_params)
-                        
-                        # デバッグログ：レスポンスステータスを出力（最初の数件のみ）
-                        if idx < 3:
-                            print(f"  Response status: {campaign_insights_response.status_code}")
-                            if campaign_insights_response.status_code != 200:
-                                # エラーレスポンスを解析
-                                try:
-                                    error_data = campaign_insights_response.json()
-                                    error_text = str(error_data)
-                                    print(f"  Error response: {error_text}")
-                                    if 'error' in error_data:
-                                        print(f"  Meta Error Code: {error_data['error'].get('code')}")
-                                        print(f"  Meta Error Message: {error_data['error'].get('message')}")
-                                        print(f"  Meta Error Type: {error_data['error'].get('type')}")
-                                except Exception as parse_error:
-                                    error_text = await campaign_insights_response.aread()
-                                    print(f"  Error response (raw): {error_text.decode('utf-8')}")
-                                    print(f"  Parse error: {str(parse_error)}")
-                        
-                        campaign_insights_response.raise_for_status()
-                        campaign_insights_data = campaign_insights_response.json()
-                        
-                        # 最初のページのデータを追加
+                    # ページネーション処理（すべてのページを取得）
+                    while 'paging' in campaign_insights_data and 'next' in campaign_insights_data['paging']:
+                        next_url = campaign_insights_data['paging']['next']
+                        next_response = await client.get(next_url)
+                        next_response.raise_for_status()
+                        campaign_insights_data = next_response.json()
                         page_campaign_insights = campaign_insights_data.get('data', [])
                         all_insights.extend(page_campaign_insights)
-                        
-                        # デバッグログ（最初の数件のみ）
-                        if idx < 3:
-                            if len(page_campaign_insights) > 0:
-                                sample_insight = page_campaign_insights[0]
-                                print(f"  ✓ Success: Retrieved {len(page_campaign_insights)} insights")
-                                print(f"  Sample data: spend={sample_insight.get('spend')}, impressions={sample_insight.get('impressions')}, clicks={sample_insight.get('clicks')}")
-                            else:
-                                print(f"  ⚠ No insights data returned")
-                        
-                        # ページネーション処理（すべてのページを取得）
-                        page_num = 1
-                        while 'paging' in campaign_insights_data and 'next' in campaign_insights_data['paging']:
-                            page_num += 1
-                            next_url = campaign_insights_data['paging']['next']
-                            next_response = await client.get(next_url)
-                            next_response.raise_for_status()
-                            campaign_insights_data = next_response.json()
-                            page_campaign_insights = campaign_insights_data.get('data', [])
-                            all_insights.extend(page_campaign_insights)
-                            
-                            # デバッグログ（最初の数件のみ）
-                            if idx < 3 and page_num <= 3:
-                                print(f"  Page {page_num}: Retrieved {len(page_campaign_insights)} insights")
-                    except Exception as e:
-                        print(f"[Meta API] Error fetching campaign insights for {campaign_name} ({campaign_id}) from {request_since.strftime('%Y-%m-%d')} to {request_until.strftime('%Y-%m-%d')}: {str(e)}")
-                        # エラーが発生しても次の期間の取得を続行
-                    
-                    # 次の期間に進む
-                    request_since = request_until + timedelta(days=1)
-                    
-                    # 無限ループ防止
-                    if request_since >= current_until:
-                        break
+                        print(f"[Meta API] Retrieved {len(page_campaign_insights)} more insights for {campaign_name} (total: {len(all_insights)})")
+                except Exception as e:
+                    print(f"[Meta API] Error fetching campaign insights for {campaign_name} ({campaign_id}): {str(e)}")
+                    # エラーが発生しても次のキャンペーンの取得を続行
             
             print(f"[Meta API] Campaign-level insights retrieved: {len([i for i in all_insights if 'adset_id' not in i or not i.get('adset_id')])}")
             
