@@ -852,6 +852,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
 
   // Get unique ad sets for selected campaign
   const availableAdSets = useMemo(() => {
+    console.log('[Dashboard] ===== availableAdSets calculation =====');
+    console.log('[Dashboard] selectedCampaign:', selectedCampaign);
+    console.log('[Dashboard] selectedMetaAccountId:', selectedMetaAccountId);
+    console.log('[Dashboard] allApiData length:', allApiData?.length || 0);
+    console.log('[Dashboard] apiData length:', apiData?.length || 0);
+    console.log('[Dashboard] propData length:', propData?.length || 0);
+    
     if (!selectedCampaign) {
       console.log('[Dashboard] No campaign selected, returning empty ad sets');
       return [];
@@ -863,19 +870,25 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
       // アセットが選択されている場合: allApiDataを使用（全データ）
       if (allApiData && allApiData.length > 0) {
         sourceData = allApiData;
+        console.log('[Dashboard] Using allApiData for ad sets:', sourceData.length);
       } else if (apiData && apiData.length > 0) {
         sourceData = apiData; // Fallback to filtered data
+        console.log('[Dashboard] Using apiData (fallback) for ad sets:', sourceData.length);
       } else if (propData && propData.length > 0) {
         sourceData = propData;
+        console.log('[Dashboard] Using propData (fallback) for ad sets:', sourceData.length);
       }
     } else {
       // アセットが選択されていない場合: propDataを優先、なければallApiData
       if (propData && propData.length > 0) {
         sourceData = propData;
+        console.log('[Dashboard] Using propData for ad sets:', sourceData.length);
       } else if (allApiData && allApiData.length > 0) {
         sourceData = allApiData;
+        console.log('[Dashboard] Using allApiData (fallback) for ad sets:', sourceData.length);
       } else if (apiData && apiData.length > 0) {
         sourceData = apiData;
+        console.log('[Dashboard] Using apiData (fallback) for ad sets:', sourceData.length);
       }
     }
     
@@ -887,6 +900,23 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     // 選択されたキャンペーンのデータを取得
     const campaignData = sourceData.filter(d => d.campaign_name === selectedCampaign);
     console.log(`[Dashboard] Campaign "${selectedCampaign}" total data:`, campaignData.length, 'records (from', sourceData.length, 'total records)');
+    
+    if (campaignData.length === 0) {
+      console.warn(`[Dashboard] No data found for campaign "${selectedCampaign}"`);
+      // デバッグ: 利用可能なキャンペーン名を確認
+      const availableCampaignNames = new Set(sourceData.map(d => d.campaign_name));
+      console.log('[Dashboard] Available campaign names:', Array.from(availableCampaignNames));
+      return [];
+    }
+    
+    // サンプルデータを確認
+    console.log('[Dashboard] Sample campaign data (first 10):', campaignData.slice(0, 10).map(d => ({
+      campaign_name: d.campaign_name,
+      ad_set_name: d.ad_set_name || '(empty)',
+      ad_name: d.ad_name || '(empty)',
+      hasAdSetName: !!(d.ad_set_name && d.ad_set_name.trim() !== ''),
+      hasAdName: !!(d.ad_name && d.ad_name.trim() !== '')
+    })));
     
     // 広告セット名を取得（広告セットレベルのデータと広告レベルのデータの両方から）
     // 広告セットレベルのデータ: ad_set_nameが存在し、ad_nameが空
@@ -912,11 +942,16 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
       d.ad_set_name && d.ad_set_name.trim() !== '' && 
       d.ad_name && d.ad_name.trim() !== ''
     ).length;
+    const campaignLevelCount = campaignData.filter(d => 
+      (!d.ad_set_name || d.ad_set_name.trim() === '')
+    ).length;
     console.log(`[Dashboard] Data breakdown for "${selectedCampaign}":`, {
+      campaignLevel: campaignLevelCount,
       adsetLevel: adsetLevelCount,
       adLevel: adLevelCount,
       total: campaignData.length
     });
+    console.log('[Dashboard] ===== End availableAdSets calculation =====');
     
     return adSetsArray;
   }, [allApiData, apiData, propData, selectedCampaign, selectedMetaAccountId]);
