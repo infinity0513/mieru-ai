@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.orm import Session
-from sqlalchemy import func, desc, or_, text
+from sqlalchemy import func, desc, or_, and_, case, text
 from datetime import date, timedelta
 from typing import Optional, List
 from ..database import get_db
@@ -345,9 +345,9 @@ def get_summary(
     
     # データレベルの統計を確認
     level_stats_query = query.with_entities(
-        func.sum(func.case((or_(Campaign.ad_set_name == '', Campaign.ad_set_name.is_(None)), 1), else_=0)).label('campaign_level'),
-        func.sum(func.case((and_(Campaign.ad_set_name != '', Campaign.ad_set_name.isnot(None), or_(Campaign.ad_name == '', Campaign.ad_name.is_(None))), 1), else_=0)).label('adset_level'),
-        func.sum(func.case((and_(Campaign.ad_name != '', Campaign.ad_name.isnot(None)), 1), else_=0)).label('ad_level')
+        func.sum(case((or_(Campaign.ad_set_name == '', Campaign.ad_set_name.is_(None)), 1), else_=0)).label('campaign_level'),
+        func.sum(case((and_(Campaign.ad_set_name != '', Campaign.ad_set_name.isnot(None), or_(Campaign.ad_name == '', Campaign.ad_name.is_(None))), 1), else_=0)).label('adset_level'),
+        func.sum(case((and_(Campaign.ad_name != '', Campaign.ad_name.isnot(None)), 1), else_=0)).label('ad_level')
     ).first()
     print(f"  Data level breakdown: campaign={level_stats_query.campaign_level or 0}, adset={level_stats_query.adset_level or 0}, ad={level_stats_query.ad_level or 0}")
     
