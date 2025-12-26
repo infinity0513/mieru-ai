@@ -36,6 +36,15 @@ def perform_analysis_task(
         if campaign_name:
             query = query.filter(Campaign.campaign_name == campaign_name)
         
+        # データの重複排除: キャンペーンレベルのみを使用
+        from sqlalchemy import or_
+        query = query.filter(
+            or_(
+                Campaign.ad_set_name == '',
+                Campaign.ad_set_name.is_(None)
+            )
+        )
+        
         # Get summary - 16項目すべてを取得
         result = query.with_entities(
             func.sum(Campaign.impressions).label('total_impressions'),
@@ -59,14 +68,22 @@ def perform_analysis_task(
         total_link_clicks = int(result.total_link_clicks or 0)
         total_landing_page_views = int(result.total_landing_page_views or 0)
         
-        # 16項目すべてを計算
+        # 16項目すべてを計算（Meta広告マネージャの定義に合わせる）
+        # CTR = (clicks / impressions) * 100（clicksはinline_link_clicks）
         ctr = (total_clicks / total_impressions * 100) if total_impressions > 0 else 0
+        # CPC = cost / clicks
         cpc = (total_cost / total_clicks) if total_clicks > 0 else 0
+        # CPA = cost / conversions
         cpa = (total_cost / total_conversions) if total_conversions > 0 else 0
+        # CVR = (conversions / clicks) * 100
         cvr = (total_conversions / total_clicks * 100) if total_clicks > 0 else 0
-        roas = (total_conversion_value / total_cost * 100) if total_cost > 0 else 0
+        # ROAS = conversion_value / cost（比率、パーセンテージではない）
+        roas = (total_conversion_value / total_cost) if total_cost > 0 else 0
+        # CPM = (cost / impressions) * 1000
         cpm = (total_cost / total_impressions * 1000) if total_impressions > 0 else 0
+        # Frequency = impressions / reach
         frequency = (total_impressions / total_reach) if total_reach > 0 else 0
+        # Engagement Rate = (engagements / impressions) * 100
         engagement_rate = (total_engagements / total_impressions * 100) if total_impressions > 0 else 0
         
         summary = {
@@ -113,7 +130,8 @@ def perform_analysis_task(
                 cost = float(c.cost or 0)
                 conversions = int(c.conversions or 0)
                 conversion_value = float(c.conversion_value or 0)
-                roas = (conversion_value / cost * 100) if cost > 0 else 0
+                # ROAS = conversion_value / cost（比率、パーセンテージではない）
+                roas = (conversion_value / cost) if cost > 0 else 0
                 cpa = (cost / conversions) if conversions > 0 else 0
                 
                 campaign_list.append({

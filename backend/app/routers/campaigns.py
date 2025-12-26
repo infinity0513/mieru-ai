@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.orm import Session
-from sqlalchemy import func, desc
+from sqlalchemy import func, desc, or_
 from datetime import date, timedelta
 from typing import Optional, List
 from ..database import get_db
@@ -72,28 +72,59 @@ def get_summary(
         Campaign.date <= end_date
     )
     
-    # Aggregate metrics
+    # Aggregate metrics（16項目すべてを取得）
     result = query.with_entities(
         func.sum(Campaign.impressions).label('total_impressions'),
-        func.sum(Campaign.clicks).label('total_clicks'),
+        func.sum(Campaign.clicks).label('total_clicks'),  # inline_link_clicksを使用
         func.sum(Campaign.cost).label('total_cost'),
         func.sum(Campaign.conversions).label('total_conversions'),
-        func.sum(Campaign.conversion_value).label('total_conversion_value')
+        func.sum(Campaign.conversion_value).label('total_conversion_value'),
+        func.sum(Campaign.reach).label('total_reach'),
+        func.sum(Campaign.engagements).label('total_engagements'),
+        func.sum(Campaign.landing_page_views).label('total_landing_page_views'),
+        func.sum(Campaign.link_clicks).label('total_link_clicks')
     ).first()
     
     total_impressions = int(result.total_impressions or 0)
-    total_clicks = int(result.total_clicks or 0)
+    total_clicks = int(result.total_clicks or 0)  # inline_link_clicks
     total_cost = float(result.total_cost or 0)
     total_conversions = int(result.total_conversions or 0)
     total_conversion_value = float(result.total_conversion_value or 0)
+    total_reach = int(result.total_reach or 0)
+    total_engagements = int(result.total_engagements or 0)
+    total_landing_page_views = int(result.total_landing_page_views or 0)
+    total_link_clicks = int(result.total_link_clicks or 0)
     
-    # Calculate averages
+    # デバッグログ: 集計結果を検証
+    print(f"[Summary] Aggregated metrics for period {start_date} to {end_date}:")
+    print(f"  Total impressions: {total_impressions}")
+    print(f"  Total clicks (inline_link_clicks): {total_clicks}")
+    print(f"  Total cost: {total_cost}")
+    print(f"  Total conversions: {total_conversions}")
+    print(f"  Total conversion_value: {total_conversion_value}")
+    print(f"  Total reach: {total_reach}")
+    print(f"  Total engagements: {total_engagements}")
+    print(f"  Total landing_page_views: {total_landing_page_views}")
+    print(f"  Total link_clicks: {total_link_clicks}")
+    print(f"  Filtered by campaign-level only: ad_set_name is empty or NULL")
+    
+    # Calculate averages（Meta広告マネージャの定義に合わせる）
+    # CTR = (clicks / impressions) * 100（clicksはinline_link_clicks）
     avg_ctr = (total_clicks / total_impressions * 100) if total_impressions > 0 else 0
+    # CPC = cost / clicks
     avg_cpc = (total_cost / total_clicks) if total_clicks > 0 else 0
+    # CPM = (cost / impressions) * 1000
     avg_cpm = (total_cost / total_impressions * 1000) if total_impressions > 0 else 0
+    # CPA = cost / conversions
     avg_cpa = (total_cost / total_conversions) if total_conversions > 0 else 0
+    # CVR = (conversions / clicks) * 100
     avg_cvr = (total_conversions / total_clicks * 100) if total_clicks > 0 else 0
-    avg_roas = (total_conversion_value / total_cost * 100) if total_cost > 0 else 0
+    # ROAS = conversion_value / cost（比率、パーセンテージではない）
+    avg_roas = (total_conversion_value / total_cost) if total_cost > 0 else 0
+    # Frequency = impressions / reach
+    avg_frequency = (total_impressions / total_reach) if total_reach > 0 else 0
+    # Engagement Rate = (engagements / impressions) * 100
+    avg_engagement_rate = (total_engagements / total_impressions * 100) if total_impressions > 0 else 0
     
     return {
         "period": {
@@ -105,7 +136,11 @@ def get_summary(
             "clicks": total_clicks,
             "cost": round(total_cost, 2),
             "conversions": total_conversions,
-            "conversion_value": round(total_conversion_value, 2)
+            "conversion_value": round(total_conversion_value, 2),
+            "reach": total_reach,
+            "engagements": total_engagements,
+            "landing_page_views": total_landing_page_views,
+            "link_clicks": total_link_clicks
         },
         "averages": {
             "ctr": round(avg_ctr, 2),
@@ -113,7 +148,9 @@ def get_summary(
             "cpm": round(avg_cpm, 2),
             "cpa": round(avg_cpa, 2),
             "cvr": round(avg_cvr, 2),
-            "roas": round(avg_roas, 2)
+            "roas": round(avg_roas, 2),
+            "frequency": round(avg_frequency, 2),
+            "engagement_rate": round(avg_engagement_rate, 2)
         }
     }
 
@@ -141,6 +178,14 @@ def get_trends(
     query = query.filter(
         Campaign.date >= start_date,
         Campaign.date <= end_date
+    )
+    
+    # データの重複排除: キャンペーンレベルのみを使用
+    query = query.filter(
+        or_(
+            Campaign.ad_set_name == '',
+            Campaign.ad_set_name.is_(None)
+        )
     )
     
     # Group by date
@@ -204,11 +249,16 @@ def get_by_campaign(
         conversions = int(c.conversions or 0)
         conversion_value = float(c.conversion_value or 0)
         
+        # CTR = (clicks / impressions) * 100
         ctr = (clicks / impressions * 100) if impressions > 0 else 0
+        # CPC = cost / clicks
         cpc = (cost / clicks) if clicks > 0 else 0
+        # CPA = cost / conversions
         cpa = (cost / conversions) if conversions > 0 else 0
+        # CVR = (conversions / clicks) * 100
         cvr = (conversions / clicks * 100) if clicks > 0 else 0
-        roas = (conversion_value / cost * 100) if cost > 0 else 0
+        # ROAS = conversion_value / cost（比率、パーセンテージではない）
+        roas = (conversion_value / cost) if cost > 0 else 0
         
         result.append({
             "campaign_name": c.campaign_name,
@@ -245,6 +295,14 @@ def get_top_performers(
     query = db.query(Campaign).filter(
         Campaign.user_id == current_user.id,
         Campaign.date >= start_date
+    )
+    
+    # データの重複排除: キャンペーンレベルのみを使用
+    query = query.filter(
+        or_(
+            Campaign.ad_set_name == '',
+            Campaign.ad_set_name.is_(None)
+        )
     )
     
     campaigns = query.with_entities(
@@ -302,6 +360,14 @@ def get_bottom_performers(
     query = db.query(Campaign).filter(
         Campaign.user_id == current_user.id,
         Campaign.date >= start_date
+    )
+    
+    # データの重複排除: キャンペーンレベルのみを使用
+    query = query.filter(
+        or_(
+            Campaign.ad_set_name == '',
+            Campaign.ad_set_name.is_(None)
+        )
     )
     
     campaigns = query.with_entities(

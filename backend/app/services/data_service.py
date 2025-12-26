@@ -341,7 +341,8 @@ class DataService:
             ).replace('nan', '').replace('NaN', '')
             
             # Check for duplicate
-            # Meta CSVにはad_set_nameとad_nameが含まれないため、空の場合は重複チェックから除外
+            # データソースの優先順位: Meta APIデータ > CSVデータ
+            # Meta APIデータ（meta_account_idがある）を優先し、CSVデータ（meta_account_idがない）で上書きしない
             query = db.query(Campaign).filter(
                 Campaign.user_id == user_id,
                 Campaign.date == campaign_date,
@@ -364,6 +365,13 @@ class DataService:
                 )
             
             existing_campaign = query.first()
+            
+            # データソースの優先順位チェック
+            # 既存レコードにmeta_account_idがある場合（Meta APIデータ）、CSVデータで上書きしない
+            if existing_campaign and existing_campaign.meta_account_id:
+                if idx < 5:
+                    print(f"[DataService] Row {idx}: Skipping CSV update - existing record has meta_account_id (Meta API data takes priority)")
+                continue  # Meta APIデータを優先し、CSVデータで上書きしない
             
             # デバッグログ（最初の数件のみ詳細にログ出力）
             if idx < 5:

@@ -430,6 +430,10 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                         print(f"[Meta API] Saving {level_type} insight: campaign={campaign_name}, adset={ad_set_name or 'N/A'}, date={campaign_date}, spend={insight.get('spend', 0)}")
                     # デバッグログ：生データを詳細にログ出力（最初の数件のみ）
                     if saved_count < 3:
+                        print(f"[Meta API] Raw data vs Saved data comparison:")
+                        print(f"  Raw: impressions={insight.get('impressions')}, inline_link_clicks={insight.get('inline_link_clicks')}, clicks={insight.get('clicks')}")
+                        print(f"  Raw: conversions={insight.get('conversions')}, action_values={insight.get('action_values')}")
+                        print(f"  Raw: reach={insight.get('reach')}, engagements={insight.get('engagements')}, landing_page_views={insight.get('landing_page_views')}")
                         print(f"[Meta API Debug] ===== Raw insight data for {campaign_name} on {campaign_date} =====")
                         print(f"[Meta API Debug] Raw insight keys: {list(insight.keys())}")
                         print(f"[Meta API Debug] Raw data:")
@@ -586,19 +590,41 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                         print(f"  - engagements: {engagements}")
                         print(f"  - landing_page_views: {landing_page_views}")
                         print(f"  - frequency: {frequency}")
+                        print(f"[Meta API Debug] Will save to DB:")
+                        print(f"  - impressions: {impressions}, clicks: {clicks}, cost: {spend}")
+                        print(f"  - conversions: {conversions}, conversion_value: {conversion_value}")
+                        print(f"  - reach: {reach}, engagements: {engagements}, landing_page_views: {landing_page_views}")
                     
                     # 既存のレコードをチェック（meta_account_idも含める）
+                    # データソースの優先順位: Meta APIデータ > CSVデータ
+                    # Meta APIデータは常に最新のデータで上書きする
                     existing = db.query(Campaign).filter(
                         Campaign.user_id == user.id,
-                        Campaign.meta_account_id == account_id,
                         Campaign.date == campaign_date,
                         Campaign.campaign_name == campaign_name,
                         Campaign.ad_set_name == ad_set_name,
                         Campaign.ad_name == ad_name
                     ).first()
                     
+                    # 既存レコードがあるが、meta_account_idが異なる場合は新規作成
+                    # （同じキャンペーン名でも、異なるアカウントのデータは別レコードとして扱う）
+                    if existing and existing.meta_account_id and existing.meta_account_id != account_id:
+                        existing = None  # 異なるアカウントのデータは別レコードとして扱う
+                    elif existing and not existing.meta_account_id:
+                        # CSVデータをMeta APIデータで上書き（Meta APIデータを優先）
+                        if saved_count < 3:
+                            print(f"[Meta API] Updating CSV data with Meta API data (Meta API takes priority)")
+                    
                     if existing:
                         # 更新
+                        # デバッグログ: 更新前後のデータを比較（最初の数件のみ）
+                        if saved_count < 3:
+                            print(f"[Meta API Debug] Updating existing record:")
+                            print(f"  Before: impressions={existing.impressions}, clicks={existing.clicks}, cost={existing.cost}")
+                            print(f"  Before: conversions={existing.conversions}, conversion_value={existing.conversion_value}")
+                            print(f"  After: impressions={impressions}, clicks={clicks}, cost={spend}")
+                            print(f"  After: conversions={conversions}, conversion_value={conversion_value}")
+                        
                         existing.upload_id = upload.id
                         existing.meta_account_id = account_id
                         existing.cost = Decimal(str(spend))
