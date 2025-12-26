@@ -32,6 +32,8 @@ export interface CampaignData {
   id: string;
   date: string;
   campaign_name: string;
+  ad_set_name?: string;
+  ad_name?: string;
   impressions: number;
   clicks: number;
   cost: number;
