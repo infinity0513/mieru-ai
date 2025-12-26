@@ -518,10 +518,15 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                                         if batch_start == 0 and idx == 0:
                                             sample = page_insights[0]
                                             print(f"[Meta API] Sample insight data for ad {ad_name}:")
+                                            print(f"  ad_id: {sample.get('ad_id')}")
+                                            print(f"  ad_name: {sample.get('ad_name')}")
+                                            print(f"  adset_id: {sample.get('adset_id')}")
+                                            print(f"  adset_name: {sample.get('adset_name')}")
                                             print(f"  impressions: {sample.get('impressions')}")
                                             print(f"  clicks: {sample.get('clicks')}")
                                             print(f"  inline_link_clicks: {sample.get('inline_link_clicks')}")
                                             print(f"  spend: {sample.get('spend')}")
+                                            print(f"  Sample keys: {list(sample.keys())}")
                                         
                                         # ページネーション処理（pagingがある場合）
                                         paging = item_body.get('paging', {})
@@ -550,11 +555,10 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                                 try:
                                     error_data = json.loads(error_body) if isinstance(error_body, str) else error_body
                                     error_msg = error_data.get('error', {}).get('message', str(error_body))
-                                    if batch_num == 1 and idx < 3:
-                                        print(f"[Meta API] Error fetching insights for ad {ad_name} ({ad_id}): {error_msg}")
+                                    error_code = error_data.get('error', {}).get('code', 'Unknown')
+                                    print(f"[Meta API] Error fetching insights for ad {ad_name} ({ad_id}): Code {error_code}, Message: {error_msg}")
                                 except:
-                                    if batch_num == 1 and idx < 3:
-                                        print(f"[Meta API] Error fetching insights for ad {ad_name} ({ad_id}): {error_body}")
+                                    print(f"[Meta API] Error fetching insights for ad {ad_name} ({ad_id}): {error_body}")
                     
                     except Exception as e:
                         print(f"[Meta API] Error processing ad batch {batch_num}: {str(e)}")
