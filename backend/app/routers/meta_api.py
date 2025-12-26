@@ -149,7 +149,7 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
             
             # Meta APIの期間制限を確認
             # - Reachフィールドを使用しているが、Breakdownは使用していないため、37ヶ月（1,095日）が可能
-            campaign_fields = "campaign_id,campaign_name,date_start,spend,impressions,clicks,inline_link_clicks,reach,actions,conversions,action_values,engagements,landing_page_views,link_clicks,frequency"
+            campaign_fields = "campaign_id,campaign_name,date_start,spend,impressions,clicks,inline_link_clicks,reach,actions,conversions,action_values,frequency"
             has_reach = "reach" in campaign_fields.lower()
             has_breakdowns = False  # 現在の実装ではbreakdownsパラメータを使用していない
             
@@ -175,7 +175,7 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
             print(f"[Meta API] Date range: {start_date_str} to {end_date_str} ({(current_until - current_since).days} days)")
             
             # バッチリクエストでキャンペーンレベルInsightsを取得（最大50件/バッチ）
-            campaign_fields = "campaign_id,campaign_name,date_start,spend,impressions,clicks,inline_link_clicks,reach,actions,conversions,action_values,engagements,landing_page_views,link_clicks,frequency"
+            campaign_fields = "campaign_id,campaign_name,date_start,spend,impressions,clicks,inline_link_clicks,reach,actions,conversions,action_values,frequency"
             time_range_dict = {
                 "since": start_date_str,
                 "until": end_date_str
@@ -280,7 +280,7 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
             # 各広告セットのInsightsを取得（広告セットレベル）
             print(f"[Meta API] Processing {len(all_adsets)} adsets for adset-level insights...")
             # 広告セットレベルでも同じ期間制限を適用
-            adset_fields = "adset_id,adset_name,ad_id,ad_name,campaign_id,campaign_name,date_start,spend,impressions,clicks,inline_link_clicks,reach,actions,conversions,action_values,engagements,landing_page_views,link_clicks,frequency"
+            adset_fields = "adset_id,adset_name,ad_id,ad_name,campaign_id,campaign_name,date_start,spend,impressions,clicks,inline_link_clicks,reach,actions,conversions,action_values,frequency"
             has_reach_adset = "reach" in adset_fields.lower()
             has_breakdowns_adset = False  # 現在の実装ではbreakdownsパラメータを使用していない
             
@@ -303,7 +303,7 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
             print(f"[Meta API] Adset date range: {start_date_str_adset} to {end_date_str_adset} ({(current_until - current_since_adset).days} days)")
             
             # バッチリクエストで広告セットレベルInsightsを取得（最大50件/バッチ）
-            adset_fields = "adset_id,adset_name,ad_id,ad_name,campaign_id,campaign_name,date_start,spend,impressions,clicks,inline_link_clicks,reach,actions,conversions,action_values,engagements,landing_page_views,link_clicks,frequency"
+            adset_fields = "adset_id,adset_name,ad_id,ad_name,campaign_id,campaign_name,date_start,spend,impressions,clicks,inline_link_clicks,reach,actions,conversions,action_values,frequency"
             time_range_dict_adset = {
                 "since": start_date_str_adset,
                 "until": end_date_str_adset
@@ -459,7 +459,7 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
             # 各広告のInsightsを取得（広告レベル）- バッチリクエストを使用
             if len(all_ads) > 0:
                 print(f"[Meta API] Processing {len(all_ads)} ads for ad-level insights...")
-                ad_fields = "ad_id,ad_name,adset_id,adset_name,campaign_id,campaign_name,date_start,spend,impressions,clicks,inline_link_clicks,reach,actions,conversions,action_values,engagements,landing_page_views,link_clicks,frequency"
+                ad_fields = "ad_id,ad_name,adset_id,adset_name,campaign_id,campaign_name,date_start,spend,impressions,clicks,inline_link_clicks,reach,actions,conversions,action_values,frequency"
                 time_range_dict_ad = {
                     "since": start_date_str_adset,
                     "until": end_date_str_adset
