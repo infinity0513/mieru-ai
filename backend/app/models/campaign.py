@@ -28,9 +28,13 @@ class Campaign(Base):
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     meta_account_id = Column(String(255), nullable=True)  # Meta広告アカウントID (例: act_123456789)
     date = Column(Date, nullable=False)
+    campaign_id = Column(String(255), nullable=True)  # Meta APIのキャンペーンID
     campaign_name = Column(String(255), nullable=False)
+    adset_id = Column(String(255), nullable=True)  # Meta APIの広告セットID
     ad_set_name = Column(String(255), nullable=True)
+    ad_id = Column(String(255), nullable=True)  # Meta APIの広告ID
     ad_name = Column(String(255), nullable=True)
+    level = Column(String(20), nullable=True)  # 'campaign', 'adset', 'ad' のいずれか
     cost = Column(Numeric(10, 2), default=0)
     impressions = Column(Integer, default=0)
     clicks = Column(Integer, default=0)

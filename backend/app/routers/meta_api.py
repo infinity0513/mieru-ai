@@ -582,21 +582,30 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                     campaign_date = datetime.strptime(date_str, '%Y-%m-%d').date()
                     
                     # データを取得
+                    campaign_id = insight.get('campaign_id')
                     campaign_name = insight.get('campaign_name', 'Unknown')
+                    adset_id = insight.get('adset_id')
                     ad_set_name = insight.get('adset_name')
-                    ad_name = insight.get('ad_name')
                     ad_id = insight.get('ad_id')
+                    ad_name = insight.get('ad_name')
                     
                     # キャンペーンレベル、広告セットレベル、広告レベルかを判定
                     is_campaign_level = not ad_set_name or ad_set_name == ''
                     is_ad_level = ad_name and ad_id and (ad_set_name and ad_set_name != '')
                     
+                    # levelフィールドを設定
                     if is_campaign_level:
+                        level = 'campaign'
                         campaign_level_count += 1
+                        print(f"[Meta API] Processing CAMPAIGN level: {campaign_name} (ID: {campaign_id})")
                     elif is_ad_level:
+                        level = 'ad'
                         ad_level_count += 1
+                        print(f"[Meta API] Processing AD level: {ad_name} (ID: {ad_id}, AdSet: {adset_id}, Campaign: {campaign_id})")
                     else:
+                        level = 'adset'
                         adset_level_count += 1
+                        print(f"[Meta API] Processing ADSET level: {ad_set_name} (ID: {adset_id}, Campaign: {campaign_id})")
                     
                     # デバッグログ（最初の数件のみ）
                     if saved_count < 5:
@@ -806,6 +815,10 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                         
                         existing.upload_id = upload.id
                         existing.meta_account_id = account_id
+                        existing.campaign_id = campaign_id
+                        existing.adset_id = adset_id
+                        existing.ad_id = ad_id
+                        existing.level = level
                         existing.cost = Decimal(str(spend))
                         existing.impressions = impressions
                         existing.clicks = clicks
@@ -828,9 +841,13 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                             upload_id=upload.id,
                             meta_account_id=account_id,
                             date=campaign_date,
+                            campaign_id=campaign_id,
                             campaign_name=campaign_name,
+                            adset_id=adset_id,
                             ad_set_name=ad_set_name,
+                            ad_id=ad_id,
                             ad_name=ad_name,
+                            level=level,
                             cost=Decimal(str(spend)),
                             impressions=impressions,
                             clicks=clicks,
