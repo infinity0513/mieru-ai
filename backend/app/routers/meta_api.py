@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import func
@@ -19,8 +19,17 @@ from decimal import Decimal
 
 router = APIRouter()
 
-async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id: str, db: Session):
-    """Meta APIからデータを取得してCampaignテーブルに保存"""
+async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id: str, db: Session, days: Optional[int] = None):
+    """
+    Meta APIからデータを取得してCampaignテーブルに保存
+    
+    Args:
+        user: ユーザーオブジェクト
+        access_token: Meta APIアクセストークン
+        account_id: Meta広告アカウントID
+        db: データベースセッション
+        days: 取得する日数（Noneの場合は37ヶ月、90の場合は3ヶ月など）
+    """
     # ダミーのUploadレコードを作成（Meta API同期用）
     upload = Upload(
         user_id=user.id,
@@ -31,18 +40,23 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
     db.add(upload)
     db.flush()  # upload.idを取得するためにflush
     
-    # 全期間のデータを取得（Meta APIの最大範囲：過去37ヶ月間）
-    from datetime import datetime, timedelta
     # 昨日までのデータを取得（未来の日付を指定すると400エラーになるため）
     until = (datetime.utcnow() - timedelta(days=1)).strftime('%Y-%m-%d')
-    # Meta APIの仕様:
-    # - 基本的な最大取得期間: 37ヶ月（1,095日）
-    # - Reach + Breakdown使用時: 13ヶ月（394日）のみ
-    # - 現在の実装ではReachフィールドを使用しているが、Breakdownは使用していないため、37ヶ月が可能
-    # - パフォーマンスのため、1回のリクエストは90日ごとに分割
-    max_days_total = 1095  # 37ヶ月（1,095日）
-    since = (datetime.utcnow() - timedelta(days=max_days_total)).strftime('%Y-%m-%d')
-    print(f"[Meta API] Initial date range: {since} to {until} (max {max_days_total} days / 37 months)")
+    
+    # 取得期間の決定
+    if days is None:
+        # 全期間のデータを取得（Meta APIの最大範囲：過去37ヶ月間）
+        # Meta APIの仕様:
+        # - 基本的な最大取得期間: 37ヶ月（1,095日）
+        # - Reach + Breakdown使用時: 13ヶ月（394日）のみ
+        # - 現在の実装ではReachフィールドを使用しているが、Breakdownは使用していないため、37ヶ月が可能
+        max_days_total = 1095  # 37ヶ月（1,095日）
+        since = (datetime.utcnow() - timedelta(days=max_days_total)).strftime('%Y-%m-%d')
+        print(f"[Meta API] Full period sync: {since} to {until} (max {max_days_total} days / 37 months)")
+    else:
+        # 指定された日数分のデータを取得（例: 90日 = 3ヶ月）
+        since = (datetime.utcnow() - timedelta(days=days)).strftime('%Y-%m-%d')
+        print(f"[Meta API] Partial sync: {since} to {until} ({days} days)")
     
     try:
         async with httpx.AsyncClient() as client:
@@ -1015,6 +1029,7 @@ async def meta_oauth_callback(
     error: Optional[str] = Query(None, description="エラーメッセージ"),
     error_reason: Optional[str] = Query(None, description="エラー理由"),
     error_description: Optional[str] = Query(None, description="エラー詳細"),
+    background_tasks: BackgroundTasks = BackgroundTasks(),
     db: Session = Depends(get_db)
 ):
     """Meta OAuthコールバック - トークンを取得して保存"""
@@ -1181,27 +1196,77 @@ async def meta_oauth_callback(
             db.commit()
             db.refresh(user)
             
-            # すべての広告アカウントからデータを取得してCampaignテーブルに保存（バックグラウンドで実行）
+            # 段階的データ取得: まず3ヶ月分を取得（ユーザー待機時間を短縮）、その後バックグラウンドで全期間を取得
             try:
                 print(f"[Meta OAuth] Starting data sync for user {user.id}")
                 print(f"[Meta OAuth] Found {len(accounts)} ad account(s)")
                 
-                # すべての広告アカウントのデータを同期
+                # フェーズ1: 直近3ヶ月分のデータを先に取得（ユーザー待機時間を短縮）
+                print(f"[Meta OAuth] Phase 1: Fetching last 3 months of data for quick access...")
                 for idx, account in enumerate(accounts):
                     account_id_to_sync = account.get("id")
                     account_name = account.get("name", "Unknown")
-                    print(f"[Meta OAuth] Syncing account {idx + 1}/{len(accounts)}: {account_name} ({account_id_to_sync})")
+                    print(f"[Meta OAuth] Syncing account {idx + 1}/{len(accounts)} (3 months): {account_name} ({account_id_to_sync})")
                     try:
-                        await sync_meta_data_to_campaigns(user, long_lived_token, account_id_to_sync, db)
-                        print(f"[Meta OAuth] Successfully synced account {account_name}")
+                        await sync_meta_data_to_campaigns(user, long_lived_token, account_id_to_sync, db, days=90)
+                        print(f"[Meta OAuth] Successfully synced 3 months of data for {account_name}")
                     except Exception as account_error:
                         import traceback
-                        print(f"[Meta OAuth] Error syncing account {account_name}: {str(account_error)}")
+                        print(f"[Meta OAuth] Error syncing 3 months data for {account_name}: {str(account_error)}")
                         print(f"[Meta OAuth] Error details: {traceback.format_exc()}")
                         # 1つのアカウントでエラーが発生しても、他のアカウントの同期は続行
                         continue
                 
-                print(f"[Meta OAuth] Data sync completed for user {user.id}")
+                print(f"[Meta OAuth] Phase 1 completed: 3 months of data synced for user {user.id}")
+                
+                # フェーズ2: 全期間（37ヶ月）のデータをバックグラウンドで取得
+                print(f"[Meta OAuth] Phase 2: Starting background sync for full period (37 months)...")
+                def sync_full_period_background():
+                    """バックグラウンドで全期間のデータを取得（同期関数として実装）"""
+                    import asyncio
+                    from ..database import SessionLocal
+                    
+                    # 新しいイベントループを作成（バックグラウンドタスク用）
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    
+                    background_db = SessionLocal()
+                    try:
+                        # ユーザー情報を再取得
+                        background_user = background_db.query(User).filter(User.id == user.id).first()
+                        if not background_user:
+                            print(f"[Meta OAuth] Background sync: User not found")
+                            return
+                        
+                        print(f"[Meta OAuth] Background sync: Starting full period sync for user {background_user.id}")
+                        
+                        # 非同期関数を実行
+                        async def run_sync():
+                            for idx, account in enumerate(accounts):
+                                account_id_to_sync = account.get("id")
+                                account_name = account.get("name", "Unknown")
+                                print(f"[Meta OAuth] Background sync: Syncing account {idx + 1}/{len(accounts)} (full period): {account_name} ({account_id_to_sync})")
+                                try:
+                                    await sync_meta_data_to_campaigns(background_user, long_lived_token, account_id_to_sync, background_db, days=None)
+                                    print(f"[Meta OAuth] Background sync: Successfully synced full period for {account_name}")
+                                except Exception as account_error:
+                                    import traceback
+                                    print(f"[Meta OAuth] Background sync: Error syncing full period for {account_name}: {str(account_error)}")
+                                    print(f"[Meta OAuth] Background sync: Error details: {traceback.format_exc()}")
+                                    continue
+                            
+                            print(f"[Meta OAuth] Background sync: Full period sync completed for user {background_user.id}")
+                        
+                        # 非同期関数を実行
+                        loop.run_until_complete(run_sync())
+                    finally:
+                        background_db.close()
+                        loop.close()
+                
+                # バックグラウンドタスクとして追加
+                background_tasks.add_task(sync_full_period_background)
+                print(f"[Meta OAuth] Background task added for full period sync")
+                
             except Exception as sync_error:
                 import traceback
                 print(f"[Meta OAuth] Error syncing data: {str(sync_error)}")
