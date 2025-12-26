@@ -833,18 +833,32 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
       console.log('[Dashboard] No campaign selected, returning empty ad sets');
       return [];
     }
-    // dataは既にアセットでフィルタリングされているので、そのまま使用
-    // dataが空の場合は、propDataから取得を試みる（アセットが選択されていない場合のみ）
-    let sourceData = data;
-    if ((!data || data.length === 0) && !selectedMetaAccountId && propData && propData.length > 0) {
-      sourceData = propData;
+    // 日付範囲でフィルタリングされていない元のデータを使用
+    // アセットが選択されている場合はapiData、そうでない場合はpropData
+    let sourceData: CampaignData[] = [];
+    if (selectedMetaAccountId) {
+      // アセットが選択されている場合: apiDataを使用（日付範囲でフィルタリングされていない）
+      if (apiData && apiData.length > 0) {
+        sourceData = apiData;
+      } else if (propData && propData.length > 0) {
+        sourceData = propData;
+      }
+    } else {
+      // アセットが選択されていない場合: propDataを優先、なければapiData
+      if (propData && propData.length > 0) {
+        sourceData = propData;
+      } else if (apiData && apiData.length > 0) {
+        sourceData = apiData;
+      }
     }
+    
     if (!sourceData || sourceData.length === 0) {
       console.log('[Dashboard] No source data available for ad sets');
       return [];
     }
+    
     const campaignData = sourceData.filter(d => d.campaign_name === selectedCampaign);
-    console.log(`[Dashboard] Campaign "${selectedCampaign}" data:`, campaignData.length, 'records');
+    console.log(`[Dashboard] Campaign "${selectedCampaign}" data:`, campaignData.length, 'records (from', sourceData.length, 'total records)');
     if (campaignData.length > 0) {
       console.log('[Dashboard] Sample campaign data (first 5):', campaignData.slice(0, 5).map(d => ({
         campaign_name: d.campaign_name,
@@ -856,7 +870,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     const adSetsArray = Array.from(adSets).sort();
     console.log(`[Dashboard] Available ad sets for "${selectedCampaign}":`, adSetsArray.length, 'ad sets:', adSetsArray);
     return adSetsArray;
-  }, [data, propData, selectedCampaign, selectedMetaAccountId]);
+  }, [apiData, propData, selectedCampaign, selectedMetaAccountId]);
   
   // Get unique ads for selected campaign and ad set
   const availableAds = useMemo(() => {
@@ -864,20 +878,34 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
       console.log('[Dashboard] Campaign or ad set not selected, returning empty ads');
       return [];
     }
-    // dataは既にアセットでフィルタリングされているので、そのまま使用
-    // dataが空の場合は、propDataから取得を試みる（アセットが選択されていない場合のみ）
-    let sourceData = data;
-    if ((!data || data.length === 0) && !selectedMetaAccountId && propData && propData.length > 0) {
-      sourceData = propData;
+    // 日付範囲でフィルタリングされていない元のデータを使用
+    // アセットが選択されている場合はapiData、そうでない場合はpropData
+    let sourceData: CampaignData[] = [];
+    if (selectedMetaAccountId) {
+      // アセットが選択されている場合: apiDataを使用（日付範囲でフィルタリングされていない）
+      if (apiData && apiData.length > 0) {
+        sourceData = apiData;
+      } else if (propData && propData.length > 0) {
+        sourceData = propData;
+      }
+    } else {
+      // アセットが選択されていない場合: propDataを優先、なければapiData
+      if (propData && propData.length > 0) {
+        sourceData = propData;
+      } else if (apiData && apiData.length > 0) {
+        sourceData = apiData;
+      }
     }
+    
     if (!sourceData || sourceData.length === 0) {
       console.log('[Dashboard] No source data available for ads');
       return [];
     }
+    
     const adSetData = sourceData.filter(
       d => d.campaign_name === selectedCampaign && d.ad_set_name === selectedAdSet
     );
-    console.log(`[Dashboard] Ad set "${selectedAdSet}" data:`, adSetData.length, 'records');
+    console.log(`[Dashboard] Ad set "${selectedAdSet}" data:`, adSetData.length, 'records (from', sourceData.length, 'total records)');
     if (adSetData.length > 0) {
       console.log('[Dashboard] Sample ad set data (first 5):', adSetData.slice(0, 5).map(d => ({
         campaign_name: d.campaign_name,
@@ -889,7 +917,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     const adsArray = Array.from(ads).sort();
     console.log(`[Dashboard] Available ads for "${selectedAdSet}":`, adsArray.length, 'ads:', adsArray);
     return adsArray;
-  }, [data, propData, selectedCampaign, selectedAdSet, selectedMetaAccountId]);
+  }, [apiData, propData, selectedCampaign, selectedAdSet, selectedMetaAccountId]);
 
   // Filter Data - パフォーマンス最適化版（KPIカード用：日付範囲 + キャンペーン + 広告セット + 広告）
   const filteredData = useMemo(() => {
