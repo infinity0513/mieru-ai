@@ -712,28 +712,43 @@ async def get_meta_insights(
     # プランに応じた最大取得件数を取得
     max_limit = get_max_adset_limit(current_user.plan)
     
-    # デフォルトの日付範囲（最近90日間、未来の日付を避ける）
+    # デフォルトの日付範囲（最近37ヶ月間、未来の日付を避ける）
     if not since:
         until_dt = datetime.utcnow() - timedelta(days=1)
-        since_dt = until_dt - timedelta(days=90)
+        since_dt = until_dt - timedelta(days=1095)  # 37ヶ月
         since = since_dt.strftime('%Y-%m-%d')
     if not until:
         until = (datetime.utcnow() - timedelta(days=1)).strftime('%Y-%m-%d')
     
-    # 期間を90日以内に制限
+    # Meta APIの期間制限を確認
+    # - Reachフィールドを使用しているが、Breakdownは使用していないため、37ヶ月（1,095日）が可能
+    insights_fields = "adset_id,adset_name,ad_id,ad_name,campaign_id,campaign_name,date_start,date_stop,spend,impressions,clicks,conversions,reach,actions"
+    has_reach_insights = "reach" in insights_fields.lower()
+    has_breakdowns_insights = False  # 現在の実装ではbreakdownsパラメータを使用していない
+    
+    if has_reach_insights and has_breakdowns_insights:
+        max_days_insights = 394  # 13ヶ月
+        print(f"[Meta API] /insights endpoint: Reach with breakdowns detected - limiting to 13 months")
+    else:
+        max_days_insights = 1095  # 37ヶ月
+        print(f"[Meta API] /insights endpoint: Standard limit - 37 months")
+        print(f"[Meta API] Fields requested: {insights_fields}")
+        print(f"[Meta API] Has reach: {has_reach_insights}, Has breakdowns: {has_breakdowns_insights}")
+    
+    # 期間を制限（37ヶ月または13ヶ月）
     try:
         until_dt = datetime.strptime(until, '%Y-%m-%d')
         since_dt = datetime.strptime(since, '%Y-%m-%d')
         
-        if (until_dt - since_dt).days > 90:
-            since_dt = until_dt - timedelta(days=90)
+        if (until_dt - since_dt).days > max_days_insights:
+            since_dt = until_dt - timedelta(days=max_days_insights)
             since = since_dt.strftime('%Y-%m-%d')
-            print(f"[Meta API] Date range reduced to last 90 days: {since} to {until}")
+            print(f"[Meta API] Date range limited to {max_days_insights} days: {since} to {until}")
     except Exception as e:
         print(f"[Meta API] Error parsing dates: {e}")
-        # デフォルトで最近90日間
+        # デフォルトで最近37ヶ月間
         until_dt = datetime.utcnow() - timedelta(days=1)
-        since_dt = until_dt - timedelta(days=90)
+        since_dt = until_dt - timedelta(days=1095)  # 37ヶ月
         since = since_dt.strftime('%Y-%m-%d')
         until = until_dt.strftime('%Y-%m-%d')
     
