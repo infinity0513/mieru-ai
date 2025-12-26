@@ -35,11 +35,14 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
     from datetime import datetime, timedelta
     # 昨日までのデータを取得（未来の日付を指定すると400エラーになるため）
     until = (datetime.utcnow() - timedelta(days=1)).strftime('%Y-%m-%d')
-    # Meta APIは1回のリクエストで最大37ヶ月（約3年）のデータを取得可能
-    # より長期間のデータが必要な場合は、複数回に分けて取得する必要がある
-    # ここでは最大37ヶ月（約1125日）を設定
-    # Meta APIの推奨期間は90日以内に制限
-    since = (datetime.utcnow() - timedelta(days=90)).strftime('%Y-%m-%d')
+    # Meta APIの仕様:
+    # - 基本的な最大取得期間: 37ヶ月（1,095日）
+    # - Reach + Breakdown使用時: 13ヶ月（394日）のみ
+    # - 現在の実装ではReachフィールドを使用しているが、Breakdownは使用していないため、37ヶ月が可能
+    # - パフォーマンスのため、1回のリクエストは90日ごとに分割
+    max_days_total = 1095  # 37ヶ月（1,095日）
+    since = (datetime.utcnow() - timedelta(days=max_days_total)).strftime('%Y-%m-%d')
+    print(f"[Meta API] Initial date range: {since} to {until} (max {max_days_total} days / 37 months)")
     
     try:
         async with httpx.AsyncClient() as client:
@@ -130,11 +133,31 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
             current_until = datetime.utcnow() - timedelta(days=1)
             current_since = datetime.strptime(since, '%Y-%m-%d')
             
-            # 期間を90日以内に制限
-            max_days_per_request = 90  # Meta APIの推奨期間
-            if (current_until - current_since).days > max_days_per_request:
-                current_since = current_until - timedelta(days=max_days_per_request)
-                print(f"[Meta API] Date range reduced to last {max_days_per_request} days: {current_since.strftime('%Y-%m-%d')} to {current_until.strftime('%Y-%m-%d')}")
+            # Meta APIの期間制限を確認
+            # - Reachフィールドを使用しているが、Breakdownは使用していないため、37ヶ月（1,095日）が可能
+            # - パフォーマンスのため、1回のリクエストは90日ごとに分割
+            campaign_fields = "campaign_id,campaign_name,date_start,spend,impressions,clicks,inline_link_clicks,reach,actions,conversions,action_values,engagements,landing_page_views,link_clicks,frequency"
+            has_reach = "reach" in campaign_fields.lower()
+            has_breakdowns = False  # 現在の実装ではbreakdownsパラメータを使用していない
+            
+            if has_reach and has_breakdowns:
+                # Reach + Breakdownの場合は13ヶ月制限
+                max_days_total = 394  # 13ヶ月
+                print(f"[Meta API] Reach with breakdowns detected - limiting to 13 months ({max_days_total} days)")
+            else:
+                # それ以外は37ヶ月
+                max_days_total = 1095  # 37ヶ月
+                print(f"[Meta API] Standard limit - 37 months ({max_days_total} days)")
+                print(f"[Meta API] Fields requested: {campaign_fields}")
+                print(f"[Meta API] Has reach: {has_reach}, Has breakdowns: {has_breakdowns}")
+            
+            # 総期間を制限（37ヶ月または13ヶ月）
+            if (current_until - current_since).days > max_days_total:
+                current_since = current_until - timedelta(days=max_days_total)
+                print(f"[Meta API] Date range limited to {max_days_total} days: {current_since.strftime('%Y-%m-%d')} to {current_until.strftime('%Y-%m-%d')}")
+            
+            # 1回のリクエストは90日ごとに分割（パフォーマンスのため）
+            max_days_per_request = 90  # パフォーマンスのための推奨期間
             
             for idx, campaign in enumerate(all_campaigns):
                 campaign_id = campaign.get('id')
@@ -244,6 +267,27 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
             
             # 各広告セットのInsightsを取得（広告セットレベル）
             print(f"[Meta API] Processing {len(all_adsets)} adsets for adset-level insights...")
+            # 広告セットレベルでも同じ期間制限を適用
+            adset_fields = "adset_id,adset_name,ad_id,ad_name,campaign_id,campaign_name,date_start,spend,impressions,clicks,inline_link_clicks,reach,actions,conversions,action_values,engagements,landing_page_views,link_clicks,frequency"
+            has_reach_adset = "reach" in adset_fields.lower()
+            has_breakdowns_adset = False  # 現在の実装ではbreakdownsパラメータを使用していない
+            
+            if has_reach_adset and has_breakdowns_adset:
+                max_days_total_adset = 394  # 13ヶ月
+                print(f"[Meta API] Adset: Reach with breakdowns detected - limiting to 13 months")
+            else:
+                max_days_total_adset = 1095  # 37ヶ月
+                print(f"[Meta API] Adset: Standard limit - 37 months")
+            
+            # 広告セットレベルでも同じ期間制限を適用
+            current_since_adset = datetime.strptime(since, '%Y-%m-%d')
+            if (current_until - current_since_adset).days > max_days_total_adset:
+                current_since_adset = current_until - timedelta(days=max_days_total_adset)
+                print(f"[Meta API] Adset date range limited to {max_days_total_adset} days: {current_since_adset.strftime('%Y-%m-%d')} to {current_until.strftime('%Y-%m-%d')}")
+            
+            # 1回のリクエストは90日ごとに分割（パフォーマンスのため）
+            max_days_per_request = 90  # パフォーマンスのための推奨期間
+            
             for idx, adset in enumerate(all_adsets):
                 adset_id = adset['id']
                 adset_name = adset.get('name', 'Unknown')
@@ -254,8 +298,8 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                 
                 insights_url = f"https://graph.facebook.com/v24.0/{adset_id}/insights"
                 
-                # 期間を分割して取得（90日ごと）
-                request_since = current_since
+                # 期間を分割して取得（90日ごと）- パフォーマンスのため
+                request_since = current_since_adset
                 while request_since < current_until:
                     request_until = min(request_since + timedelta(days=max_days_per_request), current_until)
                     
