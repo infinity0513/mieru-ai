@@ -997,13 +997,40 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     
     // 広告セットフィルタ
     if (selectedAdSet) {
+      // 広告セットが選択されている場合、その広告セットのデータのみを表示
+      // 広告セットレベルのデータ（ad_nameが空）と広告レベルのデータ（ad_nameが存在）の両方を含める
       filtered = filtered.filter(d => d.ad_set_name === selectedAdSet);
+    } else if (selectedCampaign) {
+      // 広告セットが「全体」の場合、キャンペーンレベルのデータと広告セットレベルのデータを除外
+      // 広告レベルのデータのみを表示（ad_nameが存在し、ad_set_nameも存在する）
+      filtered = filtered.filter(d => 
+        d.ad_name && 
+        d.ad_name.trim() !== '' && 
+        d.ad_set_name && 
+        d.ad_set_name.trim() !== ''
+      );
     }
     
     // 広告フィルタ
     if (selectedAd) {
+      // 広告が選択されている場合、その広告のデータのみを表示
       filtered = filtered.filter(d => d.ad_name === selectedAd);
+    } else if (selectedAdSet === null && selectedCampaign) {
+      // 広告が「全体」で、広告セットも「全体」の場合、広告レベルのデータをすべて表示（既にフィルタリング済み）
+      // 追加のフィルタリングは不要
     }
+    
+    console.log('[Dashboard] filteredData:', {
+      total: filtered.length,
+      selectedCampaign,
+      selectedAdSet,
+      selectedAd,
+      sample: filtered.slice(0, 3).map(d => ({
+        campaign: d.campaign_name,
+        adset: d.ad_set_name || '(empty)',
+        ad: d.ad_name || '(empty)'
+      }))
+    });
     
     return filtered;
   }, [dateFilteredData, selectedCampaign, selectedAdSet, selectedAd]);
