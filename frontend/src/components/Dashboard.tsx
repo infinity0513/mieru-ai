@@ -1636,9 +1636,54 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
                           )}
                         </>
                       ) : (
-                        <span className="px-3 py-1.5 text-sm text-gray-500 dark:text-gray-400">
-                          広告セットを選択してください
-                        </span>
+                        // 広告セットが選択されていない場合でも、キャンペーンのすべての広告を表示
+                        <>
+                          {/* 全体タブ */}
+                          <button 
+                            onClick={() => {
+                              setSelectedAd(null);
+                              try {
+                                localStorage.setItem('dashboard_selectedAd', '');
+                              } catch (err) {
+                                // 無視
+                              }
+                            }}
+                            className={`px-3 py-1.5 text-sm font-medium rounded-lg border transition-colors whitespace-nowrap shrink-0 ${
+                              selectedAd === null
+                                ? 'bg-indigo-50 border-indigo-500 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300 dark:border-indigo-500'
+                                : 'border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300'
+                            }`}
+                          >
+                            全体
+                          </button>
+                          {/* 広告タブ */}
+                          {availableAds.length > 0 ? (
+                            availableAds.map(ad => (
+                              <button
+                                key={ad}
+                                onClick={() => {
+                                  setSelectedAd(ad);
+                                  try {
+                                    localStorage.setItem('dashboard_selectedAd', ad);
+                                  } catch (err) {
+                                    // 無視
+                                  }
+                                }}
+                                className={`px-3 py-1.5 text-sm font-medium rounded-lg border transition-colors whitespace-nowrap shrink-0 ${
+                                  selectedAd === ad
+                                    ? 'bg-indigo-50 border-indigo-500 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300 dark:border-indigo-500'
+                                    : 'border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300'
+                                }`}
+                              >
+                                {ad}
+                              </button>
+                            ))
+                          ) : (
+                            <span className="px-3 py-1.5 text-sm text-gray-500 dark:text-gray-400">
+                              広告データがありません
+                            </span>
+                          )}
+                        </>
                       )}
                     </div>
                   </div>
