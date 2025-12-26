@@ -83,7 +83,13 @@ const CampaignDetailModal = ({ campaignName, allData, onClose }: { campaignName:
     
     const totalCost = campaignHistory.reduce((acc, curr) => acc + (curr.cost || 0), 0);
     const totalImpressions = campaignHistory.reduce((acc, curr) => acc + (curr.impressions || 0), 0);
-    const totalClicks = campaignHistory.reduce((acc, curr) => acc + (curr.clicks || 0), 0);
+    // クリック数はlink_clicksを使用（Meta広告マネージャの「リンクのクリック」に相当）
+    // link_clicksが存在する場合はそれを使用、なければclicksを使用
+    const totalClicks = campaignHistory.reduce((acc, curr) => {
+      const linkClicks = curr.link_clicks || 0;
+      const clicks = curr.clicks || 0;
+      return acc + (linkClicks > 0 ? linkClicks : clicks);
+    }, 0);
     const totalConversions = campaignHistory.reduce((acc, curr) => acc + (curr.conversions || 0), 0);
     const totalValue = campaignHistory.reduce((acc, curr) => acc + (curr.conversion_value || 0), 0);
     const totalReach = campaignHistory.reduce((acc, curr) => acc + (curr.reach || 0), 0);
@@ -91,13 +97,22 @@ const CampaignDetailModal = ({ campaignName, allData, onClose }: { campaignName:
     const totalLinkClicks = campaignHistory.reduce((acc, curr) => acc + (curr.link_clicks || 0), 0);
     const totalLandingPageViews = campaignHistory.reduce((acc, curr) => acc + (curr.landing_page_views || 0), 0);
     
-    const avgRoas = totalCost > 0 ? (totalValue / totalCost * 100) : 0;
+    // 計算指標（Meta広告マネージャの定義に合わせる）
+    // ROAS = conversion_value / cost（比率、パーセンテージではない）
+    const avgRoas = totalCost > 0 ? (totalValue / totalCost) : 0;
+    // CPA = cost / conversions
     const avgCpa = totalConversions > 0 ? (totalCost / totalConversions) : 0;
+    // CTR = (clicks / impressions) * 100（clicksはlink_clicks）
     const ctr = totalImpressions > 0 ? (totalClicks / totalImpressions * 100) : 0;
+    // CPC = cost / clicks（clicksはlink_clicks）
     const cpc = totalClicks > 0 ? (totalCost / totalClicks) : 0;
+    // CPM = (cost / impressions) * 1000
     const cpm = totalImpressions > 0 ? (totalCost / totalImpressions * 1000) : 0;
+    // CVR = (conversions / clicks) * 100（clicksはlink_clicks）
     const cvr = totalClicks > 0 ? (totalConversions / totalClicks * 100) : 0;
+    // Frequency = impressions / reach
     const frequency = totalReach > 0 ? (totalImpressions / totalReach) : 0;
+    // Engagement Rate = (engagements / impressions) * 100
     const engagementRate = totalImpressions > 0 ? (totalEngagements / totalImpressions * 100) : 0;
     
     return { 
@@ -199,7 +214,7 @@ const CampaignDetailModal = ({ campaignName, allData, onClose }: { campaignName:
                   <div className="bg-indigo-50 dark:bg-indigo-900/20 rounded-lg p-3 border border-indigo-200 dark:border-indigo-800 min-w-0 overflow-hidden">
                     <div className="text-xs text-indigo-600 dark:text-indigo-400 mb-1 font-medium truncate">ROAS</div>
                     <div className="text-lg font-bold text-indigo-700 dark:text-indigo-300 break-words leading-tight">
-                      {((stats.avgRoas || 0)).toFixed(2)}%
+                      {((stats.avgRoas || 0)).toFixed(2)}
               </div>
                     <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate">費用対効果</div>
               </div>
@@ -803,11 +818,17 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     const current = filteredData;
     
     // 基本指標を計算
-    const totalCost = current.reduce((acc, curr) => acc + curr.cost, 0);
-    const totalImpressions = current.reduce((acc, curr) => acc + curr.impressions, 0);
-    const totalClicks = current.reduce((acc, curr) => acc + curr.clicks, 0);
-    const totalConversions = current.reduce((acc, curr) => acc + curr.conversions, 0);
-    const totalValue = current.reduce((acc, curr) => acc + curr.conversion_value, 0);
+    const totalCost = current.reduce((acc, curr) => acc + (curr.cost || 0), 0);
+    const totalImpressions = current.reduce((acc, curr) => acc + (curr.impressions || 0), 0);
+    // クリック数はlink_clicksを使用（Meta広告マネージャの「リンクのクリック」に相当）
+    // link_clicksが存在する場合はそれを使用、なければclicksを使用
+    const totalClicks = current.reduce((acc, curr) => {
+      const linkClicks = curr.link_clicks || 0;
+      const clicks = curr.clicks || 0;
+      return acc + (linkClicks > 0 ? linkClicks : clicks);
+    }, 0);
+    const totalConversions = current.reduce((acc, curr) => acc + (curr.conversions || 0), 0);
+    const totalValue = current.reduce((acc, curr) => acc + (curr.conversion_value || 0), 0);
     
     // 追加指標を計算
     const totalReach = current.reduce((acc, curr) => acc + (curr.reach || 0), 0);
@@ -815,14 +836,22 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     const totalLinkClicks = current.reduce((acc, curr) => acc + (curr.link_clicks || 0), 0);
     const totalLandingPageViews = current.reduce((acc, curr) => acc + (curr.landing_page_views || 0), 0);
     
-    // 計算指標
-    const avgRoas = totalCost > 0 ? (totalValue / totalCost * 100) : 0;
+    // 計算指標（Meta広告マネージャの定義に合わせる）
+    // ROAS = conversion_value / cost（比率、パーセンテージではない）
+    const avgRoas = totalCost > 0 ? (totalValue / totalCost) : 0;
+    // CPA = cost / conversions
     const avgCpa = totalConversions > 0 ? (totalCost / totalConversions) : 0;
+    // CTR = (clicks / impressions) * 100（clicksはlink_clicks）
     const ctr = totalImpressions > 0 ? (totalClicks / totalImpressions * 100) : 0;
+    // CPC = cost / clicks（clicksはlink_clicks）
     const cpc = totalClicks > 0 ? (totalCost / totalClicks) : 0;
+    // CPM = (cost / impressions) * 1000
     const cpm = totalImpressions > 0 ? (totalCost / totalImpressions * 1000) : 0;
+    // CVR = (conversions / clicks) * 100（clicksはlink_clicks）
     const cvr = totalClicks > 0 ? (totalConversions / totalClicks * 100) : 0;
+    // Frequency = impressions / reach
     const frequency = totalReach > 0 ? (totalImpressions / totalReach) : 0;
+    // Engagement Rate = (engagements / impressions) * 100
     const engagementRate = totalImpressions > 0 ? (totalEngagements / totalImpressions * 100) : 0;
     
     // デバッグ用ログは削除（パフォーマンス向上のため）
@@ -1394,7 +1423,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
             <div className="bg-indigo-50 dark:bg-indigo-900/20 rounded-lg p-3 border border-indigo-200 dark:border-indigo-800 min-w-0 overflow-hidden">
               <div className="text-xs text-indigo-600 dark:text-indigo-400 mb-1 font-medium truncate">ROAS</div>
               <div className="text-lg font-bold text-indigo-700 dark:text-indigo-300 break-words leading-tight">
-                {kpiData.avgRoas.toFixed(2)}%
+                {kpiData.avgRoas.toFixed(2)}
               </div>
               <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate">費用対効果</div>
             </div>
