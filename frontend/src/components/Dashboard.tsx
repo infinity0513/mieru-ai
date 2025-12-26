@@ -1149,7 +1149,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
   // Group by Campaign/AdSet/Ad for Table (広告レベルのデータも表示するため、個別にグループ化)
   const campaignStats = useMemo(() => {
     console.log('[Dashboard] ===== campaignStats calculation =====');
-    console.log('[Dashboard] dateFilteredData count:', dateFilteredData.length);
+    console.log('[Dashboard] filteredData count:', filteredData.length);
+    console.log('[Dashboard] Filters:', {
+      selectedCampaign,
+      selectedAdSet,
+      selectedAd
+    });
     
     // データレベルの統計
     const levelStats = {
@@ -1157,7 +1162,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
       adset: 0,
       ad: 0
     };
-    dateFilteredData.forEach(d => {
+    filteredData.forEach(d => {
       const hasAdName = d.ad_name && d.ad_name.trim() !== '';
       const hasAdSetName = d.ad_set_name && d.ad_set_name.trim() !== '';
       if (hasAdName) {
@@ -1169,7 +1174,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
       }
     });
     console.log('[Dashboard] Data level breakdown:', levelStats);
-    console.log('[Dashboard] Sample data (first 5):', dateFilteredData.slice(0, 5).map(d => ({
+    console.log('[Dashboard] Sample data (first 5):', filteredData.slice(0, 5).map(d => ({
       campaign_name: d.campaign_name,
       ad_set_name: d.ad_set_name || '(empty)',
       ad_name: d.ad_name || '(empty)',
@@ -1177,7 +1182,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     })));
     
     const stats: { [key: string]: CampaignData } = {};
-    dateFilteredData.forEach(d => {
+    filteredData.forEach(d => {
       // 広告レベルのデータは個別に表示（ad_nameが存在する場合）
       // 広告セットレベルのデータも個別に表示（ad_set_nameが存在し、ad_nameが存在しない場合）
       // キャンペーンレベルのデータはキャンペーン名で集計
