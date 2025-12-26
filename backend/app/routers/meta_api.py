@@ -651,8 +651,16 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                             if action.get('action_type') == 'post_engagement':
                                 engagements += int(action.get('value', 0))
                     
-                    link_clicks_field = int(insight.get('link_clicks', 0))
-                    landing_page_views = int(insight.get('landing_page_views', 0))
+                    # link_clicksはinline_link_clicksを使用（既に取得済み）
+                    link_clicks = inline_link_clicks if inline_link_clicks > 0 else all_clicks
+                    
+                    # landing_page_viewsはactionsから抽出
+                    landing_page_views = 0
+                    actions = insight.get('actions', [])
+                    for action in actions:
+                        if action.get('action_type') == 'landing_page_view':
+                            landing_page_views += int(action.get('value', 0))
+                    
                     frequency = float(insight.get('frequency', 0))
                     
                     # frequencyが取得できない場合は計算（impressions / reach）
