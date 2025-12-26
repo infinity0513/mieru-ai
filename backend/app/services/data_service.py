@@ -265,12 +265,13 @@ class DataService:
             # Meta CSVでは「結果の単価」×「結果」でコンバージョン価値を計算
             conversion_value = DataService.safe_float(
                 row.get('コンバージョン価値') or row.get('コンバージョン値') or 
-                row.get('conversion_value') or row.get('Conversion Value') or
-                row.get('結果の単価'), 0.0
+                row.get('conversion_value') or row.get('Conversion Value'), 0.0
             )
             # 「結果の単価」が存在する場合、それを使用（コンバージョン価値の合計）
-            if conversion_value == 0 and row.get('結果の単価'):
-                unit_price = DataService.safe_float(row.get('結果の単価'), 0.0)
+            if conversion_value == 0:
+                unit_price = DataService.safe_float(
+                    row.get('結果の単価') or row.get('unit_price') or row.get('Unit Price'), 0.0
+                )
                 # 結果の単価 × 結果（コンバージョン数）でコンバージョン価値を計算
                 if unit_price > 0 and conversions > 0:
                     conversion_value = unit_price * conversions
@@ -364,13 +365,23 @@ class DataService:
             
             existing_campaign = query.first()
             
-            # デバッグログ（全行をログ出力）
-            print(f"[DataService] Row {idx}: campaign_name='{campaign_name}', date={campaign_date}, ad_set_name='{ad_set_name}', ad_name='{ad_name}'")
-            print(f"[DataService] Row {idx}: Existing campaign found: {existing_campaign is not None}")
-            if existing_campaign:
-                print(f"[DataService] Row {idx}: Will UPDATE existing campaign (ID: {existing_campaign.id})")
-            else:
-                print(f"[DataService] Row {idx}: Will CREATE new campaign")
+            # デバッグログ（最初の数件のみ詳細にログ出力）
+            if idx < 5:
+                print(f"[DataService] Row {idx}: Processing CSV row")
+                print(f"  campaign_name='{campaign_name}'")
+                print(f"  date={campaign_date}")
+                print(f"  impressions={impressions}")
+                print(f"  clicks={clicks}")
+                print(f"  cost={cost}")
+                print(f"  conversions={conversions}")
+                print(f"  conversion_value={conversion_value}")
+                print(f"  reach={reach}")
+                print(f"  ad_set_name='{ad_set_name}', ad_name='{ad_name}'")
+                print(f"  Existing campaign found: {existing_campaign is not None}")
+                if existing_campaign:
+                    print(f"  Will UPDATE existing campaign (ID: {existing_campaign.id})")
+                else:
+                    print(f"  Will CREATE new campaign")
             
             if existing_campaign:
                 # Update existing record
