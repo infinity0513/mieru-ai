@@ -262,10 +262,21 @@ class DataService:
                 row.get('結果') or row.get('result'), 0
             )
             # Try multiple column name variations for conversion_value
+            # Meta CSVでは「結果の単価」×「結果」でコンバージョン価値を計算
             conversion_value = DataService.safe_float(
                 row.get('コンバージョン価値') or row.get('コンバージョン値') or 
-                row.get('conversion_value') or row.get('Conversion Value'), 0.0
+                row.get('conversion_value') or row.get('Conversion Value') or
+                row.get('結果の単価'), 0.0
             )
+            # 「結果の単価」が存在する場合、それを使用（コンバージョン価値の合計）
+            if conversion_value == 0 and row.get('結果の単価'):
+                unit_price = DataService.safe_float(row.get('結果の単価'), 0.0)
+                # 結果の単価 × 結果（コンバージョン数）でコンバージョン価値を計算
+                if unit_price > 0 and conversions > 0:
+                    conversion_value = unit_price * conversions
+                elif unit_price > 0:
+                    # コンバージョン数が0でも、単価がある場合は単価を使用（1件分の価値）
+                    conversion_value = unit_price
             # Additional engagement metrics (optional)
             reach = DataService.safe_int(
                 row.get('リーチ') or row.get('リーチ数') or row.get('reach') or row.get('Reach'), 0
