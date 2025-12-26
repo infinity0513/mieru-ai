@@ -598,7 +598,7 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                         adset_level_count += 1
                     
                     # デバッグログ（最初の数件のみ）
-                    if saved_count < 5:
+                    if saved_count < 10:
                         if is_campaign_level:
                             level_type = "campaign-level"
                         elif is_ad_level:
@@ -606,6 +606,8 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                         else:
                             level_type = "adset-level"
                         print(f"[Meta API] Saving {level_type} insight: campaign={campaign_name}, adset={ad_set_name or 'N/A'}, ad={ad_name or 'N/A'}, date={campaign_date}, spend={insight.get('spend', 0)}")
+                        print(f"[Meta API] Raw insight keys: {list(insight.keys())}")
+                        print(f"[Meta API] adset_name from API: {insight.get('adset_name')}, ad_name from API: {insight.get('ad_name')}")
                     # デバッグログ：生データを詳細にログ出力（最初の数件のみ）
                     if saved_count < 3:
                         print(f"[Meta API] Raw data vs Saved data comparison:")
