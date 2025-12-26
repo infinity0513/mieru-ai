@@ -20,23 +20,13 @@ def debug_ads(
     """
     デバッグ用: 広告レベルのデータが取得されているか確認
     """
-    query = db.query(Campaign).filter(Campaign.user_id == current_user.id)
+    base_query = db.query(Campaign).filter(Campaign.user_id == current_user.id)
     
     if meta_account_id:
-        query = query.filter(Campaign.meta_account_id == meta_account_id)
+        base_query = base_query.filter(Campaign.meta_account_id == meta_account_id)
     
-    # 広告レベルのデータのみを取得（ad_nameが存在する）
-    query = query.filter(
-        Campaign.ad_name != '',
-        Campaign.ad_name.isnot(None)
-    )
-    
-    total_ads = query.count()
-    ads = query.order_by(desc(Campaign.date)).limit(20).all()
-    
-    # 統計情報
-    campaign_level_count = db.query(Campaign).filter(
-        Campaign.user_id == current_user.id,
+    # 統計情報（meta_account_idフィルタを適用）
+    campaign_level_count = base_query.filter(
         or_(
             Campaign.ad_set_name == '',
             Campaign.ad_set_name.is_(None)
@@ -47,8 +37,7 @@ def debug_ads(
         )
     ).count()
     
-    adset_level_count = db.query(Campaign).filter(
-        Campaign.user_id == current_user.id,
+    adset_level_count = base_query.filter(
         Campaign.ad_set_name != '',
         Campaign.ad_set_name.isnot(None),
         or_(
@@ -57,18 +46,38 @@ def debug_ads(
         )
     ).count()
     
-    ad_level_count = db.query(Campaign).filter(
-        Campaign.user_id == current_user.id,
+    ad_level_count = base_query.filter(
         Campaign.ad_name != '',
         Campaign.ad_name.isnot(None)
     ).count()
+    
+    # 広告レベルのデータのみを取得（ad_nameが存在する）
+    ads_query = base_query.filter(
+        Campaign.ad_name != '',
+        Campaign.ad_name.isnot(None)
+    )
+    
+    total_ads = ads_query.count()
+    ads = ads_query.order_by(desc(Campaign.date)).limit(20).all()
+    
+    # 広告セットレベルのサンプルデータも取得
+    adsets_query = base_query.filter(
+        Campaign.ad_set_name != '',
+        Campaign.ad_set_name.isnot(None),
+        or_(
+            Campaign.ad_name == '',
+            Campaign.ad_name.is_(None)
+        )
+    )
+    adsets = adsets_query.order_by(desc(Campaign.date)).limit(10).all()
     
     return {
         "summary": {
             "campaign_level_count": campaign_level_count,
             "adset_level_count": adset_level_count,
             "ad_level_count": ad_level_count,
-            "total_ads_found": total_ads
+            "total_ads_found": total_ads,
+            "meta_account_id": meta_account_id or "all"
         },
         "sample_ads": [
             {
@@ -85,6 +94,20 @@ def debug_ads(
                 "conversion_value": float(ad.conversion_value)
             }
             for ad in ads
+        ],
+        "sample_adsets": [
+            {
+                "id": str(adset.id),
+                "campaign_name": adset.campaign_name,
+                "ad_set_name": adset.ad_set_name or '',
+                "ad_name": adset.ad_name or '',
+                "date": str(adset.date),
+                "meta_account_id": adset.meta_account_id or 'N/A',
+                "impressions": adset.impressions,
+                "clicks": adset.clicks,
+                "cost": float(adset.cost)
+            }
+            for adset in adsets
         ]
     }
 
