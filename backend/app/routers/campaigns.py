@@ -111,6 +111,135 @@ def debug_ads(
         ]
     }
 
+@router.get("/debug/campaign-hierarchy")
+def debug_campaign_hierarchy(
+    campaign_name: Optional[str] = Query(None, description="キャンペーン名でフィルタリング（部分一致）"),
+    meta_account_id: Optional[str] = Query(None, description="Meta広告アカウントIDでフィルタリング"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    デバッグ用: 特定のキャンペーンの階層データ（キャンペーン、広告セット、広告）を確認
+    """
+    base_query = db.query(Campaign).filter(Campaign.user_id == current_user.id)
+    
+    if meta_account_id:
+        base_query = base_query.filter(Campaign.meta_account_id == meta_account_id)
+    
+    if campaign_name:
+        base_query = base_query.filter(Campaign.campaign_name.like(f'%{campaign_name}%'))
+    
+    # キャンペーンレベルのデータ
+    campaign_level = base_query.filter(
+        or_(
+            Campaign.ad_set_name == '',
+            Campaign.ad_set_name.is_(None)
+        ),
+        or_(
+            Campaign.ad_name == '',
+            Campaign.ad_name.is_(None)
+        )
+    ).all()
+    
+    # 広告セットレベルのデータ
+    adset_level = base_query.filter(
+        Campaign.ad_set_name != '',
+        Campaign.ad_set_name.isnot(None),
+        or_(
+            Campaign.ad_name == '',
+            Campaign.ad_name.is_(None)
+        )
+    ).all()
+    
+    # 広告レベルのデータ
+    ad_level = base_query.filter(
+        Campaign.ad_name != '',
+        Campaign.ad_name.isnot(None)
+    ).all()
+    
+    # ユニークなキャンペーン名、広告セット名、広告名を取得
+    unique_campaigns_query = db.query(Campaign.campaign_name).filter(
+        Campaign.user_id == current_user.id
+    )
+    if meta_account_id:
+        unique_campaigns_query = unique_campaigns_query.filter(Campaign.meta_account_id == meta_account_id)
+    if campaign_name:
+        unique_campaigns_query = unique_campaigns_query.filter(Campaign.campaign_name.like(f'%{campaign_name}%'))
+    unique_campaigns = unique_campaigns_query.distinct().all()
+    
+    unique_adsets_query = db.query(Campaign.ad_set_name).filter(
+        Campaign.user_id == current_user.id,
+        Campaign.ad_set_name != '',
+        Campaign.ad_set_name.isnot(None)
+    )
+    if meta_account_id:
+        unique_adsets_query = unique_adsets_query.filter(Campaign.meta_account_id == meta_account_id)
+    if campaign_name:
+        unique_adsets_query = unique_adsets_query.filter(Campaign.campaign_name.like(f'%{campaign_name}%'))
+    unique_adsets = unique_adsets_query.distinct().all()
+    
+    unique_ads_query = db.query(Campaign.ad_name).filter(
+        Campaign.user_id == current_user.id,
+        Campaign.ad_name != '',
+        Campaign.ad_name.isnot(None)
+    )
+    if meta_account_id:
+        unique_ads_query = unique_ads_query.filter(Campaign.meta_account_id == meta_account_id)
+    if campaign_name:
+        unique_ads_query = unique_ads_query.filter(Campaign.campaign_name.like(f'%{campaign_name}%'))
+    unique_ads = unique_ads_query.distinct().all()
+    
+    # サンプルデータ（最初の5件）
+    sample_campaign = [{
+        "id": str(c.id),
+        "campaign_name": c.campaign_name,
+        "ad_set_name": c.ad_set_name or "",
+        "ad_name": c.ad_name or "",
+        "date": str(c.date),
+        "meta_account_id": c.meta_account_id
+    } for c in campaign_level[:5]]
+    
+    sample_adset = [{
+        "id": str(c.id),
+        "campaign_name": c.campaign_name,
+        "ad_set_name": c.ad_set_name or "",
+        "ad_name": c.ad_name or "",
+        "date": str(c.date),
+        "meta_account_id": c.meta_account_id
+    } for c in adset_level[:5]]
+    
+    sample_ad = [{
+        "id": str(c.id),
+        "campaign_name": c.campaign_name,
+        "ad_set_name": c.ad_set_name or "",
+        "ad_name": c.ad_name or "",
+        "date": str(c.date),
+        "meta_account_id": c.meta_account_id
+    } for c in ad_level[:5]]
+    
+    return {
+        "summary": {
+            "campaign_level_count": len(campaign_level),
+            "adset_level_count": len(adset_level),
+            "ad_level_count": len(ad_level),
+            "total": len(campaign_level) + len(adset_level) + len(ad_level)
+        },
+        "unique_names": {
+            "campaigns": [c[0] for c in unique_campaigns],
+            "adsets": [a[0] for a in unique_adsets if a[0]],
+            "ads": [a[0] for a in unique_ads if a[0]]
+        },
+        "samples": {
+            "campaign_level": sample_campaign,
+            "adset_level": sample_adset,
+            "ad_level": sample_ad
+        },
+        "filters": {
+            "campaign_name": campaign_name,
+            "meta_account_id": meta_account_id
+        }
+    }
+
 @router.get("/debug/clicks")
 def debug_clicks(
     campaign_name: str = Query(..., description="キャンペーン名（部分一致可）"),
