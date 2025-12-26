@@ -565,7 +565,17 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                         # バッチエラーが発生しても次のバッチの処理を続行
                         continue
                 
-                print(f"[Meta API] Ad-level insights retrieved: {len([i for i in all_insights if i.get('ad_id') and i.get('ad_name')])}")
+                ad_level_insights = [i for i in all_insights if i.get('ad_id') and i.get('ad_name')]
+                print(f"[Meta API] Ad-level insights retrieved: {len(ad_level_insights)}")
+                if len(ad_level_insights) > 0:
+                    print(f"[Meta API] Sample ad-level insight: ad_id={ad_level_insights[0].get('ad_id')}, ad_name={ad_level_insights[0].get('ad_name')}")
+                else:
+                    # 広告レベルのInsightsが取得できていない場合、all_insightsの内容を確認
+                    print(f"[Meta API] Warning: No ad-level insights found. Total insights: {len(all_insights)}")
+                    if len(all_insights) > 0:
+                        sample_insight = all_insights[0]
+                        print(f"[Meta API] Sample insight keys: {list(sample_insight.keys())}")
+                        print(f"[Meta API] Sample insight ad_id: {sample_insight.get('ad_id')}, ad_name: {sample_insight.get('ad_name')}")
             else:
                 print(f"[Meta API] No ads found, skipping ad-level insights")
             
