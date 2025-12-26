@@ -865,21 +865,22 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     }
     // 日付範囲でフィルタリングされていない元のデータを使用
     // アセットが選択されている場合はallApiData、そうでない場合はpropData
+    // allApiDataが空の場合は、apiDataも使用（日付範囲でフィルタリングされていても、広告セット一覧の取得には使用可能）
     let sourceData: CampaignData[] = [];
     if (selectedMetaAccountId) {
-      // アセットが選択されている場合: allApiDataを使用（全データ）
+      // アセットが選択されている場合: allApiDataを優先、なければapiData、最後にpropData
       if (allApiData && allApiData.length > 0) {
         sourceData = allApiData;
         console.log('[Dashboard] Using allApiData for ad sets:', sourceData.length);
       } else if (apiData && apiData.length > 0) {
-        sourceData = apiData; // Fallback to filtered data
+        sourceData = apiData; // Fallback to filtered data (still useful for ad set list)
         console.log('[Dashboard] Using apiData (fallback) for ad sets:', sourceData.length);
       } else if (propData && propData.length > 0) {
         sourceData = propData;
         console.log('[Dashboard] Using propData (fallback) for ad sets:', sourceData.length);
       }
     } else {
-      // アセットが選択されていない場合: propDataを優先、なければallApiData
+      // アセットが選択されていない場合: propDataを優先、なければallApiData、最後にapiData
       if (propData && propData.length > 0) {
         sourceData = propData;
         console.log('[Dashboard] Using propData for ad sets:', sourceData.length);
