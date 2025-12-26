@@ -1087,6 +1087,34 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
 
   // Group by Campaign/AdSet/Ad for Table (広告レベルのデータも表示するため、個別にグループ化)
   const campaignStats = useMemo(() => {
+    console.log('[Dashboard] ===== campaignStats calculation =====');
+    console.log('[Dashboard] dateFilteredData count:', dateFilteredData.length);
+    
+    // データレベルの統計
+    const levelStats = {
+      campaign: 0,
+      adset: 0,
+      ad: 0
+    };
+    dateFilteredData.forEach(d => {
+      const hasAdName = d.ad_name && d.ad_name.trim() !== '';
+      const hasAdSetName = d.ad_set_name && d.ad_set_name.trim() !== '';
+      if (hasAdName) {
+        levelStats.ad++;
+      } else if (hasAdSetName) {
+        levelStats.adset++;
+      } else {
+        levelStats.campaign++;
+      }
+    });
+    console.log('[Dashboard] Data level breakdown:', levelStats);
+    console.log('[Dashboard] Sample data (first 5):', dateFilteredData.slice(0, 5).map(d => ({
+      campaign_name: d.campaign_name,
+      ad_set_name: d.ad_set_name || '(empty)',
+      ad_name: d.ad_name || '(empty)',
+      date: d.date
+    })));
+    
     const stats: { [key: string]: CampaignData } = {};
     dateFilteredData.forEach(d => {
       // 広告レベルのデータは個別に表示（ad_nameが存在する場合）
@@ -1126,7 +1154,17 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
       stats[key].conversion_value += d.conversion_value;
     });
 
-    return Object.values(stats).map(s => ({
+    const statsArray = Object.values(stats);
+    console.log('[Dashboard] campaignStats count:', statsArray.length);
+    console.log('[Dashboard] campaignStats sample (first 5):', statsArray.slice(0, 5).map(s => ({
+      campaign_name: s.campaign_name,
+      ad_set_name: s.ad_set_name || '(empty)',
+      ad_name: s.ad_name || '(empty)',
+      impressions: s.impressions
+    })));
+    console.log('[Dashboard] ===== End campaignStats calculation =====');
+
+    return statsArray.map(s => ({
       ...s,
       ctr: s.impressions > 0 ? (s.clicks / s.impressions * 100) : 0,
       cpc: s.clicks > 0 ? s.cost / s.clicks : 0,
