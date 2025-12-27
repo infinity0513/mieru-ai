@@ -500,9 +500,15 @@ class ApiClient {
     console.log('[API] Request URL:', url);
     console.log('[API] Request method:', options.method || 'GET');
     
+    // getFetchOptionsでヘッダーをマージ済みなので、その結果を使用
+    const fetchOptions = this.getFetchOptions(options);
+    
+    // optionsからheadersを除外（getFetchOptions内で既にマージ済み）
+    const { headers: _, ...restOptions } = options;
+    
     const response = await fetch(url, {
-      ...this.getFetchOptions(options),
-      ...options,
+      ...restOptions,  // method, body, signal など
+      ...fetchOptions,  // credentials, headers (マージ済み)
     });
     
     console.log('[API] Response status:', response.status, response.statusText);
