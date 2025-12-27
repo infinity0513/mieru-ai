@@ -111,6 +111,60 @@ def debug_ads(
         ]
     }
 
+@router.get("/debug/count-by-level")
+def debug_count_by_level(
+    meta_account_id: Optional[str] = Query(None, description="Meta広告アカウントIDでフィルタリング"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    デバッグ用: キャンペーン、広告セット、広告のユニークな件数を取得
+    """
+    base_query = db.query(Campaign).filter(Campaign.user_id == current_user.id)
+    
+    if meta_account_id:
+        base_query = base_query.filter(Campaign.meta_account_id == meta_account_id)
+    
+    # ユニークなキャンペーン名の件数
+    unique_campaigns = base_query.filter(
+        or_(
+            Campaign.ad_set_name == '',
+            Campaign.ad_set_name.is_(None)
+        ),
+        or_(
+            Campaign.ad_name == '',
+            Campaign.ad_name.is_(None)
+        )
+    ).with_entities(Campaign.campaign_name).distinct().all()
+    
+    # ユニークな広告セット名の件数
+    unique_adsets = base_query.filter(
+        Campaign.ad_set_name != '',
+        Campaign.ad_set_name.isnot(None),
+        or_(
+            Campaign.ad_name == '',
+            Campaign.ad_name.is_(None)
+        )
+    ).with_entities(Campaign.campaign_name, Campaign.ad_set_name).distinct().all()
+    
+    # ユニークな広告名の件数
+    unique_ads = base_query.filter(
+        Campaign.ad_name != '',
+        Campaign.ad_name.isnot(None)
+    ).with_entities(Campaign.campaign_name, Campaign.ad_set_name, Campaign.ad_name).distinct().all()
+    
+    return {
+        "meta_account_id": meta_account_id or "all",
+        "counts": {
+            "campaigns": len(unique_campaigns),
+            "adsets": len(unique_adsets),
+            "ads": len(unique_ads)
+        },
+        "campaign_names": [c[0] for c in unique_campaigns],
+        "adset_names": [f"{a[0]} > {a[1]}" for a in unique_adsets],
+        "ad_names": [f"{a[0]} > {a[1]} > {a[2]}" for a in unique_ads]
+    }
+
 @router.get("/debug/campaign-hierarchy")
 def debug_campaign_hierarchy(
     campaign_name: Optional[str] = Query(None, description="キャンペーン名でフィルタリング（部分一致）"),
