@@ -530,60 +530,19 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
             
             print(f"[Meta API] Total insights retrieved (campaign + adset level): {len(all_insights)}")
             
-            # 各広告セットから広告（ads）一覧を取得（ページネーション対応）
-            print(f"[Meta API] Fetching ads from {len(all_adsets)} adsets...")
-            all_ads = []
-            for idx, adset in enumerate(all_adsets):
-                adset_id = adset['id']
-                adset_name = adset.get('name', 'Unknown')
-                
-                if (idx + 1) % 10 == 0 or idx == 0:
-                    print(f"[Meta API] Fetching ads from adset {idx + 1}/{len(all_adsets)}: {adset_name}")
-                
-                ads_url = f"https://graph.facebook.com/v24.0/{adset_id}/ads"
-                ads_params = {
-                    "access_token": access_token,
-                    "fields": "id,name,adset_id,campaign_id",
-                    "limit": 100  # Meta APIの最大取得件数
-                }
-                
-                # ページネーション処理（すべてのadsを取得）
-                page_count = 0
-                while True:
-                    page_count += 1
-                    try:
-                        ads_response = await client.get(ads_url, params=ads_params)
-                        ads_response.raise_for_status()
-                        ads_data = ads_response.json()
-                        
-                        # 取得した広告を追加
-                        page_ads = ads_data.get('data', [])
-                        for ad in page_ads:
-                            ad_id = ad['id']
-                            ad_to_adset_map[ad_id] = adset_id
-                            if campaign_id:
-                                ad_to_campaign_map[ad_id] = campaign_id
-                        all_ads.extend(page_ads)
-                        
-                        if page_count == 1 and idx < 3:
-                            print(f"[Meta API] Retrieved {len(page_ads)} ads from {adset_name} (total ads: {len(all_ads)})")
-                        
-                        # 次のページがあるかチェック
-                        paging = ads_data.get('paging', {})
-                        next_url = paging.get('next')
-                        
-                        if not next_url:
-                            break
-                        
-                        # 次のページのURLを設定（パラメータをクリア）
-                        ads_url = next_url
-                        ads_params = {}  # URLにパラメータが含まれているためクリア
-                    except Exception as e:
-                        print(f"[Meta API] Error fetching ads from {adset_name} ({adset_id}): {str(e)}")
-                        # エラーが発生しても次の広告セットの処理を続行
-                        break
+            # 広告IDから広告セットID、キャンペーンIDへのマッピングを作成（キャンペーンごとに取得したデータから）
+            ad_to_adset_map = {}
+            ad_to_campaign_map = {}
+            for campaign_id, ads in campaign_ads_map.items():
+                for ad in ads:
+                    ad_id = ad['id']
+                    adset_id = ad.get('adset_id')
+                    if adset_id:
+                        ad_to_adset_map[ad_id] = adset_id
+                    ad_to_campaign_map[ad_id] = campaign_id
             
-            print(f"[Meta API] Total ads fetched: {len(all_ads)}")
+            print(f"[Meta API] Created ad-to-adset mapping: {len(ad_to_adset_map)} ads")
+            print(f"[Meta API] Created ad-to-campaign mapping: {len(ad_to_campaign_map)} ads")
             
             # 各広告のInsightsを取得（広告レベル）- バッチリクエストを使用
             if len(all_ads) > 0:
