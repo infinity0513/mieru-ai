@@ -1069,90 +1069,118 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
         db.rollback()
         raise
 
-@router.get("/accounts")
+@router.get("/accounts/")
 async def get_meta_accounts(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """ユーザーが連携しているMeta広告アカウント（アセット）一覧を取得"""
-    # Campaignテーブルからユニークなmeta_account_idを取得
-    accounts = db.query(Campaign.meta_account_id).filter(
-        Campaign.user_id == current_user.id,
-        Campaign.meta_account_id.isnot(None)
-    ).distinct().all()
-    
-    # アカウントIDのリストを作成
-    account_ids = [acc[0] for acc in accounts if acc[0]]
-    
-    # Meta APIからアカウント名を取得（アクセストークンがある場合）
-    account_names = {}
-    if current_user.meta_access_token:
-        try:
-            async with httpx.AsyncClient() as client:
-                # すべての広告アカウント情報を取得
-                accounts_url = "https://graph.facebook.com/v24.0/me/adaccounts"
-                accounts_params = {
-                    "access_token": current_user.meta_access_token,
-                    "fields": "account_id,id,name"
-                }
+    try:
+        print(f"[Meta Accounts] Getting accounts for user: {current_user.id}")
+        
+        # Campaignテーブルからユニークなmeta_account_idを取得
+        accounts = db.query(Campaign.meta_account_id).filter(
+            Campaign.user_id == current_user.id,
+            Campaign.meta_account_id.isnot(None)
+        ).distinct().all()
+        
+        print(f"[Meta Accounts] Found {len(accounts)} unique account IDs")
+        
+        # アカウントIDのリストを作成
+        account_ids = [acc[0] for acc in accounts if acc[0]]
+        print(f"[Meta Accounts] Account IDs: {account_ids}")
+        
+        # Meta APIからアカウント名を取得（アクセストークンがある場合）
+        account_names = {}
+        if current_user.meta_access_token:
+            try:
+                print(f"[Meta Accounts] Fetching account names from Meta API...")
+                async with httpx.AsyncClient() as client:
+                    # すべての広告アカウント情報を取得
+                    accounts_url = "https://graph.facebook.com/v24.0/me/adaccounts"
+                    accounts_params = {
+                        "access_token": current_user.meta_access_token,
+                        "fields": "account_id,id,name"
+                    }
+                    
+                    accounts_response = await client.get(accounts_url, params=accounts_params)
+                    accounts_response.raise_for_status()
+                    accounts_data = accounts_response.json()
+                    
+                    if "data" in accounts_data:
+                        for account in accounts_data["data"]:
+                            account_id = account.get("id")
+                            account_name = account.get("name", account_id)
+                            account_names[account_id] = account_name
+                    print(f"[Meta Accounts] Fetched {len(account_names)} account names from Meta API")
+            except Exception as e:
+                import traceback
+                print(f"[Meta Accounts] Error fetching account names: {str(e)}")
+                print(f"[Meta Accounts] Error details: {traceback.format_exc()}")
+                # エラーが発生しても続行（アカウントIDをそのまま使用）
+        
+        # 各アカウントの統計情報を取得
+        result = []
+        for account_id in account_ids:
+            try:
+                # 各アカウントのデータ件数を取得（全レベル合計）
+                total_count = db.query(Campaign).filter(
+                    Campaign.user_id == current_user.id,
+                    Campaign.meta_account_id == account_id
+                ).count()
                 
-                accounts_response = await client.get(accounts_url, params=accounts_params)
-                accounts_response.raise_for_status()
-                accounts_data = accounts_response.json()
+                # ユニークなキャンペーン数を取得
+                unique_campaigns = db.query(Campaign.campaign_name).filter(
+                    Campaign.user_id == current_user.id,
+                    Campaign.meta_account_id == account_id,
+                    or_(
+                        Campaign.ad_set_name == '',
+                        Campaign.ad_set_name.is_(None)
+                    ),
+                    or_(
+                        Campaign.ad_name == '',
+                        Campaign.ad_name.is_(None)
+                    )
+                ).distinct().count()
                 
-                if "data" in accounts_data:
-                    for account in accounts_data["data"]:
-                        account_id = account.get("id")
-                        account_name = account.get("name", account_id)
-                        account_names[account_id] = account_name
-        except Exception as e:
-            print(f"[Meta Accounts] Error fetching account names: {str(e)}")
-            # エラーが発生しても続行（アカウントIDをそのまま使用）
-    
-    # 各アカウントの統計情報を取得
-    result = []
-    for account_id in account_ids:
-        # 各アカウントのデータ件数を取得（全レベル合計）
-        total_count = db.query(Campaign).filter(
-            Campaign.user_id == current_user.id,
-            Campaign.meta_account_id == account_id
-        ).count()
+                # 最新のデータ日付を取得
+                latest_date = db.query(func.max(Campaign.date)).filter(
+                    Campaign.user_id == current_user.id,
+                    Campaign.meta_account_id == account_id
+                ).scalar()
+                
+                # アカウント名を取得（Meta APIから取得できた場合はそれを使用、なければアカウントID）
+                account_name = account_names.get(account_id, account_id)
+                
+                result.append({
+                    "account_id": account_id,
+                    "name": account_name,
+                    "data_count": total_count,
+                    "campaign_count": unique_campaigns,
+                    "latest_date": str(latest_date) if latest_date else None
+                })
+            except Exception as e:
+                import traceback
+                print(f"[Meta Accounts] Error processing account {account_id}: {str(e)}")
+                print(f"[Meta Accounts] Error details: {traceback.format_exc()}")
+                # エラーが発生したアカウントはスキップして続行
+                continue
         
-        # ユニークなキャンペーン数を取得
-        unique_campaigns = db.query(Campaign.campaign_name).filter(
-            Campaign.user_id == current_user.id,
-            Campaign.meta_account_id == account_id,
-            or_(
-                Campaign.ad_set_name == '',
-                Campaign.ad_set_name.is_(None)
-            ),
-            or_(
-                Campaign.ad_name == '',
-                Campaign.ad_name.is_(None)
-            )
-        ).distinct().count()
-        
-        # 最新のデータ日付を取得
-        latest_date = db.query(func.max(Campaign.date)).filter(
-            Campaign.user_id == current_user.id,
-            Campaign.meta_account_id == account_id
-        ).scalar()
-        
-        # アカウント名を取得（Meta APIから取得できた場合はそれを使用、なければアカウントID）
-        account_name = account_names.get(account_id, account_id)
-        
-        result.append({
-            "account_id": account_id,
-            "name": account_name,
-            "data_count": total_count,
-            "campaign_count": unique_campaigns,
-            "latest_date": str(latest_date) if latest_date else None
-        })
-    
-    return {
-        "accounts": result,
-        "total": len(result)
-    }
+        print(f"[Meta Accounts] Returning {len(result)} accounts")
+        return {
+            "accounts": result,
+            "total": len(result)
+        }
+    except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
+        print(f"[Meta Accounts] Unexpected error: {str(e)}")
+        print(f"[Meta Accounts] Error type: {type(e).__name__}")
+        print(f"[Meta Accounts] Error details: {error_details}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"アセット情報の取得に失敗しました: {str(e)}"
+        )
 
 @router.get("/insights")
 async def get_meta_insights(
@@ -1384,7 +1412,7 @@ async def meta_oauth_authorize(
     
     return RedirectResponse(url=oauth_url)
 
-@router.get("/oauth/authorize-url")
+@router.get("/oauth/authorize-url/")
 async def meta_oauth_authorize_url(
     request: Request,
     current_user: User = Depends(get_current_user)
@@ -1470,7 +1498,7 @@ async def meta_oauth_authorize_url(
             detail=f"OAuth認証URLの生成に失敗しました: {str(e)}"
         )
 
-@router.get("/oauth/callback")
+@router.get("/oauth/callback/")
 async def meta_oauth_callback(
     request: Request,
     code: Optional[str] = Query(None, description="OAuth認証コード"),

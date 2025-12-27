@@ -527,7 +527,7 @@ def get_campaigns(
         "data": campaigns
     }
 
-@router.get("/summary")
+@router.get("/summary/")
 def get_summary(
     start_date: Optional[date] = Query(None),
     end_date: Optional[date] = Query(None),
@@ -642,7 +642,7 @@ def get_summary(
         }
     }
 
-@router.get("/trends")
+@router.get("/trends/")
 def get_trends(
     start_date: Optional[date] = Query(None),
     end_date: Optional[date] = Query(None),

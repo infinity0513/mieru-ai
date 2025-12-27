@@ -29,7 +29,20 @@ const getAI = () => {
   return openai;
 };
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
+// API_BASE_URLを取得し、確実にhttp://で始まるように強制
+let API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
+
+// localhostの場合、https://をhttp://に強制的に変換し、localhostを127.0.0.1に変換（HSTS回避）
+if (API_BASE_URL.includes('localhost') || API_BASE_URL.includes('127.0.0.1')) {
+  API_BASE_URL = API_BASE_URL.replace(/^https:\/\//, 'http://');
+  // localhostを127.0.0.1に変換（HSTS回避のため）
+  API_BASE_URL = API_BASE_URL.replace(/localhost/g, '127.0.0.1');
+}
+
+// API_BASE_URLの値をログ出力（起動時に1回だけ）
+console.log('[API] API_BASE_URL:', API_BASE_URL);
+console.log('[API] VITE_API_URL from env:', import.meta.env.VITE_API_URL);
+console.log('[API] import.meta.env:', import.meta.env);
 
 // 環境判定（開発環境かどうか）
 const isDevelopment = import.meta.env.DEV || import.meta.env.MODE === 'development';
@@ -57,9 +70,30 @@ class ApiClient {
   private baseURL: string;
 
   constructor(baseURL: string) {
-    this.baseURL = baseURL;
+    // baseURLを正規化して確実にhttp://を使用
+    this.baseURL = ApiClient.normalizeURL(baseURL);
+    console.log('[ApiClient] Constructor - baseURL:', this.baseURL);
     // Don't cache token in instance - always read from localStorage
   }
+
+  /**
+   * URLを正規化して、localhostの場合は確実にhttp://を使用し、localhostを127.0.0.1に変換（HSTS回避）
+   */
+  private static normalizeURL(url: string): string {
+    // localhostまたは127.0.0.1の場合、https://をhttp://に強制変換
+    if (url.includes('localhost') || url.includes('127.0.0.1')) {
+      // より強力な正規化：すべてのhttps://をhttp://に変換
+      url = url.replace(/^https:\/\//i, 'http://');
+      // 念のため、URL全体をチェック
+      if (url.includes('https://')) {
+        url = url.replace(/https:\/\//g, 'http://');
+      }
+      // localhostを127.0.0.1に変換（HSTS回避のため）
+      url = url.replace(/localhost/g, '127.0.0.1');
+    }
+    return url;
+  }
+
 
   /**
    * 401エラー（認証エラー）を統一処理
@@ -268,7 +302,11 @@ class ApiClient {
       console.log('[Api] requestLoginCode: Starting fetch...');
       console.log('[Api] requestLoginCode: Request body:', { email, password: '***' });
       
-      const response = await fetch(`${this.baseURL}/auth/login/request-code/`, {
+      // URLを正規化して確実にhttp://を使用
+      const requestURL = ApiClient.normalizeURL(`${this.baseURL}/auth/login/request-code/`);
+      console.log('[Api] requestLoginCode: Normalized URL:', requestURL);
+      
+      const response = await fetch(requestURL, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -498,9 +536,38 @@ class ApiClient {
     // クエリパラメータがある場合は結合
     const finalEndpoint = queryString ? `${pathWithSlash}?${queryString}` : pathWithSlash;
 
-    const url = `${this.baseURL}${finalEndpoint}`;
+    let url = `${this.baseURL}${finalEndpoint}`;
+    // URLを正規化して確実にhttp://を使用
+    url = ApiClient.normalizeURL(url);
     console.log('[API] Request URL:', url);
     console.log('[API] Request method:', options.method || 'GET');
+    
+    // fetch呼び出し直前にURLを再度確認（ブラウザがURLを変換する可能性があるため）
+    if ((url.includes('localhost') || url.includes('127.0.0.1')) && url.startsWith('https://')) {
+      console.warn('[API] request: Detected HTTPS URL, forcing HTTP:', url);
+      url = url.replace(/^https:\/\//, 'http://');
+      console.log('[API] request: Corrected URL:', url);
+    }
+    
+    // URLオブジェクトを使用してプロトコルを強制
+    let fetchUrl: string | URL = url;
+    if (url.includes('localhost') || url.includes('127.0.0.1')) {
+      try {
+        // localhostを127.0.0.1に変換してからURLオブジェクトを作成
+        const normalizedUrl = url.replace(/localhost/g, '127.0.0.1');
+        const urlObj = new URL(normalizedUrl);
+        urlObj.protocol = 'http:';
+        // 念のため、hostnameも確認
+        if (urlObj.hostname === 'localhost') {
+          urlObj.hostname = '127.0.0.1';
+        }
+        fetchUrl = urlObj;
+        console.log('[API] request: Using URL object with forced HTTP:', fetchUrl.toString());
+      } catch (e) {
+        // URLオブジェクトの作成に失敗した場合は文字列URLを使用
+        fetchUrl = url.replace(/localhost/g, '127.0.0.1');
+      }
+    }
     
     // getFetchOptionsでヘッダーをマージ済みなので、その結果を使用
     const fetchOptions = this.getFetchOptions(options);
@@ -508,10 +575,37 @@ class ApiClient {
     // optionsからheadersを除外（getFetchOptions内で既にマージ済み）
     const { headers: _, ...restOptions } = options;
     
-    const response = await fetch(url, {
-      ...restOptions,  // method, body, signal など
-      ...fetchOptions,  // credentials, headers (マージ済み)
-    });
+    let response: Response;
+    try {
+      response = await fetch(fetchUrl, {
+        ...restOptions,  // method, body, signal など
+        ...fetchOptions,  // credentials, headers (マージ済み)
+      });
+    } catch (fetchError: any) {
+      console.error('[API] Fetch error:', fetchError);
+      console.error('[API] Fetch error name:', fetchError?.name);
+      console.error('[API] Fetch error message:', fetchError?.message);
+      console.error('[API] Failed URL:', url);
+      
+      // ERR_SSL_PROTOCOL_ERROR などのネットワークエラーの場合
+      if ((url.includes('localhost') || url.includes('127.0.0.1')) && (url.startsWith('https://') || fetchError?.message?.includes('SSL') || fetchError?.message?.includes('Failed to fetch') || fetchError?.name === 'TypeError')) {
+        // localhostを127.0.0.1に変換（HSTS回避）
+        url = url.replace(/^https:\/\//, 'http://');
+        url = url.replace(/localhost/g, '127.0.0.1');
+        console.error('[API] Detected HTTPS/SSL error for localhost, attempting HTTP fallback with 127.0.0.1:', url);
+        // HTTPで再試行
+        try {
+          response = await fetch(url, {
+            ...restOptions,
+            ...fetchOptions,
+          });
+        } catch (retryError) {
+          throw new Error(`サーバーに接続できませんでした。バックエンドサーバー（http://localhost:8000）が起動しているか確認してください。エラー: ${fetchError?.message || 'Unknown error'}`);
+        }
+      } else {
+        throw fetchError;
+      }
+    }
     
     console.log('[API] Response status:', response.status, response.statusText);
     console.log('[API] Response URL:', response.url);
@@ -832,10 +926,52 @@ class ApiClient {
     let response: Response;
     try {
       const startTime = performance.now();
-      response = await fetch(`${this.baseURL}/users/me/`, {
-        credentials: 'include',  // CORS credentials をサポート
-        headers: this.getHeaders(),
-      });
+      let userMeUrl = ApiClient.normalizeURL(`${this.baseURL}/users/me/`);
+      // fetch呼び出し直前にURLを再度確認（ブラウザがURLを変換する可能性があるため）
+      if (userMeUrl.includes('localhost') && userMeUrl.startsWith('https://')) {
+        console.warn('[ApiClient] getCurrentUser: Detected HTTPS URL, forcing HTTP:', userMeUrl);
+        userMeUrl = userMeUrl.replace(/^https:\/\//, 'http://');
+        console.log('[ApiClient] getCurrentUser: Corrected URL:', userMeUrl);
+      }
+      
+      // URLオブジェクトを使用してプロトコルを強制
+      let fetchUrl: string | URL = userMeUrl;
+      if (userMeUrl.includes('localhost')) {
+        try {
+          const urlObj = new URL(userMeUrl);
+          urlObj.protocol = 'http:';
+          fetchUrl = urlObj;
+          console.log('[ApiClient] getCurrentUser: Using URL object with forced HTTP:', fetchUrl.toString());
+        } catch (e) {
+          // URLオブジェクトの作成に失敗した場合は文字列URLを使用
+          fetchUrl = userMeUrl;
+        }
+      }
+      
+      try {
+        response = await fetch(fetchUrl, {
+          credentials: 'include',  // CORS credentials をサポート
+          headers: this.getHeaders(),
+        });
+      } catch (fetchError: any) {
+        console.error('[ApiClient] getCurrentUser fetch error:', fetchError);
+        // ERR_SSL_PROTOCOL_ERROR の場合、https://をhttp://に変換して再試行
+        if (userMeUrl.includes('localhost') && (userMeUrl.startsWith('https://') || fetchError?.message?.includes('SSL') || fetchError?.name === 'TypeError')) {
+          userMeUrl = userMeUrl.replace(/^https:\/\//, 'http://');
+          console.log('[ApiClient] Retrying getCurrentUser with HTTP URL:', userMeUrl);
+          try {
+            response = await fetch(userMeUrl, {
+              credentials: 'include',
+              headers: this.getHeaders(),
+            });
+          } catch (retryError: any) {
+            console.error('[ApiClient] Retry also failed:', retryError);
+            throw fetchError;
+          }
+        } else {
+          throw fetchError;
+        }
+      }
       const endTime = performance.now();
       
       debugLogin('APIリクエスト完了（getCurrentUser）', {
@@ -956,7 +1092,11 @@ class ApiClient {
         const url = `${this.baseURL}/campaigns/?${params}`;
         console.log(`[ApiClient] Fetching page: offset=${offset}, limit=${limit}`);
         
-        const response = await fetch(url, {
+        // URLを正規化して確実にhttp://を使用
+        const normalizedUrl = ApiClient.normalizeURL(url);
+        console.log(`[ApiClient] Normalized URL: ${normalizedUrl}`);
+        
+        const response = await fetch(normalizedUrl, {
           credentials: 'include',  // CORS credentials をサポート
           headers: this.getHeaders(),
         });
@@ -1088,13 +1228,75 @@ class ApiClient {
       if (endDate) params.append('end_date', endDate);
       if (metaAccountId) params.append('meta_account_id', metaAccountId);
       
-      const response = await fetch(
-        `${this.baseURL}/campaigns/summary/?${params}`,
-        { 
-          credentials: 'include',  // CORS credentials をサポート
-          headers: this.getHeaders() 
+      let url = `${this.baseURL}/campaigns/summary/?${params}`;
+      // fetch呼び出し直前に再度正規化（ブラウザがURLを変換する可能性があるため）
+      url = ApiClient.normalizeURL(url);
+      console.log('[ApiClient] getCampaignSummary URL (before fetch):', url);
+      
+      // fetch呼び出し直前にURLを再度確認（ブラウザがURLを変換する可能性があるため）
+      if ((url.includes('localhost') || url.includes('127.0.0.1')) && url.startsWith('https://')) {
+        console.warn('[ApiClient] getCampaignSummary: Detected HTTPS URL, forcing HTTP:', url);
+        url = url.replace(/^https:\/\//, 'http://');
+        console.log('[ApiClient] getCampaignSummary: Corrected URL:', url);
+      }
+      
+      // URLオブジェクトを使用してプロトコルを強制
+      let fetchUrl: string | URL = url;
+      if (url.includes('localhost') || url.includes('127.0.0.1')) {
+        try {
+          // localhostを127.0.0.1に変換してからURLオブジェクトを作成
+          const normalizedUrl = url.replace(/localhost/g, '127.0.0.1');
+          const urlObj = new URL(normalizedUrl);
+          urlObj.protocol = 'http:';
+          // 念のため、hostnameも確認
+          if (urlObj.hostname === 'localhost') {
+            urlObj.hostname = '127.0.0.1';
+          }
+          fetchUrl = urlObj;
+          console.log('[ApiClient] getCampaignSummary: Using URL object with forced HTTP:', fetchUrl.toString());
+        } catch (e) {
+          // URLオブジェクトの作成に失敗した場合は文字列URLを使用
+          fetchUrl = url.replace(/localhost/g, '127.0.0.1');
         }
-      );
+      }
+      
+      let response: Response;
+      try {
+        response = await fetch(
+          fetchUrl,
+          { 
+            credentials: 'include',  // CORS credentials をサポート
+            headers: this.getHeaders() 
+          }
+        );
+      } catch (fetchError: any) {
+        console.error('[ApiClient] getCampaignSummary fetch error:', fetchError);
+        console.error('[ApiClient] getCampaignSummary error name:', fetchError?.name);
+        console.error('[ApiClient] getCampaignSummary error message:', fetchError?.message);
+        console.error('[ApiClient] getCampaignSummary URL at error:', url);
+        
+        // ERR_SSL_PROTOCOL_ERROR の場合、https://をhttp://に変換して再試行
+        if ((url.includes('localhost') || url.includes('127.0.0.1')) && (url.startsWith('https://') || fetchError?.message?.includes('SSL') || fetchError?.name === 'TypeError')) {
+          url = url.replace(/^https:\/\//, 'http://');
+          // localhostを127.0.0.1に変換（HSTS回避）
+          url = url.replace(/localhost/g, '127.0.0.1');
+          console.log('[ApiClient] Retrying getCampaignSummary with HTTP URL:', url);
+          try {
+            response = await fetch(
+              url,
+              { 
+                credentials: 'include',
+                headers: this.getHeaders() 
+              }
+            );
+          } catch (retryError: any) {
+            console.error('[ApiClient] Retry also failed:', retryError);
+            throw new Error(`サーバーに接続できませんでした。バックエンドサーバー（http://localhost:8000）が起動しているか確認してください。エラー: ${fetchError?.message || 'Unknown error'}`);
+          }
+        } else {
+          throw fetchError;
+        }
+      }
       
       if (!response.ok) {
         // 401エラーは統一処理
@@ -1126,13 +1328,75 @@ class ApiClient {
       if (endDate) params.append('end_date', endDate);
       if (metaAccountId) params.append('meta_account_id', metaAccountId);
       
-      const response = await fetch(
-        `${this.baseURL}/campaigns/trends/?${params}`,
-        { 
-          credentials: 'include',  // CORS credentials をサポート
-          headers: this.getHeaders() 
+      let url = `${this.baseURL}/campaigns/trends/?${params}`;
+      // fetch呼び出し直前に再度正規化（ブラウザがURLを変換する可能性があるため）
+      url = ApiClient.normalizeURL(url);
+      console.log('[ApiClient] getCampaignTrends URL (before fetch):', url);
+      
+      // fetch呼び出し直前にURLを再度確認（ブラウザがURLを変換する可能性があるため）
+      if ((url.includes('localhost') || url.includes('127.0.0.1')) && url.startsWith('https://')) {
+        console.warn('[ApiClient] getCampaignTrends: Detected HTTPS URL, forcing HTTP:', url);
+        url = url.replace(/^https:\/\//, 'http://');
+        console.log('[ApiClient] getCampaignTrends: Corrected URL:', url);
+      }
+      
+      // URLオブジェクトを使用してプロトコルを強制
+      let fetchUrl: string | URL = url;
+      if (url.includes('localhost') || url.includes('127.0.0.1')) {
+        try {
+          // localhostを127.0.0.1に変換してからURLオブジェクトを作成
+          const normalizedUrl = url.replace(/localhost/g, '127.0.0.1');
+          const urlObj = new URL(normalizedUrl);
+          urlObj.protocol = 'http:';
+          // 念のため、hostnameも確認
+          if (urlObj.hostname === 'localhost') {
+            urlObj.hostname = '127.0.0.1';
+          }
+          fetchUrl = urlObj;
+          console.log('[ApiClient] getCampaignTrends: Using URL object with forced HTTP:', fetchUrl.toString());
+        } catch (e) {
+          // URLオブジェクトの作成に失敗した場合は文字列URLを使用
+          fetchUrl = url.replace(/localhost/g, '127.0.0.1');
         }
-      );
+      }
+      
+      let response: Response;
+      try {
+        response = await fetch(
+          fetchUrl,
+          { 
+            credentials: 'include',  // CORS credentials をサポート
+            headers: this.getHeaders()
+          }
+        );
+      } catch (fetchError: any) {
+        console.error('[ApiClient] getCampaignTrends fetch error:', fetchError);
+        console.error('[ApiClient] getCampaignTrends error name:', fetchError?.name);
+        console.error('[ApiClient] getCampaignTrends error message:', fetchError?.message);
+        console.error('[ApiClient] getCampaignTrends URL at error:', url);
+        
+        // ERR_SSL_PROTOCOL_ERROR の場合、https://をhttp://に変換して再試行
+        if ((url.includes('localhost') || url.includes('127.0.0.1')) && (url.startsWith('https://') || fetchError?.message?.includes('SSL') || fetchError?.name === 'TypeError')) {
+          url = url.replace(/^https:\/\//, 'http://');
+          // localhostを127.0.0.1に変換（HSTS回避）
+          url = url.replace(/localhost/g, '127.0.0.1');
+          console.log('[ApiClient] Retrying getCampaignTrends with HTTP URL:', url);
+          try {
+            response = await fetch(
+              url,
+              { 
+                credentials: 'include',
+                headers: this.getHeaders()
+              }
+            );
+          } catch (retryError: any) {
+            console.error('[ApiClient] Retry also failed:', retryError);
+            throw new Error(`サーバーに接続できませんでした。バックエンドサーバー（http://localhost:8000）が起動しているか確認してください。エラー: ${fetchError?.message || 'Unknown error'}`);
+          }
+        } else {
+          throw fetchError;
+        }
+      }
       
       if (!response.ok) {
         // 401エラーは統一処理

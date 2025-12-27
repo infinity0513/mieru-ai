@@ -1,3 +1,4 @@
+// Test deployment - Netlify auto-deploy verification
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { User, ViewState, CampaignData } from './types';
 import { Auth } from './components/Auth';

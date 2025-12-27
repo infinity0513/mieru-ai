@@ -11,7 +11,7 @@ router = APIRouter()
 def get_me(current_user: User = Depends(get_current_user)):
     return current_user
 
-@router.put("/me/meta-settings", response_model=MetaAccountSettingsResponse)
+@router.put("/me/meta-settings/", response_model=MetaAccountSettingsResponse)
 def update_meta_settings(
     settings: MetaAccountSettings,
     current_user: User = Depends(get_current_user),
@@ -31,7 +31,7 @@ def update_meta_settings(
         meta_account_id=current_user.meta_account_id
     )
 
-@router.get("/me/meta-settings", response_model=MetaAccountSettings)
+@router.get("/me/meta-settings/", response_model=MetaAccountSettings)
 def get_meta_settings(
     current_user: User = Depends(get_current_user)
 ):
