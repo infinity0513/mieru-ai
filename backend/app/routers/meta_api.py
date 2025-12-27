@@ -1730,17 +1730,30 @@ async def meta_oauth_callback(
             
             # フロントエンドにリダイレクト（成功メッセージ付き）
             account_count = len(accounts)
+            
             # localhostの場合、https://をhttp://に強制的に変換
             final_frontend_url = frontend_url
+            print(f"[Meta OAuth] ===== BEFORE REDIRECT URL GENERATION =====")
+            print(f"[Meta OAuth] frontend_url (before conversion): {frontend_url}")
+            print(f"[Meta OAuth] frontend_url starts with https://localhost: {frontend_url.startswith('https://localhost')}")
+            print(f"[Meta OAuth] frontend_url starts with https://127.0.0.1: {frontend_url.startswith('https://127.0.0.1')}")
+            
             if final_frontend_url.startswith('https://localhost') or final_frontend_url.startswith('https://127.0.0.1'):
                 final_frontend_url = final_frontend_url.replace('https://', 'http://')
-                print(f"[Meta OAuth] Final redirect: Converted HTTPS to HTTP: {final_frontend_url}")
+                print(f"[Meta OAuth] Converted HTTPS to HTTP: {frontend_url} -> {final_frontend_url}")
+            else:
+                print(f"[Meta OAuth] No conversion needed (not https://localhost or https://127.0.0.1)")
             
             if account_count > 1:
                 success_url = f"{final_frontend_url}/settings?meta_oauth=success&account_id={account_id}&account_count={account_count}"
             else:
                 success_url = f"{final_frontend_url}/settings?meta_oauth=success&account_id={account_id}"
-            print(f"[Meta OAuth] Final success URL: {success_url}")
+            
+            print(f"[Meta OAuth] ===== FINAL REDIRECT URL =====")
+            print(f"[Meta OAuth] Final frontend_url: {final_frontend_url}")
+            print(f"[Meta OAuth] Success URL: {success_url}")
+            print(f"[Meta OAuth] =============================")
+            
             return RedirectResponse(url=success_url)
             
     except httpx.HTTPStatusError as e:
