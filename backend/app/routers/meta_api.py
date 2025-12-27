@@ -1717,10 +1717,17 @@ async def meta_oauth_callback(
             
             # フロントエンドにリダイレクト（成功メッセージ付き）
             account_count = len(accounts)
+            # localhostの場合、https://をhttp://に強制的に変換
+            final_frontend_url = frontend_url
+            if final_frontend_url.startswith('https://localhost') or final_frontend_url.startswith('https://127.0.0.1'):
+                final_frontend_url = final_frontend_url.replace('https://', 'http://')
+                print(f"[Meta OAuth] Final redirect: Converted HTTPS to HTTP: {final_frontend_url}")
+            
             if account_count > 1:
-                success_url = f"{frontend_url}/settings?meta_oauth=success&account_id={account_id}&account_count={account_count}"
+                success_url = f"{final_frontend_url}/settings?meta_oauth=success&account_id={account_id}&account_count={account_count}"
             else:
-                success_url = f"{frontend_url}/settings?meta_oauth=success&account_id={account_id}"
+                success_url = f"{final_frontend_url}/settings?meta_oauth=success&account_id={account_id}"
+            print(f"[Meta OAuth] Final success URL: {success_url}")
             return RedirectResponse(url=success_url)
             
     except httpx.HTTPStatusError as e:
