@@ -399,8 +399,8 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
             print(f"[Meta API] Total adsets fetched (by campaign): {len(all_adsets)}")
             print(f"[Meta API] Total ads fetched (by campaign): {len(all_ads)}")
             
-            # 各広告セットのInsightsを取得（広告セットレベル）
-            print(f"[Meta API] Processing {len(all_adsets)} adsets for adset-level insights...")
+            # 各キャンペーンの広告セットレベルのInsightsを取得（キャンペーンごとに処理）
+            print(f"[Meta API] Processing adset-level insights for each campaign...")
             # 広告セットレベルでも同じ期間制限を適用
             adset_fields = "adset_id,adset_name,ad_id,ad_name,campaign_id,campaign_name,date_start,spend,impressions,clicks,inline_link_clicks,reach,actions,conversions,action_values,frequency"
             has_reach_adset = "reach" in adset_fields.lower()
@@ -424,71 +424,69 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
             end_date_str_adset = current_until.strftime('%Y-%m-%d')
             print(f"[Meta API] Adset date range: {start_date_str_adset} to {end_date_str_adset} ({(current_until - current_since_adset).days} days)")
             
-            # 広告セットIDからキャンペーンIDへのマッピングを作成（キャンペーンごとに取得したデータから）
-            adset_to_campaign_map = {}
-            for campaign_id, adsets in campaign_adsets_map.items():
-                for adset in adsets:
-                    adset_id = adset['id']
-                    # 広告セットが属するキャンペーンIDを明示的に設定
-                    adset_to_campaign_map[adset_id] = campaign_id
-            
-            print(f"[Meta API] Created adset-to-campaign mapping: {len(adset_to_campaign_map)} adsets mapped to campaigns")
-            
-            # バッチリクエストで広告セットレベルInsightsを取得（最大50件/バッチ）
-            adset_fields = "adset_id,adset_name,ad_id,ad_name,campaign_id,campaign_name,date_start,spend,impressions,clicks,inline_link_clicks,reach,actions,conversions,action_values,frequency"
             time_range_dict_adset = {
                 "since": start_date_str_adset,
                 "until": end_date_str_adset
             }
             time_range_json_adset = json.dumps(time_range_dict_adset, separators=(',', ':'))  # スペースなしJSON
             
-            # 広告セットを50件ずつのバッチに分割
-            batch_size = 50  # Meta APIのバッチリクエスト最大数
-            for batch_start in range(0, len(all_adsets), batch_size):
-                batch_end = min(batch_start + batch_size, len(all_adsets))
-                batch_adsets = all_adsets[batch_start:batch_end]
-                batch_num = (batch_start // batch_size) + 1
-                total_batches = (len(all_adsets) + batch_size - 1) // batch_size
+            # キャンペーンごとに広告セットレベルのInsightsを取得
+            for campaign in all_campaigns:
+                campaign_id = campaign['id']
+                campaign_name = campaign.get('name', 'Unknown')
+                campaign_adsets = campaign_adsets_map.get(campaign_id, [])
                 
-                print(f"[Meta API] Processing adset batch {batch_num}/{total_batches} ({len(batch_adsets)} adsets)")
+                if len(campaign_adsets) == 0:
+                    print(f"[Meta API] Campaign {campaign_name} ({campaign_id}): No adsets, skipping adset-level insights")
+                    continue
                 
-                # バッチリクエストの作成
-                batch_requests = []
-                for adset in batch_adsets:
-                    adset_id = adset['id']
-                    # 相対URLを作成（access_tokenとtime_rangeを含む）
-                    relative_url = f"{adset_id}/insights?fields={adset_fields}&time_range={time_range_json_adset}&limit=100"
-                    batch_requests.append({
-                        "method": "GET",
-                        "relative_url": relative_url
-                    })
+                print(f"[Meta API] Processing {len(campaign_adsets)} adsets for campaign {campaign_name} ({campaign_id})")
                 
-                try:
-                    # バッチリクエストを送信
-                    batch_url = "https://graph.facebook.com/v24.0/"
-                    batch_params = {
-                        "access_token": access_token,
-                        "batch": json.dumps(batch_requests, separators=(',', ':'))
-                    }
+                # 広告セットを50件ずつのバッチに分割
+                batch_size = 50  # Meta APIのバッチリクエスト最大数
+                for batch_start in range(0, len(campaign_adsets), batch_size):
+                    batch_end = min(batch_start + batch_size, len(campaign_adsets))
+                    batch_adsets = campaign_adsets[batch_start:batch_end]
+                    batch_num = (batch_start // batch_size) + 1
+                    total_batches = (len(campaign_adsets) + batch_size - 1) // batch_size
                     
-                    batch_response = await client.post(batch_url, params=batch_params)
-                    batch_response.raise_for_status()
-                    batch_data = batch_response.json()
+                    if batch_num == 1 or batch_num % 10 == 0:
+                        print(f"[Meta API] Campaign {campaign_name}: Processing adset batch {batch_num}/{total_batches} ({len(batch_adsets)} adsets)")
                     
-                    # バッチレスポンスを処理
-                    for idx, batch_item in enumerate(batch_data):
-                        adset = batch_adsets[idx]
-                        adset_name = adset.get('name', 'Unknown')
+                    # バッチリクエストの作成
+                    batch_requests = []
+                    for adset in batch_adsets:
                         adset_id = adset['id']
-                        # 広告セットが属する正しいキャンペーンIDを取得（キャンペーンごとに取得したデータから）
-                        campaign_id = adset_to_campaign_map.get(adset_id, 'Unknown')
+                        # 相対URLを作成（access_tokenとtime_rangeを含む）
+                        relative_url = f"{adset_id}/insights?fields={adset_fields}&time_range={time_range_json_adset}&limit=100"
+                        batch_requests.append({
+                            "method": "GET",
+                            "relative_url": relative_url
+                        })
+                    
+                    try:
+                        # バッチリクエストを送信
+                        batch_url = "https://graph.facebook.com/v24.0/"
+                        batch_params = {
+                            "access_token": access_token,
+                            "batch": json.dumps(batch_requests, separators=(',', ':'))
+                        }
                         
-                        # 広告セットが属する正しいキャンペーン名を取得
-                        correct_campaign_name = campaign_id_to_name_map.get(campaign_id, 'Unknown')
-                        if correct_campaign_name == 'Unknown' and campaign_id != 'Unknown':
-                            print(f"[Meta API] Warning: Campaign ID {campaign_id} not found in campaign list for adset {adset_name}")
-                        elif idx < 3 or (batch_start == 0 and idx == 0):
-                            print(f"[Meta API] Adset {adset_name} ({adset_id}) belongs to campaign: {correct_campaign_name} ({campaign_id})")
+                        batch_response = await client.post(batch_url, params=batch_params)
+                        batch_response.raise_for_status()
+                        batch_data = batch_response.json()
+                        
+                        # バッチレスポンスを処理
+                        for idx, batch_item in enumerate(batch_data):
+                            adset = batch_adsets[idx]
+                            adset_name = adset.get('name', 'Unknown')
+                            adset_id = adset['id']
+                            # この広告セットは現在処理中のキャンペーンに属する
+                            correct_campaign_id = campaign_id
+                            correct_campaign_name = campaign_name
+                            
+                            if batch_num == 1 and idx < 3:
+                                print(f"[Meta API] Adset {adset_name} ({adset_id}) belongs to campaign: {correct_campaign_name} ({correct_campaign_id})")
                         
                         if batch_item.get('code') == 200:
                             try:
