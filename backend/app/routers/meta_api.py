@@ -314,7 +314,9 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                 }
                 
                 campaign_adsets = []
+                page_count = 0
                 while True:
+                    page_count += 1
                     try:
                         adsets_response = await client.get(campaign_adsets_url, params=campaign_adsets_params)
                         adsets_response.raise_for_status()
@@ -322,6 +324,11 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                         
                         page_adsets = adsets_data.get('data', [])
                         campaign_adsets.extend(page_adsets)
+                        
+                        if page_count == 1:
+                            print(f"[Meta API] Campaign {campaign_name} ({campaign_id}): Retrieved {len(page_adsets)} adsets (page {page_count})")
+                            if len(page_adsets) > 0:
+                                print(f"[Meta API] Sample adset names: {[a.get('name', 'Unknown') for a in page_adsets[:3]]}")
                         
                         paging = adsets_data.get('paging', {})
                         next_url = paging.get('next')
@@ -331,10 +338,15 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                         campaign_adsets_params = {}
                     except Exception as e:
                         print(f"[Meta API] Error fetching adsets for campaign {campaign_name} ({campaign_id}): {str(e)}")
+                        print(f"[Meta API] Error details: {type(e).__name__}: {str(e)}")
                         break
                 
                 campaign_adsets_map[campaign_id] = campaign_adsets
-                print(f"[Meta API] Campaign {campaign_name} ({campaign_id}): {len(campaign_adsets)} adsets")
+                print(f"[Meta API] Campaign {campaign_name} ({campaign_id}): Total {len(campaign_adsets)} adsets")
+                
+                # 広告セットが0件の場合、警告を出力
+                if len(campaign_adsets) == 0:
+                    print(f"[Meta API] WARNING: Campaign {campaign_name} ({campaign_id}) has NO adsets!")
                 
                 # 各広告セットに属する広告を取得
                 campaign_ads = []
