@@ -305,40 +305,67 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                 campaign_id = campaign['id']
                 campaign_name = campaign.get('name', 'Unknown')
                 
+                print(f"\n=== キャンペーン: {campaign_name} (ID: {campaign_id}) ===")
+                print(f"[Meta API] Fetching adsets for campaign...")
+                
                 # 各キャンペーンに属する広告セットを取得
                 campaign_adsets_url = f"https://graph.facebook.com/v24.0/{campaign_id}/adsets"
                 campaign_adsets_params = {
                     "access_token": access_token,
-                    "fields": "id,name,campaign_id",
+                    "fields": "id,name,campaign_id,status,effective_status",
                     "limit": 100
                 }
+                
+                print(f"[Meta API] AdSets URL: {campaign_adsets_url}")
+                print(f"[Meta API] Params (excluding access_token): fields={campaign_adsets_params['fields']}, limit={campaign_adsets_params['limit']}")
                 
                 campaign_adsets = []
                 page_count = 0
                 while True:
                     page_count += 1
                     try:
+                        print(f"[Meta API] Requesting adsets page {page_count}...")
                         adsets_response = await client.get(campaign_adsets_url, params=campaign_adsets_params)
+                        print(f"[Meta API] Status Code: {adsets_response.status_code}")
+                        
                         adsets_response.raise_for_status()
                         adsets_data = adsets_response.json()
+                        
+                        # レスポンスの最初の500文字をログ出力
+                        response_str = json.dumps(adsets_data, indent=2, ensure_ascii=False)
+                        print(f"[Meta API] Response preview (first 500 chars): {response_str[:500]}")
                         
                         page_adsets = adsets_data.get('data', [])
                         campaign_adsets.extend(page_adsets)
                         
-                        if page_count == 1:
-                            print(f"[Meta API] Campaign {campaign_name} ({campaign_id}): Retrieved {len(page_adsets)} adsets (page {page_count})")
-                            if len(page_adsets) > 0:
-                                print(f"[Meta API] Sample adset names: {[a.get('name', 'Unknown') for a in page_adsets[:3]]}")
+                        print(f"[Meta API] Retrieved {len(page_adsets)} adsets from page {page_count} (total so far: {len(campaign_adsets)})")
+                        
+                        # 各広告セットの詳細を出力
+                        for adset in page_adsets:
+                            adset_id = adset.get('id', 'Unknown')
+                            adset_name = adset.get('name', 'Unknown')
+                            adset_status = adset.get('status', 'Unknown')
+                            adset_effective_status = adset.get('effective_status', 'Unknown')
+                            print(f"  - AdSet: {adset_name} (ID: {adset_id}, Status: {adset_status}, Effective Status: {adset_effective_status})")
                         
                         paging = adsets_data.get('paging', {})
                         next_url = paging.get('next')
                         if not next_url:
+                            print(f"[Meta API] No more pages for campaign {campaign_name}")
                             break
                         campaign_adsets_url = next_url
-                        campaign_adsets_params = {}
-                    except Exception as e:
-                        print(f"[Meta API] Error fetching adsets for campaign {campaign_name} ({campaign_id}): {str(e)}")
+                        campaign_adsets_params = {}  # URLにパラメータが含まれているためクリア
+                    except httpx.HTTPStatusError as e:
+                        print(f"[Meta API] ❌ HTTP Error: {e.response.status_code}")
+                        print(f"[Meta API] Error response text: {e.response.text[:500]}")
                         print(f"[Meta API] Error details: {type(e).__name__}: {str(e)}")
+                        # エラーが発生しても、既に取得した広告セットは保持
+                        break
+                    except Exception as e:
+                        print(f"[Meta API] ❌ Exception: {type(e).__name__}: {str(e)}")
+                        import traceback
+                        print(f"[Meta API] Traceback: {traceback.format_exc()}")
+                        # エラーが発生しても、既に取得した広告セットは保持
                         break
                 
                 campaign_adsets_map[campaign_id] = campaign_adsets

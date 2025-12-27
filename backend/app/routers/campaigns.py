@@ -8,6 +8,8 @@ from ..models.campaign import Campaign
 from ..utils.dependencies import get_current_user
 from ..models.user import User
 from ..schemas.campaign import CampaignResponse
+import httpx
+import json
 
 router = APIRouter()
 
@@ -896,3 +898,162 @@ def get_bottom_performers(
         "metric": metric,
         "data": result[:limit]
     }
+
+@router.get("/debug/raw-meta-data")
+async def get_raw_meta_data(
+    meta_account_id: str = Query(..., description="Meta広告アカウントID"),
+    campaign_name: Optional[str] = Query(None, description="キャンペーン名（部分一致）"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    デバッグ用: Meta APIから直接取得した生データを返す（データベースを経由しない）
+    """
+    if not current_user.meta_access_token:
+        raise HTTPException(status_code=400, detail="Meta APIアクセストークンが設定されていません")
+    
+    access_token = current_user.meta_access_token
+    
+    try:
+        async with httpx.AsyncClient() as client:
+            result = {
+                "meta_account_id": meta_account_id,
+                "campaigns": [],
+                "total_campaigns": 0,
+                "total_adsets": 0,
+                "total_ads": 0
+            }
+            
+            # キャンペーン一覧を取得
+            campaigns_url = f"https://graph.facebook.com/v24.0/{meta_account_id}/campaigns"
+            campaigns_params = {
+                "access_token": access_token,
+                "fields": "id,name,status,objective,created_time,updated_time",
+                "limit": 100
+            }
+            
+            all_campaigns = []
+            page_count = 0
+            while True:
+                page_count += 1
+                campaigns_response = await client.get(campaigns_url, params=campaigns_params)
+                campaigns_response.raise_for_status()
+                campaigns_data = campaigns_response.json()
+                
+                page_campaigns = campaigns_data.get('data', [])
+                
+                # キャンペーン名でフィルタリング（指定されている場合）
+                if campaign_name:
+                    page_campaigns = [c for c in page_campaigns if campaign_name.lower() in c.get('name', '').lower()]
+                
+                all_campaigns.extend(page_campaigns)
+                
+                paging = campaigns_data.get('paging', {})
+                next_url = paging.get('next')
+                if not next_url:
+                    break
+                campaigns_url = next_url
+                campaigns_params = {}
+            
+            result["total_campaigns"] = len(all_campaigns)
+            
+            # 各キャンペーンの広告セットと広告を取得
+            for campaign in all_campaigns:
+                campaign_id = campaign['id']
+                campaign_name_val = campaign.get('name', 'Unknown')
+                
+                campaign_data = {
+                    "id": campaign_id,
+                    "name": campaign_name_val,
+                    "status": campaign.get('status', 'Unknown'),
+                    "adsets": [],
+                    "total_adsets": 0,
+                    "total_ads": 0
+                }
+                
+                # 広告セットを取得
+                adsets_url = f"https://graph.facebook.com/v24.0/{campaign_id}/adsets"
+                adsets_params = {
+                    "access_token": access_token,
+                    "fields": "id,name,campaign_id,status,effective_status",
+                    "limit": 100
+                }
+                
+                all_adsets = []
+                while True:
+                    adsets_response = await client.get(adsets_url, params=adsets_params)
+                    adsets_response.raise_for_status()
+                    adsets_data = adsets_response.json()
+                    
+                    page_adsets = adsets_data.get('data', [])
+                    all_adsets.extend(page_adsets)
+                    
+                    paging = adsets_data.get('paging', {})
+                    next_url = paging.get('next')
+                    if not next_url:
+                        break
+                    adsets_url = next_url
+                    adsets_params = {}
+                
+                campaign_data["total_adsets"] = len(all_adsets)
+                result["total_adsets"] += len(all_adsets)
+                
+                # 各広告セットの広告を取得
+                for adset in all_adsets:
+                    adset_id = adset['id']
+                    adset_name = adset.get('name', 'Unknown')
+                    
+                    adset_data = {
+                        "id": adset_id,
+                        "name": adset_name,
+                        "status": adset.get('status', 'Unknown'),
+                        "effective_status": adset.get('effective_status', 'Unknown'),
+                        "ads": [],
+                        "total_ads": 0
+                    }
+                    
+                    # 広告を取得
+                    ads_url = f"https://graph.facebook.com/v24.0/{adset_id}/ads"
+                    ads_params = {
+                        "access_token": access_token,
+                        "fields": "id,name,adset_id,campaign_id,status,effective_status",
+                        "limit": 100
+                    }
+                    
+                    all_ads = []
+                    while True:
+                        ads_response = await client.get(ads_url, params=ads_params)
+                        ads_response.raise_for_status()
+                        ads_data = ads_response.json()
+                        
+                        page_ads = ads_data.get('data', [])
+                        all_ads.extend(page_ads)
+                        
+                        paging = ads_data.get('paging', {})
+                        next_url = paging.get('next')
+                        if not next_url:
+                            break
+                        ads_url = next_url
+                        ads_params = {}
+                    
+                    adset_data["total_ads"] = len(all_ads)
+                    adset_data["ads"] = all_ads[:10]  # 最初の10件のみ返す
+                    campaign_data["total_ads"] += len(all_ads)
+                    result["total_ads"] += len(all_ads)
+                    
+                    campaign_data["adsets"].append(adset_data)
+                
+                result["campaigns"].append(campaign_data)
+            
+            return result
+            
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(
+            status_code=e.response.status_code,
+            detail=f"Meta API error: {e.response.text[:500]}"
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error fetching raw Meta data: {str(e)}"
+        )
