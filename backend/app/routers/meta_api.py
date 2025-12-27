@@ -412,6 +412,16 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
             end_date_str_adset = current_until.strftime('%Y-%m-%d')
             print(f"[Meta API] Adset date range: {start_date_str_adset} to {end_date_str_adset} ({(current_until - current_since_adset).days} days)")
             
+            # 広告セットIDからキャンペーンIDへのマッピングを作成（キャンペーンごとに取得したデータから）
+            adset_to_campaign_map = {}
+            for campaign_id, adsets in campaign_adsets_map.items():
+                for adset in adsets:
+                    adset_id = adset['id']
+                    # 広告セットが属するキャンペーンIDを明示的に設定
+                    adset_to_campaign_map[adset_id] = campaign_id
+            
+            print(f"[Meta API] Created adset-to-campaign mapping: {len(adset_to_campaign_map)} adsets mapped to campaigns")
+            
             # バッチリクエストで広告セットレベルInsightsを取得（最大50件/バッチ）
             adset_fields = "adset_id,adset_name,ad_id,ad_name,campaign_id,campaign_name,date_start,spend,impressions,clicks,inline_link_clicks,reach,actions,conversions,action_values,frequency"
             time_range_dict_adset = {
@@ -458,12 +468,15 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                         adset = batch_adsets[idx]
                         adset_name = adset.get('name', 'Unknown')
                         adset_id = adset['id']
-                        campaign_id = adset.get('campaign_id', 'Unknown')
+                        # 広告セットが属する正しいキャンペーンIDを取得（キャンペーンごとに取得したデータから）
+                        campaign_id = adset_to_campaign_map.get(adset_id, 'Unknown')
                         
                         # 広告セットが属する正しいキャンペーン名を取得
                         correct_campaign_name = campaign_id_to_name_map.get(campaign_id, 'Unknown')
                         if correct_campaign_name == 'Unknown' and campaign_id != 'Unknown':
                             print(f"[Meta API] Warning: Campaign ID {campaign_id} not found in campaign list for adset {adset_name}")
+                        elif idx < 3 or (batch_start == 0 and idx == 0):
+                            print(f"[Meta API] Adset {adset_name} ({adset_id}) belongs to campaign: {correct_campaign_name} ({campaign_id})")
                         
                         if batch_item.get('code') == 200:
                             try:
