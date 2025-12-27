@@ -1519,9 +1519,15 @@ async def meta_oauth_callback(
         # フロントエンドURLがstateに含まれている場合（3つ以上のパーツがある場合）
         if len(state_parts) >= 3:
             frontend_url_from_state = urllib.parse.unquote(':'.join(state_parts[2:]))  # 3つ目以降を結合（URLエンコードされている可能性があるため）
-            print(f"  - frontend_url from state: {frontend_url_from_state}")
-            frontend_url = frontend_url_from_state
-            print(f"[Meta OAuth] Using frontend URL from state: {frontend_url}")
+            print(f"  - frontend_url from state (raw): {frontend_url_from_state}")
+            
+            # localhostの場合、https://をhttp://に変換（ローカル開発環境はHTTPで起動しているため）
+            if frontend_url_from_state.startswith('https://localhost') or frontend_url_from_state.startswith('https://127.0.0.1'):
+                frontend_url = frontend_url_from_state.replace('https://', 'http://')
+                print(f"[Meta OAuth] Converted HTTPS to HTTP for localhost: {frontend_url}")
+            else:
+                frontend_url = frontend_url_from_state
+                print(f"[Meta OAuth] Using frontend URL from state: {frontend_url}")
         else:
             print(f"[Meta OAuth] No frontend URL in state, using default: {frontend_url}")
         
