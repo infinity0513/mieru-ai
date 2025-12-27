@@ -553,40 +553,37 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
             
             print(f"[Meta API] Total insights retrieved (campaign + adset level): {len(all_insights)}")
             
-            # 広告IDから広告セットID、キャンペーンIDへのマッピングを作成（キャンペーンごとに取得したデータから）
-            ad_to_adset_map = {}
-            ad_to_campaign_map = {}
-            for campaign_id, ads in campaign_ads_map.items():
-                for ad in ads:
-                    ad_id = ad['id']
-                    adset_id = ad.get('adset_id')
-                    if adset_id:
-                        ad_to_adset_map[ad_id] = adset_id
-                    ad_to_campaign_map[ad_id] = campaign_id
+            # 各キャンペーンの広告レベルのInsightsを取得（キャンペーンごとに処理）
+            print(f"[Meta API] Processing ad-level insights for each campaign...")
+            ad_fields = "ad_id,ad_name,adset_id,adset_name,campaign_id,campaign_name,date_start,spend,impressions,clicks,inline_link_clicks,reach,actions,conversions,action_values,frequency"
+            time_range_dict_ad = {
+                "since": start_date_str_adset,
+                "until": end_date_str_adset
+            }
+            time_range_json_ad = json.dumps(time_range_dict_ad, separators=(',', ':'))  # スペースなしJSON
             
-            print(f"[Meta API] Created ad-to-adset mapping: {len(ad_to_adset_map)} ads")
-            print(f"[Meta API] Created ad-to-campaign mapping: {len(ad_to_campaign_map)} ads")
-            
-            # 各広告のInsightsを取得（広告レベル）- バッチリクエストを使用
-            if len(all_ads) > 0:
-                print(f"[Meta API] Processing {len(all_ads)} ads for ad-level insights...")
-                ad_fields = "ad_id,ad_name,adset_id,adset_name,campaign_id,campaign_name,date_start,spend,impressions,clicks,inline_link_clicks,reach,actions,conversions,action_values,frequency"
-                time_range_dict_ad = {
-                    "since": start_date_str_adset,
-                    "until": end_date_str_adset
-                }
-                time_range_json_ad = json.dumps(time_range_dict_ad, separators=(',', ':'))  # スペースなしJSON
+            # キャンペーンごとに広告レベルのInsightsを取得
+            for campaign in all_campaigns:
+                campaign_id = campaign['id']
+                campaign_name = campaign.get('name', 'Unknown')
+                campaign_ads = campaign_ads_map.get(campaign_id, [])
+                
+                if len(campaign_ads) == 0:
+                    print(f"[Meta API] Campaign {campaign_name} ({campaign_id}): No ads, skipping ad-level insights")
+                    continue
+                
+                print(f"[Meta API] Processing {len(campaign_ads)} ads for campaign {campaign_name} ({campaign_id})")
                 
                 # 広告を50件ずつのバッチに分割
                 batch_size = 50  # Meta APIのバッチリクエスト最大数
-                for batch_start in range(0, len(all_ads), batch_size):
-                    batch_end = min(batch_start + batch_size, len(all_ads))
-                    batch_ads = all_ads[batch_start:batch_end]
+                for batch_start in range(0, len(campaign_ads), batch_size):
+                    batch_end = min(batch_start + batch_size, len(campaign_ads))
+                    batch_ads = campaign_ads[batch_start:batch_end]
                     batch_num = (batch_start // batch_size) + 1
-                    total_batches = (len(all_ads) + batch_size - 1) // batch_size
+                    total_batches = (len(campaign_ads) + batch_size - 1) // batch_size
                     
-                    if batch_num % 10 == 0 or batch_num == 1:
-                        print(f"[Meta API] Processing ad batch {batch_num}/{total_batches} ({len(batch_ads)} ads)")
+                    if batch_num == 1 or batch_num % 10 == 0:
+                        print(f"[Meta API] Campaign {campaign_name}: Processing ad batch {batch_num}/{total_batches} ({len(batch_ads)} ads)")
                     
                     # バッチリクエストの作成
                     batch_requests = []
@@ -617,10 +614,14 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                             ad_name = ad.get('name', 'Unknown')
                             ad_id = ad['id']
                             
-                            # 広告が属する正しい広告セットIDとキャンペーンIDを取得
-                            correct_adset_id = ad_to_adset_map.get(ad_id)
-                            correct_campaign_id = ad_to_campaign_map.get(ad_id)
-                            correct_campaign_name = campaign_id_to_name_map.get(correct_campaign_id, 'Unknown') if correct_campaign_id else 'Unknown'
+                            # この広告は現在処理中のキャンペーンに属する
+                            correct_campaign_id = campaign_id
+                            correct_campaign_name = campaign_name
+                            # 広告が属する広告セットIDを取得
+                            correct_adset_id = ad.get('adset_id')
+                            
+                            if batch_num == 1 and idx < 3:
+                                print(f"[Meta API] Ad {ad_name} ({ad_id}) belongs to campaign: {correct_campaign_name} ({correct_campaign_id}), adset: {correct_adset_id}")
                             
                             if batch_item.get('code') == 200:
                                 try:
