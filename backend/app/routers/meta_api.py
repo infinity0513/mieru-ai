@@ -141,6 +141,24 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
             
             print(f"[Meta API] Total adsets fetched: {len(all_adsets)}")
             
+            # 広告セットIDからキャンペーンIDへのマッピングを作成（広告セットが属する正しいキャンペーンを把握するため）
+            adset_to_campaign_map = {}
+            for adset in all_adsets:
+                adset_id = adset['id']
+                campaign_id = adset.get('campaign_id')
+                if campaign_id:
+                    adset_to_campaign_map[adset_id] = campaign_id
+            
+            # キャンペーンIDからキャンペーン名へのマッピングを作成
+            campaign_id_to_name_map = {}
+            for campaign in all_campaigns:
+                campaign_id = campaign['id']
+                campaign_name = campaign.get('name', 'Unknown')
+                campaign_id_to_name_map[campaign_id] = campaign_name
+            
+            print(f"[Meta API] Created adset-to-campaign mapping: {len(adset_to_campaign_map)} adsets mapped to campaigns")
+            print(f"[Meta API] Created campaign-id-to-name mapping: {len(campaign_id_to_name_map)} campaigns")
+            
             # 各キャンペーンのInsightsを取得（キャンペーンレベル）
             print(f"[Meta API] Processing {len(all_campaigns)} campaigns for campaign-level insights...")
             # 昨日までのデータを取得（UTCを使用して未来の日付を避ける）
@@ -350,12 +368,22 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                         adset_id = adset['id']
                         campaign_id = adset.get('campaign_id', 'Unknown')
                         
+                        # 広告セットが属する正しいキャンペーン名を取得
+                        correct_campaign_name = campaign_id_to_name_map.get(campaign_id, 'Unknown')
+                        if correct_campaign_name == 'Unknown' and campaign_id != 'Unknown':
+                            print(f"[Meta API] Warning: Campaign ID {campaign_id} not found in campaign list for adset {adset_name}")
+                        
                         if batch_item.get('code') == 200:
                             try:
                                 item_body = json.loads(batch_item.get('body', '{}'))
                                 page_insights = item_body.get('data', [])
                                 
                                 if len(page_insights) > 0:
+                                    # 各Insightに正しいキャンペーン名を設定
+                                    for insight in page_insights:
+                                        # Insights APIのcampaign_nameを、広告セットが属する正しいキャンペーン名で上書き
+                                        insight['campaign_name'] = correct_campaign_name
+                                        insight['campaign_id'] = campaign_id
                                     all_insights.extend(page_insights)
                                     
                                     # サンプルデータをログ出力（最初のバッチの最初の広告セットのみ）
@@ -434,6 +462,11 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                         
                         # 取得した広告を追加
                         page_ads = ads_data.get('data', [])
+                        for ad in page_ads:
+                            ad_id = ad['id']
+                            ad_to_adset_map[ad_id] = adset_id
+                            if campaign_id:
+                                ad_to_campaign_map[ad_id] = campaign_id
                         all_ads.extend(page_ads)
                         
                         if page_count == 1 and idx < 3:
@@ -506,12 +539,23 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                             ad_name = ad.get('name', 'Unknown')
                             ad_id = ad['id']
                             
+                            # 広告が属する正しい広告セットIDとキャンペーンIDを取得
+                            correct_adset_id = ad_to_adset_map.get(ad_id)
+                            correct_campaign_id = ad_to_campaign_map.get(ad_id)
+                            correct_campaign_name = campaign_id_to_name_map.get(correct_campaign_id, 'Unknown') if correct_campaign_id else 'Unknown'
+                            
                             if batch_item.get('code') == 200:
                                 try:
                                     item_body = json.loads(batch_item.get('body', '{}'))
                                     page_insights = item_body.get('data', [])
                                     
                                     if len(page_insights) > 0:
+                                        # 各Insightに正しいキャンペーン名と広告セットIDを設定
+                                        for insight in page_insights:
+                                            # Insights APIのcampaign_nameとadset_idを、広告が属する正しい値で上書き
+                                            insight['campaign_name'] = correct_campaign_name
+                                            insight['campaign_id'] = correct_campaign_id
+                                            insight['adset_id'] = correct_adset_id
                                         all_insights.extend(page_insights)
                                         
                                         # サンプルデータをログ出力（最初のバッチの最初の広告のみ）
