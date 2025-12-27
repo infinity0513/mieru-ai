@@ -1713,10 +1713,22 @@ async def meta_oauth_callback(
                     detail="広告アカウントが見つかりませんでした。Meta広告アカウントを作成してください。"
                 )
             
+            # 取得されたアカウントのリストをログ出力
+            print(f"[Meta OAuth] ===== ACCOUNTS RETRIEVED =====")
+            for idx, account in enumerate(accounts):
+                account_id_tmp = account.get("id")
+                account_name_tmp = account.get("name", "Unknown")
+                print(f"[Meta OAuth] Account {idx + 1}: {account_name_tmp} ({account_id_tmp})")
+            print(f"[Meta OAuth] =============================")
+            
             # すべての広告アカウントのデータを取得して保存
             # 最初のアカウントIDを保存（後方互換性のため）
             first_account = accounts[0]
             account_id = first_account.get("id")  # act_123456789形式
+            account_name_first = first_account.get("name", "Unknown")
+            
+            print(f"[Meta OAuth] Selected first account: {account_name_first} ({account_id})")
+            print(f"[Meta OAuth] This account ID will be saved to user.meta_account_id")
             
             # ユーザーのMetaアカウント設定を更新（最初のアカウントIDを保存）
             user.meta_account_id = account_id
@@ -1724,70 +1736,102 @@ async def meta_oauth_callback(
             db.commit()
             db.refresh(user)
             
-            # フロントエンドにリダイレクト（成功メッセージ付き）- データ同期の前に実行
+            print(f"[Meta OAuth] User meta_account_id updated to: {user.meta_account_id}")
+            
+            # 段階的データ取得: まず90日分を同期的に取得（完了まで待つ）、その後バックグラウンドで全期間を取得
             account_count = len(accounts)
             
-            # データ同期をバックグラウンドで実行（リダイレクトを即座に実行するため）
-            print(f"[Meta OAuth] Starting background data sync for user {user.id}")
+            print(f"[Meta OAuth] Starting data sync for user {user.id}")
             print(f"[Meta OAuth] Found {len(accounts)} ad account(s)")
             
-            async def sync_data_background_async():
-                """バックグラウンドでデータを取得（非同期関数）"""
+            # フェーズ1: 直近90日分のデータを同期的に取得（完了まで待つ）
+            print(f"[Meta OAuth] Phase 1: Fetching last 90 days of data synchronously...")
+            try:
+                for idx, account in enumerate(accounts):
+                    account_id_to_sync = account.get("id")
+                    account_name = account.get("name", "Unknown")
+                    print(f"[Meta OAuth] Syncing account {idx + 1}/{len(accounts)} (90 days): {account_name} ({account_id_to_sync})")
+                    try:
+                        await sync_meta_data_to_campaigns(user, long_lived_token, account_id_to_sync, db, days=90)
+                        print(f"[Meta OAuth] Successfully synced 90 days of data for {account_name}")
+                    except Exception as account_error:
+                        import traceback
+                        print(f"[Meta OAuth] Error syncing 90 days data for {account_name}: {str(account_error)}")
+                        print(f"[Meta OAuth] Error details: {traceback.format_exc()}")
+                        # 1つのアカウントでエラーが発生しても、他のアカウントの同期は続行
+                        continue
+                
+                print(f"[Meta OAuth] Phase 1 completed: 90 days of data synced for user {user.id}")
+            except Exception as sync_error:
+                import traceback
+                print(f"[Meta OAuth] Error syncing 90 days data: {str(sync_error)}")
+                print(f"[Meta OAuth] Error details: {traceback.format_exc()}")
+                # データ同期エラーは無視して、OAuth認証は成功として扱う
+            
+            # フェーズ2: 全期間（37ヶ月）のデータをバックグラウンドで取得
+            print(f"[Meta OAuth] Phase 2: Starting background sync for full period (37 months)...")
+            
+            # アカウント情報をバックグラウンドタスクに渡すためにコピー
+            accounts_for_background = [{"id": acc.get("id"), "name": acc.get("name", "Unknown")} for acc in accounts]
+            user_id_for_background = user.id
+            
+            async def sync_full_period_background_async():
+                """バックグラウンドで全期間のデータを取得（非同期関数）"""
                 from ..database import SessionLocal
+                import asyncio
+                
+                print(f"[Meta OAuth] Background sync: Task started")
+                print(f"[Meta OAuth] Background sync: Accounts to sync: {len(accounts_for_background)}")
+                
+                # 新しいイベントループを作成（バックグラウンドタスク用）
+                try:
+                    loop = asyncio.get_event_loop()
+                except RuntimeError:
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
                 
                 background_db = SessionLocal()
                 try:
                     # ユーザー情報を再取得
-                    background_user = background_db.query(User).filter(User.id == user.id).first()
+                    background_user = background_db.query(User).filter(User.id == user_id_for_background).first()
                     if not background_user:
-                        print(f"[Meta OAuth] Background sync: User not found")
+                        print(f"[Meta OAuth] Background sync: ERROR - User not found (user_id: {user_id_for_background})")
                         return
                     
-                    print(f"[Meta OAuth] Background sync: Starting data sync for user {background_user.id}")
+                    print(f"[Meta OAuth] Background sync: User found: {background_user.id}")
+                    print(f"[Meta OAuth] Background sync: User meta_account_id: {background_user.meta_account_id}")
+                    print(f"[Meta OAuth] Background sync: Starting full period sync for user {background_user.id}")
                     
-                    # フェーズ1: 直近3ヶ月分のデータを先に取得（ユーザー待機時間を短縮）
-                    print(f"[Meta OAuth] Background sync: Phase 1 - Fetching last 3 months of data...")
-                    for idx, account in enumerate(accounts):
+                    # トークンを再取得（バックグラウンドタスクでは新しいセッションを使用）
+                    if not background_user.meta_access_token:
+                        print(f"[Meta OAuth] Background sync: ERROR - No access token found")
+                        return
+                    
+                    for idx, account in enumerate(accounts_for_background):
                         account_id_to_sync = account.get("id")
                         account_name = account.get("name", "Unknown")
-                        print(f"[Meta OAuth] Background sync: Syncing account {idx + 1}/{len(accounts)} (3 months): {account_name} ({account_id_to_sync})")
+                        print(f"[Meta OAuth] Background sync: Syncing account {idx + 1}/{len(accounts_for_background)} (full period): {account_name} ({account_id_to_sync})")
                         try:
-                            await sync_meta_data_to_campaigns(background_user, long_lived_token, account_id_to_sync, background_db, days=90)
-                            print(f"[Meta OAuth] Background sync: Successfully synced 3 months of data for {account_name}")
-                        except Exception as account_error:
-                            import traceback
-                            print(f"[Meta OAuth] Background sync: Error syncing 3 months data for {account_name}: {str(account_error)}")
-                            print(f"[Meta OAuth] Background sync: Error details: {traceback.format_exc()}")
-                            continue
-                    
-                    print(f"[Meta OAuth] Background sync: Phase 1 completed: 3 months of data synced for user {background_user.id}")
-                    
-                    # フェーズ2: 全期間（37ヶ月）のデータを取得
-                    print(f"[Meta OAuth] Background sync: Phase 2 - Starting full period sync (37 months)...")
-                    for idx, account in enumerate(accounts):
-                        account_id_to_sync = account.get("id")
-                        account_name = account.get("name", "Unknown")
-                        print(f"[Meta OAuth] Background sync: Syncing account {idx + 1}/{len(accounts)} (full period): {account_name} ({account_id_to_sync})")
-                        try:
-                            await sync_meta_data_to_campaigns(background_user, long_lived_token, account_id_to_sync, background_db, days=None)
+                            await sync_meta_data_to_campaigns(background_user, background_user.meta_access_token, account_id_to_sync, background_db, days=None)
                             print(f"[Meta OAuth] Background sync: Successfully synced full period for {account_name}")
                         except Exception as account_error:
                             import traceback
-                            print(f"[Meta OAuth] Background sync: Error syncing full period for {account_name}: {str(account_error)}")
+                            print(f"[Meta OAuth] Background sync: ERROR syncing full period for {account_name}: {str(account_error)}")
                             print(f"[Meta OAuth] Background sync: Error details: {traceback.format_exc()}")
                             continue
                     
                     print(f"[Meta OAuth] Background sync: Full period sync completed for user {background_user.id}")
                 except Exception as sync_error:
                     import traceback
-                    print(f"[Meta OAuth] Background sync: Error syncing data: {str(sync_error)}")
+                    print(f"[Meta OAuth] Background sync: CRITICAL ERROR: {str(sync_error)}")
                     print(f"[Meta OAuth] Background sync: Error details: {traceback.format_exc()}")
                 finally:
                     background_db.close()
+                    print(f"[Meta OAuth] Background sync: Database connection closed")
             
-            # バックグラウンドタスクとして追加（リダイレクトを即座に実行するため）
-            background_tasks.add_task(sync_data_background_async)
-            print(f"[Meta OAuth] Background task added for data sync")
+            # バックグラウンドタスクとして追加
+            background_tasks.add_task(sync_full_period_background_async)
+            print(f"[Meta OAuth] Background task added for full period sync")
             
             # localhostの場合、https://をhttp://に強制的に変換（normalize_localhost_url関数を使用）
             final_frontend_url = normalize_localhost_url(frontend_url)
