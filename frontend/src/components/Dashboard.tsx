@@ -1548,7 +1548,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
                 <option value="">全アセットを表示</option>
                 {metaAccounts.map((account) => (
                   <option key={account.account_id} value={account.account_id}>
-                    {account.name} ({account.data_count}件)
+                    {account.name} (キャンペーン: {account.campaign_count || 0}件 / データ: {account.data_count}件)
                   </option>
                 ))}
               </select>

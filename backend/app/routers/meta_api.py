@@ -1067,11 +1067,25 @@ async def get_meta_accounts(
     # 各アカウントの統計情報を取得
     result = []
     for account_id in account_ids:
-        # 各アカウントのデータ件数を取得
-        count = db.query(Campaign).filter(
+        # 各アカウントのデータ件数を取得（全レベル合計）
+        total_count = db.query(Campaign).filter(
             Campaign.user_id == current_user.id,
             Campaign.meta_account_id == account_id
         ).count()
+        
+        # ユニークなキャンペーン数を取得
+        unique_campaigns = db.query(Campaign.campaign_name).filter(
+            Campaign.user_id == current_user.id,
+            Campaign.meta_account_id == account_id,
+            or_(
+                Campaign.ad_set_name == '',
+                Campaign.ad_set_name.is_(None)
+            ),
+            or_(
+                Campaign.ad_name == '',
+                Campaign.ad_name.is_(None)
+            )
+        ).distinct().count()
         
         # 最新のデータ日付を取得
         latest_date = db.query(func.max(Campaign.date)).filter(
@@ -1085,7 +1099,8 @@ async def get_meta_accounts(
         result.append({
             "account_id": account_id,
             "name": account_name,
-            "data_count": count,
+            "data_count": total_count,
+            "campaign_count": unique_campaigns,
             "latest_date": str(latest_date) if latest_date else None
         })
     
