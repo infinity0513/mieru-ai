@@ -406,6 +406,10 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                                         next_response.raise_for_status()
                                         next_data = next_response.json()
                                         next_insights = next_data.get('data', [])
+                                        # 各Insightに正しいキャンペーン名を設定
+                                        for insight in next_insights:
+                                            insight['campaign_name'] = correct_campaign_name
+                                            insight['campaign_id'] = campaign_id
                                         all_insights.extend(next_insights)
                                         paging = next_data.get('paging', {})
                                         print(f"[Meta API] Retrieved {len(next_insights)} more insights for {adset_name} (total: {len(all_insights)})")
