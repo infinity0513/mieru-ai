@@ -548,7 +548,14 @@ class ApiClient {
   async startMetaOAuth(): Promise<void> {
     // OAuth認証を開始 - バックエンドからOAuth認証URLを取得してリダイレクト
     // 現在のフロントエンドURLをヘッダーで送信（リダイレクト先を決定するため）
-    const currentFrontendUrl = window.location.origin;
+    let currentFrontendUrl = window.location.origin;
+    
+    // localhostの場合、https://をhttp://に変換（ローカル開発環境はHTTPで起動しているため）
+    if (currentFrontendUrl.startsWith('https://localhost') || currentFrontendUrl.startsWith('https://127.0.0.1')) {
+      currentFrontendUrl = currentFrontendUrl.replace('https://', 'http://');
+      console.log('[API] Converted HTTPS to HTTP for localhost:', currentFrontendUrl);
+    }
+    
     console.log('[API] Current frontend URL:', currentFrontendUrl);
     
     const response = await this.request<{ oauth_url: string }>('/meta/oauth/authorize-url/', {
