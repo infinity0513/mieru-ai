@@ -1469,9 +1469,15 @@ async def meta_oauth_callback(
     
     # localhostの場合、https://をhttp://に強制的に変換するヘルパー関数
     def normalize_localhost_url(url: str) -> str:
-        if url.startswith('https://localhost') or url.startswith('https://127.0.0.1'):
-            normalized = url.replace('https://', 'http://')
-            print(f"[Meta OAuth] Normalized URL: {url} -> {normalized}")
+        """localhostのURLを常にhttp://に変換（https://は許可しない）"""
+        if not url:
+            return url
+        # localhostまたは127.0.0.1の場合、https://をhttp://に強制変換
+        if 'localhost' in url or '127.0.0.1' in url:
+            normalized = url.replace('https://localhost', 'http://localhost')
+            normalized = normalized.replace('https://127.0.0.1', 'http://127.0.0.1')
+            if normalized != url:
+                print(f"[Meta OAuth] Normalized URL: {url} -> {normalized}")
             return normalized
         return url
     
