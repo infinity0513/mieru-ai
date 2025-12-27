@@ -38,6 +38,14 @@ export const Settings: React.FC<SettingsProps> = ({ user }) => {
 
   // Handle OAuth callback
   useEffect(() => {
+    // localhostの場合、https://をhttp://に強制的に変換（ブラウザのHSTS設定を回避）
+    if (window.location.protocol === 'https:' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+      const httpUrl = window.location.href.replace('https://', 'http://');
+      console.log('[Settings] Converting HTTPS to HTTP for localhost:', httpUrl);
+      window.location.replace(httpUrl);
+      return;
+    }
+    
     const urlParams = new URLSearchParams(window.location.search);
     const oauthStatus = urlParams.get('meta_oauth');
     
@@ -46,7 +54,10 @@ export const Settings: React.FC<SettingsProps> = ({ user }) => {
       if (accountId) {
         setMetaAccountId(accountId);
         addToast('Metaアカウントの連携が完了しました', 'success');
-        // URLパラメータをクリア
+        // URLパラメータをクリア（http://localhostを強制）
+        const baseUrl = window.location.protocol === 'https:' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+          ? window.location.href.replace('https://', 'http://').split('?')[0]
+          : window.location.origin;
         window.history.replaceState({}, '', '/settings');
         // 設定を再読み込み
         Api.getMetaSettings().then(settings => {

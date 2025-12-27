@@ -896,6 +896,11 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                     # conversion_valueを取得（action_valuesから）
                     action_values = insight.get('action_values', [])
                     conversion_value = 0.0
+                    
+                    # デバッグログ
+                    if debug_logging:
+                        print(f"[Meta API Debug] action_values: {action_values}")
+                    
                     if action_values:
                         # action_valuesが配列の場合
                         for av in action_values:
@@ -1486,11 +1491,18 @@ async def meta_oauth_callback(
         if not url:
             return url
         # localhostまたは127.0.0.1の場合、https://をhttp://に強制変換
-        if 'localhost' in url or '127.0.0.1' in url:
+        # より堅牢な変換: 正規表現ではなく、文字列の開始部分をチェック
+        original_url = url
+        if url.startswith('https://localhost') or url.startswith('https://127.0.0.1'):
+            normalized = url.replace('https://', 'http://', 1)  # 最初の1回のみ置換
+            print(f"[Meta OAuth] Normalized URL: {original_url} -> {normalized}")
+            return normalized
+        elif 'localhost' in url or '127.0.0.1' in url:
+            # 念のため、URL内のどこかにhttps://localhostやhttps://127.0.0.1が含まれている場合も変換
             normalized = url.replace('https://localhost', 'http://localhost')
             normalized = normalized.replace('https://127.0.0.1', 'http://127.0.0.1')
             if normalized != url:
-                print(f"[Meta OAuth] Normalized URL: {url} -> {normalized}")
+                print(f"[Meta OAuth] Normalized URL (fallback): {original_url} -> {normalized}")
             return normalized
         return url
     
@@ -1498,20 +1510,33 @@ async def meta_oauth_callback(
     if error:
         error_message = error_description or error_reason or error
         error_url = f"{normalize_localhost_url(frontend_url)}/settings?meta_oauth=error&message={urllib.parse.quote(error_message)}"
-        return RedirectResponse(url=error_url)
+        # 最終確認: error_urlがhttps://localhostを含んでいないことを確認
+        if 'https://localhost' in error_url or 'https://127.0.0.1' in error_url:
+            error_url = error_url.replace('https://localhost', 'http://localhost')
+            error_url = error_url.replace('https://127.0.0.1', 'http://127.0.0.1')
+        return RedirectResponse(url=error_url, status_code=302)
     
     # codeとstateが必須
     if not code:
         error_url = f"{normalize_localhost_url(frontend_url)}/settings?meta_oauth=error&message={urllib.parse.quote('認証コードが取得できませんでした')}"
-        return RedirectResponse(url=error_url)
+        if 'https://localhost' in error_url or 'https://127.0.0.1' in error_url:
+            error_url = error_url.replace('https://localhost', 'http://localhost')
+            error_url = error_url.replace('https://127.0.0.1', 'http://127.0.0.1')
+        return RedirectResponse(url=error_url, status_code=302)
     
     if not state:
         error_url = f"{normalize_localhost_url(frontend_url)}/settings?meta_oauth=error&message={urllib.parse.quote('ステートパラメータが取得できませんでした')}"
-        return RedirectResponse(url=error_url)
+        if 'https://localhost' in error_url or 'https://127.0.0.1' in error_url:
+            error_url = error_url.replace('https://localhost', 'http://localhost')
+            error_url = error_url.replace('https://127.0.0.1', 'http://127.0.0.1')
+        return RedirectResponse(url=error_url, status_code=302)
     
     if not settings.META_APP_ID or not settings.META_APP_SECRET:
         error_url = f"{normalize_localhost_url(frontend_url)}/settings?meta_oauth=error&message={urllib.parse.quote('Meta OAuthが設定されていません')}"
-        return RedirectResponse(url=error_url)
+        if 'https://localhost' in error_url or 'https://127.0.0.1' in error_url:
+            error_url = error_url.replace('https://localhost', 'http://localhost')
+            error_url = error_url.replace('https://127.0.0.1', 'http://127.0.0.1')
+        return RedirectResponse(url=error_url, status_code=302)
     
     # デバッグ: コールバック時に受け取ったパラメータをログ出力
     print(f"[Meta OAuth] Callback received parameters:")
@@ -1540,9 +1565,12 @@ async def meta_oauth_callback(
         
         if colon_count < 2:
             print(f"[Meta OAuth] ERROR: State has less than 2 colons: {colon_count}")
-            normalized_url = frontend_url.replace('https://', 'http://') if (frontend_url.startswith('https://localhost') or frontend_url.startswith('https://127.0.0.1')) else frontend_url
+            normalized_url = normalize_localhost_url(frontend_url)
             error_url = f"{normalized_url}/settings?meta_oauth=error&message={urllib.parse.quote('無効なステートパラメータです')}"
-            return RedirectResponse(url=error_url)
+            if 'https://localhost' in error_url or 'https://127.0.0.1' in error_url:
+                error_url = error_url.replace('https://localhost', 'http://localhost')
+                error_url = error_url.replace('https://127.0.0.1', 'http://127.0.0.1')
+            return RedirectResponse(url=error_url, status_code=302)
         
         # 最初の2つのコロンの位置を探す
         first_colon = state.find(':')
@@ -1550,9 +1578,12 @@ async def meta_oauth_callback(
         
         if first_colon == -1 or second_colon == -1:
             print(f"[Meta OAuth] ERROR: Could not find 2 colons in state")
-            normalized_url = frontend_url.replace('https://', 'http://') if (frontend_url.startswith('https://localhost') or frontend_url.startswith('https://127.0.0.1')) else frontend_url
+            normalized_url = normalize_localhost_url(frontend_url)
             error_url = f"{normalized_url}/settings?meta_oauth=error&message={urllib.parse.quote('無効なステートパラメータです')}"
-            return RedirectResponse(url=error_url)
+            if 'https://localhost' in error_url or 'https://127.0.0.1' in error_url:
+                error_url = error_url.replace('https://localhost', 'http://localhost')
+                error_url = error_url.replace('https://127.0.0.1', 'http://127.0.0.1')
+            return RedirectResponse(url=error_url, status_code=302)
         
         # 3つの部分に分割
         state_token = state[:first_colon]
@@ -1584,22 +1615,31 @@ async def meta_oauth_callback(
     except ValueError as e:
         print(f"[Meta OAuth] ERROR: ValueError when parsing state: {str(e)}")
         print(f"  - state_parts: {state_parts if 'state_parts' in locals() else 'N/A'}")
-        normalized_url = frontend_url.replace('https://', 'http://') if (frontend_url.startswith('https://localhost') or frontend_url.startswith('https://127.0.0.1')) else frontend_url
+        normalized_url = normalize_localhost_url(frontend_url)
         error_url = f"{normalized_url}/settings?meta_oauth=error&message={urllib.parse.quote(f'無効なステートパラメータです: {str(e)}')}"
-        return RedirectResponse(url=error_url)
+        if 'https://localhost' in error_url or 'https://127.0.0.1' in error_url:
+            error_url = error_url.replace('https://localhost', 'http://localhost')
+            error_url = error_url.replace('https://127.0.0.1', 'http://127.0.0.1')
+        return RedirectResponse(url=error_url, status_code=302)
     except IndexError as e:
         print(f"[Meta OAuth] ERROR: IndexError when parsing state: {str(e)}")
         print(f"  - state_parts: {state_parts if 'state_parts' in locals() else 'N/A'}")
-        normalized_url = frontend_url.replace('https://', 'http://') if (frontend_url.startswith('https://localhost') or frontend_url.startswith('https://127.0.0.1')) else frontend_url
+        normalized_url = normalize_localhost_url(frontend_url)
         error_url = f"{normalized_url}/settings?meta_oauth=error&message={urllib.parse.quote(f'無効なステートパラメータです: {str(e)}')}"
-        return RedirectResponse(url=error_url)
+        if 'https://localhost' in error_url or 'https://127.0.0.1' in error_url:
+            error_url = error_url.replace('https://localhost', 'http://localhost')
+            error_url = error_url.replace('https://127.0.0.1', 'http://127.0.0.1')
+        return RedirectResponse(url=error_url, status_code=302)
     except Exception as e:
         print(f"[Meta OAuth] ERROR: Unexpected error when parsing state: {str(e)}")
         import traceback
         print(f"  - traceback: {traceback.format_exc()}")
-        normalized_url = frontend_url.replace('https://', 'http://') if (frontend_url.startswith('https://localhost') or frontend_url.startswith('https://127.0.0.1')) else frontend_url
+        normalized_url = normalize_localhost_url(frontend_url)
         error_url = f"{normalized_url}/settings?meta_oauth=error&message={urllib.parse.quote(f'無効なステートパラメータです: {str(e)}')}"
-        return RedirectResponse(url=error_url)
+        if 'https://localhost' in error_url or 'https://127.0.0.1' in error_url:
+            error_url = error_url.replace('https://localhost', 'http://localhost')
+            error_url = error_url.replace('https://127.0.0.1', 'http://127.0.0.1')
+        return RedirectResponse(url=error_url, status_code=302)
     
     # ユーザーを取得
     user = db.query(User).filter(User.id == user_id).first()
@@ -1684,85 +1724,70 @@ async def meta_oauth_callback(
             db.commit()
             db.refresh(user)
             
-            # 段階的データ取得: まず3ヶ月分を取得（ユーザー待機時間を短縮）、その後バックグラウンドで全期間を取得
-            try:
-                print(f"[Meta OAuth] Starting data sync for user {user.id}")
-                print(f"[Meta OAuth] Found {len(accounts)} ad account(s)")
-                
-                # フェーズ1: 直近3ヶ月分のデータを先に取得（ユーザー待機時間を短縮）
-                print(f"[Meta OAuth] Phase 1: Fetching last 3 months of data for quick access...")
-                for idx, account in enumerate(accounts):
-                    account_id_to_sync = account.get("id")
-                    account_name = account.get("name", "Unknown")
-                    print(f"[Meta OAuth] Syncing account {idx + 1}/{len(accounts)} (3 months): {account_name} ({account_id_to_sync})")
-                    try:
-                        await sync_meta_data_to_campaigns(user, long_lived_token, account_id_to_sync, db, days=90)
-                        print(f"[Meta OAuth] Successfully synced 3 months of data for {account_name}")
-                    except Exception as account_error:
-                        import traceback
-                        print(f"[Meta OAuth] Error syncing 3 months data for {account_name}: {str(account_error)}")
-                        print(f"[Meta OAuth] Error details: {traceback.format_exc()}")
-                        # 1つのアカウントでエラーが発生しても、他のアカウントの同期は続行
-                        continue
-                
-                print(f"[Meta OAuth] Phase 1 completed: 3 months of data synced for user {user.id}")
-                
-                # フェーズ2: 全期間（37ヶ月）のデータをバックグラウンドで取得
-                print(f"[Meta OAuth] Phase 2: Starting background sync for full period (37 months)...")
-                def sync_full_period_background():
-                    """バックグラウンドで全期間のデータを取得（同期関数として実装）"""
-                    import asyncio
-                    from ..database import SessionLocal
-                    
-                    # 新しいイベントループを作成（バックグラウンドタスク用）
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-                    
-                    background_db = SessionLocal()
-                    try:
-                        # ユーザー情報を再取得
-                        background_user = background_db.query(User).filter(User.id == user.id).first()
-                        if not background_user:
-                            print(f"[Meta OAuth] Background sync: User not found")
-                            return
-                        
-                        print(f"[Meta OAuth] Background sync: Starting full period sync for user {background_user.id}")
-                        
-                        # 非同期関数を実行
-                        async def run_sync():
-                            for idx, account in enumerate(accounts):
-                                account_id_to_sync = account.get("id")
-                                account_name = account.get("name", "Unknown")
-                                print(f"[Meta OAuth] Background sync: Syncing account {idx + 1}/{len(accounts)} (full period): {account_name} ({account_id_to_sync})")
-                                try:
-                                    await sync_meta_data_to_campaigns(background_user, long_lived_token, account_id_to_sync, background_db, days=None)
-                                    print(f"[Meta OAuth] Background sync: Successfully synced full period for {account_name}")
-                                except Exception as account_error:
-                                    import traceback
-                                    print(f"[Meta OAuth] Background sync: Error syncing full period for {account_name}: {str(account_error)}")
-                                    print(f"[Meta OAuth] Background sync: Error details: {traceback.format_exc()}")
-                                    continue
-                            
-                            print(f"[Meta OAuth] Background sync: Full period sync completed for user {background_user.id}")
-                        
-                        # 非同期関数を実行
-                        loop.run_until_complete(run_sync())
-                    finally:
-                        background_db.close()
-                        loop.close()
-                
-                # バックグラウンドタスクとして追加
-                background_tasks.add_task(sync_full_period_background)
-                print(f"[Meta OAuth] Background task added for full period sync")
-                
-            except Exception as sync_error:
-                import traceback
-                print(f"[Meta OAuth] Error syncing data: {str(sync_error)}")
-                print(f"[Meta OAuth] Error details: {traceback.format_exc()}")
-                # データ同期エラーは無視して、OAuth認証は成功として扱う
-            
-            # フロントエンドにリダイレクト（成功メッセージ付き）
+            # フロントエンドにリダイレクト（成功メッセージ付き）- データ同期の前に実行
             account_count = len(accounts)
+            
+            # データ同期をバックグラウンドで実行（リダイレクトを即座に実行するため）
+            print(f"[Meta OAuth] Starting background data sync for user {user.id}")
+            print(f"[Meta OAuth] Found {len(accounts)} ad account(s)")
+            
+            async def sync_data_background_async():
+                """バックグラウンドでデータを取得（非同期関数）"""
+                from ..database import SessionLocal
+                
+                background_db = SessionLocal()
+                try:
+                    # ユーザー情報を再取得
+                    background_user = background_db.query(User).filter(User.id == user.id).first()
+                    if not background_user:
+                        print(f"[Meta OAuth] Background sync: User not found")
+                        return
+                    
+                    print(f"[Meta OAuth] Background sync: Starting data sync for user {background_user.id}")
+                    
+                    # フェーズ1: 直近3ヶ月分のデータを先に取得（ユーザー待機時間を短縮）
+                    print(f"[Meta OAuth] Background sync: Phase 1 - Fetching last 3 months of data...")
+                    for idx, account in enumerate(accounts):
+                        account_id_to_sync = account.get("id")
+                        account_name = account.get("name", "Unknown")
+                        print(f"[Meta OAuth] Background sync: Syncing account {idx + 1}/{len(accounts)} (3 months): {account_name} ({account_id_to_sync})")
+                        try:
+                            await sync_meta_data_to_campaigns(background_user, long_lived_token, account_id_to_sync, background_db, days=90)
+                            print(f"[Meta OAuth] Background sync: Successfully synced 3 months of data for {account_name}")
+                        except Exception as account_error:
+                            import traceback
+                            print(f"[Meta OAuth] Background sync: Error syncing 3 months data for {account_name}: {str(account_error)}")
+                            print(f"[Meta OAuth] Background sync: Error details: {traceback.format_exc()}")
+                            continue
+                    
+                    print(f"[Meta OAuth] Background sync: Phase 1 completed: 3 months of data synced for user {background_user.id}")
+                    
+                    # フェーズ2: 全期間（37ヶ月）のデータを取得
+                    print(f"[Meta OAuth] Background sync: Phase 2 - Starting full period sync (37 months)...")
+                    for idx, account in enumerate(accounts):
+                        account_id_to_sync = account.get("id")
+                        account_name = account.get("name", "Unknown")
+                        print(f"[Meta OAuth] Background sync: Syncing account {idx + 1}/{len(accounts)} (full period): {account_name} ({account_id_to_sync})")
+                        try:
+                            await sync_meta_data_to_campaigns(background_user, long_lived_token, account_id_to_sync, background_db, days=None)
+                            print(f"[Meta OAuth] Background sync: Successfully synced full period for {account_name}")
+                        except Exception as account_error:
+                            import traceback
+                            print(f"[Meta OAuth] Background sync: Error syncing full period for {account_name}: {str(account_error)}")
+                            print(f"[Meta OAuth] Background sync: Error details: {traceback.format_exc()}")
+                            continue
+                    
+                    print(f"[Meta OAuth] Background sync: Full period sync completed for user {background_user.id}")
+                except Exception as sync_error:
+                    import traceback
+                    print(f"[Meta OAuth] Background sync: Error syncing data: {str(sync_error)}")
+                    print(f"[Meta OAuth] Background sync: Error details: {traceback.format_exc()}")
+                finally:
+                    background_db.close()
+            
+            # バックグラウンドタスクとして追加（リダイレクトを即座に実行するため）
+            background_tasks.add_task(sync_data_background_async)
+            print(f"[Meta OAuth] Background task added for data sync")
             
             # localhostの場合、https://をhttp://に強制的に変換（normalize_localhost_url関数を使用）
             final_frontend_url = normalize_localhost_url(frontend_url)
@@ -1784,13 +1809,40 @@ async def meta_oauth_callback(
             print(f"[Meta OAuth] Success URL: {success_url}")
             print(f"[Meta OAuth] =============================")
             
-            return RedirectResponse(url=success_url)
+            # 最終確認: success_urlがhttps://localhostを含んでいないことを確認
+            if 'https://localhost' in success_url or 'https://127.0.0.1' in success_url:
+                print(f"[Meta OAuth] ⚠️ WARNING: Success URL still contains https://localhost! Forcing conversion...")
+                success_url = success_url.replace('https://localhost', 'http://localhost')
+                success_url = success_url.replace('https://127.0.0.1', 'http://127.0.0.1')
+                print(f"[Meta OAuth] Corrected Success URL: {success_url}")
+            
+            # 最終的なURLを再度確認
+            print(f"[Meta OAuth] ===== FINAL URL CHECK =====")
+            print(f"[Meta OAuth] Final success_url: {success_url}")
+            print(f"[Meta OAuth] Contains https://localhost: {'https://localhost' in success_url}")
+            print(f"[Meta OAuth] Contains http://localhost: {'http://localhost' in success_url}")
+            print(f"[Meta OAuth] ==========================")
+            
+            # RedirectResponseを明示的に302ステータスコードで生成（デフォルトは307）
+            redirect_response = RedirectResponse(url=success_url, status_code=302)
+            
+            # RedirectResponseのURLを再度確認
+            print(f"[Meta OAuth] ===== REDIRECT RESPONSE CREATED =====")
+            print(f"[Meta OAuth] RedirectResponse.url: {redirect_response.url}")
+            print(f"[Meta OAuth] RedirectResponse.status_code: {redirect_response.status_code}")
+            print(f"[Meta OAuth] RedirectResponse.headers['location']: {redirect_response.headers.get('location', 'N/A')}")
+            print(f"[Meta OAuth] =====================================")
+            
+            return redirect_response
             
     except httpx.HTTPStatusError as e:
         error_text = e.response.text if hasattr(e.response, 'text') else str(e)
-        normalized_url = frontend_url.replace('https://', 'http://') if (frontend_url.startswith('https://localhost') or frontend_url.startswith('https://127.0.0.1')) else frontend_url
+        normalized_url = normalize_localhost_url(frontend_url)
         error_url = f"{normalized_url}/settings?meta_oauth=error&message={urllib.parse.quote(f'Meta APIエラー: {error_text}')}"
-        return RedirectResponse(url=error_url)
+        if 'https://localhost' in error_url or 'https://127.0.0.1' in error_url:
+            error_url = error_url.replace('https://localhost', 'http://localhost')
+            error_url = error_url.replace('https://127.0.0.1', 'http://127.0.0.1')
+        return RedirectResponse(url=error_url, status_code=302)
     except HTTPException:
         # HTTPExceptionはそのまま再スロー（ただし、リダイレクトに変換する）
         raise
@@ -1799,7 +1851,10 @@ async def meta_oauth_callback(
         error_details = traceback.format_exc()
         print(f"[Meta OAuth] Error in callback: {str(e)}")
         print(f"[Meta OAuth] Error details: {error_details}")
-        normalized_url = frontend_url.replace('https://', 'http://') if (frontend_url.startswith('https://localhost') or frontend_url.startswith('https://127.0.0.1')) else frontend_url
+        normalized_url = normalize_localhost_url(frontend_url)
         error_url = f"{normalized_url}/settings?meta_oauth=error&message={urllib.parse.quote(f'OAuth認証に失敗しました: {str(e)}')}"
-        return RedirectResponse(url=error_url)
+        if 'https://localhost' in error_url or 'https://127.0.0.1' in error_url:
+            error_url = error_url.replace('https://localhost', 'http://localhost')
+            error_url = error_url.replace('https://127.0.0.1', 'http://127.0.0.1')
+        return RedirectResponse(url=error_url, status_code=302)
 

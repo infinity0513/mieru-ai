@@ -556,6 +556,14 @@ class ApiClient {
       console.log('[API] Converted HTTPS to HTTP for localhost:', currentFrontendUrl);
     }
     
+    // 現在のページがhttps://localhostの場合、http://localhostにリダイレクト
+    if (window.location.protocol === 'https:' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+      const httpUrl = window.location.href.replace('https://', 'http://');
+      console.log('[API] Current page is HTTPS localhost, redirecting to HTTP:', httpUrl);
+      window.location.replace(httpUrl);
+      return;
+    }
+    
     console.log('[API] Current frontend URL:', currentFrontendUrl);
     
     const response = await this.request<{ oauth_url: string }>('/meta/oauth/authorize-url/', {
