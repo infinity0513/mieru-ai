@@ -10,7 +10,7 @@ from .routers import users
 from .routers import uploads
 from .routers import campaigns
 from .routers import analysis
-from .routers import notifications
+from .routers import notification
 # from .routers import teams  # Temporarily disabled
 from .middleware.security import RateLimitMiddleware, SecurityHeadersMiddleware
 # Import all models to ensure they are registered with Base
@@ -72,20 +72,24 @@ class HTTPSRedirectMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         response = await call_next(request)
         
-        # Fix HTTP redirects to HTTPS
+        # Fix HTTP redirects to HTTPS (but NOT for localhost/127.0.0.1)
         # Check for redirect status codes
         if hasattr(response, 'status_code') and response.status_code in [301, 302, 307, 308]:
             location = response.headers.get("location", "")
             if location and location.startswith("http://"):
-                # Replace http:// with https://
-                location = location.replace("http://", "https://", 1)
-                response.headers["location"] = location
+                # localhostや127.0.0.1の場合は変換しない（ローカル開発環境はHTTPで起動しているため）
+                if "localhost" not in location and "127.0.0.1" not in location:
+                    # Replace http:// with https://
+                    location = location.replace("http://", "https://", 1)
+                    response.headers["location"] = location
         # Also handle RedirectResponse objects directly
         elif isinstance(response, RedirectResponse):
             location = response.headers.get("location", "")
             if location and location.startswith("http://"):
-                location = location.replace("http://", "https://", 1)
-                response.headers["location"] = location
+                # localhostや127.0.0.1の場合は変換しない（ローカル開発環境はHTTPで起動しているため）
+                if "localhost" not in location and "127.0.0.1" not in location:
+                    location = location.replace("http://", "https://", 1)
+                    response.headers["location"] = location
         
         return response
 
