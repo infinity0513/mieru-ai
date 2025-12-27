@@ -38,6 +38,11 @@ export const Settings: React.FC<SettingsProps> = ({ user }) => {
 
   // Handle OAuth callback
   useEffect(() => {
+    console.log('[Settings] OAuth callback handler triggered');
+    console.log('[Settings] Current URL:', window.location.href);
+    console.log('[Settings] Protocol:', window.location.protocol);
+    console.log('[Settings] Hostname:', window.location.hostname);
+    
     // localhostの場合、https://をhttp://に強制的に変換（ブラウザのHSTS設定を回避）
     if (window.location.protocol === 'https:' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
       const httpUrl = window.location.href.replace('https://', 'http://');
@@ -49,8 +54,13 @@ export const Settings: React.FC<SettingsProps> = ({ user }) => {
     const urlParams = new URLSearchParams(window.location.search);
     const oauthStatus = urlParams.get('meta_oauth');
     
+    console.log('[Settings] OAuth status from URL:', oauthStatus);
+    
     if (oauthStatus === 'success') {
       const accountId = urlParams.get('account_id');
+      const accountCount = urlParams.get('account_count');
+      console.log('[Settings] OAuth success - accountId:', accountId, 'accountCount:', accountCount);
+      
       if (accountId) {
         setMetaAccountId(accountId);
         addToast('Metaアカウントの連携が完了しました', 'success');
@@ -59,21 +69,29 @@ export const Settings: React.FC<SettingsProps> = ({ user }) => {
           ? window.location.href.replace('https://', 'http://').split('?')[0]
           : window.location.origin;
         window.history.replaceState({}, '', '/settings');
+        console.log('[Settings] URL parameters cleared, reloading Meta settings...');
         // 設定を再読み込み
         Api.getMetaSettings().then(settings => {
+          console.log('[Settings] Meta settings reloaded:', settings);
           setMetaAccountId(settings.meta_account_id || '');
         }).catch(error => {
-          console.error('Failed to reload Meta settings:', error);
+          console.error('[Settings] Failed to reload Meta settings:', error);
         });
+      } else {
+        console.warn('[Settings] OAuth success but no accountId in URL');
       }
     } else if (oauthStatus === 'error') {
       const errorMessage = urlParams.get('message') || 'Meta OAuth認証に失敗しました';
+      console.error('[Settings] OAuth error:', errorMessage);
       addToast(errorMessage, 'error');
       // URLパラメータをクリア
       window.history.replaceState({}, '', '/settings');
     } else if (oauthStatus === 'callback') {
+      console.log('[Settings] OAuth callback received - backend will handle');
       // コールバックはバックエンドで処理されるため、ここでは何もしない
       // バックエンドからリダイレクトされる
+    } else {
+      console.log('[Settings] No OAuth status in URL - normal page load');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // addToastは安定した参照なので依存配列から除外
