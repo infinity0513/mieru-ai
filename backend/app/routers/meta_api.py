@@ -534,17 +534,17 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                                     else:
                                         if idx < 3:
                                             print(f"  ⚠ No insights data returned for {adset_name}")
-                            except json.JSONDecodeError as e:
-                                print(f"[Meta API] Error parsing batch response for {adset_name}: {str(e)}")
-                                print(f"  Response body: {batch_item.get('body', '')[:200]}")
-                        else:
-                            error_body = batch_item.get('body', '{}')
-                            try:
-                                error_data = json.loads(error_body) if isinstance(error_body, str) else error_body
-                                error_msg = error_data.get('error', {}).get('message', str(error_body))
-                                print(f"[Meta API] Error fetching insights for {adset_name} ({adset_id}): {error_msg}")
-                            except:
-                                print(f"[Meta API] Error fetching insights for {adset_name} ({adset_id}): {error_body}")
+                                except json.JSONDecodeError as e:
+                                    print(f"[Meta API] Error parsing batch response for {adset_name}: {str(e)}")
+                                    print(f"  Response body: {batch_item.get('body', '')[:200]}")
+                            else:
+                                error_body = batch_item.get('body', '{}')
+                                try:
+                                    error_data = json.loads(error_body) if isinstance(error_body, str) else error_body
+                                    error_msg = error_data.get('error', {}).get('message', str(error_body))
+                                    print(f"[Meta API] Error fetching insights for {adset_name} ({adset_id}): {error_msg}")
+                                except:
+                                    print(f"[Meta API] Error fetching insights for {adset_name} ({adset_id}): {error_body}")
                 
                 except Exception as e:
                     print(f"[Meta API] Error processing adset batch {batch_num}: {str(e)}")
