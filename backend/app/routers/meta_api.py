@@ -1467,23 +1467,31 @@ async def meta_oauth_callback(
     # フロントエンドURLは後でstateパラメータから取得する（初期値として設定）
     frontend_url = settings.FRONTEND_URL or "https://mieru.netlify.app"
     
+    # localhostの場合、https://をhttp://に強制的に変換するヘルパー関数
+    def normalize_localhost_url(url: str) -> str:
+        if url.startswith('https://localhost') or url.startswith('https://127.0.0.1'):
+            normalized = url.replace('https://', 'http://')
+            print(f"[Meta OAuth] Normalized URL: {url} -> {normalized}")
+            return normalized
+        return url
+    
     # エラーパラメータが存在する場合（認証拒否など）
     if error:
         error_message = error_description or error_reason or error
-        error_url = f"{frontend_url}/settings?meta_oauth=error&message={urllib.parse.quote(error_message)}"
+        error_url = f"{normalize_localhost_url(frontend_url)}/settings?meta_oauth=error&message={urllib.parse.quote(error_message)}"
         return RedirectResponse(url=error_url)
     
     # codeとstateが必須
     if not code:
-        error_url = f"{frontend_url}/settings?meta_oauth=error&message={urllib.parse.quote('認証コードが取得できませんでした')}"
+        error_url = f"{normalize_localhost_url(frontend_url)}/settings?meta_oauth=error&message={urllib.parse.quote('認証コードが取得できませんでした')}"
         return RedirectResponse(url=error_url)
     
     if not state:
-        error_url = f"{frontend_url}/settings?meta_oauth=error&message={urllib.parse.quote('ステートパラメータが取得できませんでした')}"
+        error_url = f"{normalize_localhost_url(frontend_url)}/settings?meta_oauth=error&message={urllib.parse.quote('ステートパラメータが取得できませんでした')}"
         return RedirectResponse(url=error_url)
     
     if not settings.META_APP_ID or not settings.META_APP_SECRET:
-        error_url = f"{frontend_url}/settings?meta_oauth=error&message={urllib.parse.quote('Meta OAuthが設定されていません')}"
+        error_url = f"{normalize_localhost_url(frontend_url)}/settings?meta_oauth=error&message={urllib.parse.quote('Meta OAuthが設定されていません')}"
         return RedirectResponse(url=error_url)
     
     # デバッグ: コールバック時に受け取ったパラメータをログ出力
@@ -1510,7 +1518,9 @@ async def meta_oauth_callback(
         
         if len(state_parts) < 2:
             print(f"[Meta OAuth] ERROR: State parts length is less than 2: {len(state_parts)}")
-            error_url = f"{frontend_url}/settings?meta_oauth=error&message={urllib.parse.quote('無効なステートパラメータです')}"
+            # localhostの場合、https://をhttp://に強制的に変換
+            normalized_url = frontend_url.replace('https://', 'http://') if (frontend_url.startswith('https://localhost') or frontend_url.startswith('https://127.0.0.1')) else frontend_url
+            error_url = f"{normalized_url}/settings?meta_oauth=error&message={urllib.parse.quote('無効なステートパラメータです')}"
             return RedirectResponse(url=error_url)
         
         user_id_str = state_parts[1]
@@ -1541,18 +1551,21 @@ async def meta_oauth_callback(
     except ValueError as e:
         print(f"[Meta OAuth] ERROR: ValueError when parsing state: {str(e)}")
         print(f"  - state_parts: {state_parts if 'state_parts' in locals() else 'N/A'}")
-        error_url = f"{frontend_url}/settings?meta_oauth=error&message={urllib.parse.quote(f'無効なステートパラメータです: {str(e)}')}"
+        normalized_url = frontend_url.replace('https://', 'http://') if (frontend_url.startswith('https://localhost') or frontend_url.startswith('https://127.0.0.1')) else frontend_url
+        error_url = f"{normalized_url}/settings?meta_oauth=error&message={urllib.parse.quote(f'無効なステートパラメータです: {str(e)}')}"
         return RedirectResponse(url=error_url)
     except IndexError as e:
         print(f"[Meta OAuth] ERROR: IndexError when parsing state: {str(e)}")
         print(f"  - state_parts: {state_parts if 'state_parts' in locals() else 'N/A'}")
-        error_url = f"{frontend_url}/settings?meta_oauth=error&message={urllib.parse.quote(f'無効なステートパラメータです: {str(e)}')}"
+        normalized_url = frontend_url.replace('https://', 'http://') if (frontend_url.startswith('https://localhost') or frontend_url.startswith('https://127.0.0.1')) else frontend_url
+        error_url = f"{normalized_url}/settings?meta_oauth=error&message={urllib.parse.quote(f'無効なステートパラメータです: {str(e)}')}"
         return RedirectResponse(url=error_url)
     except Exception as e:
         print(f"[Meta OAuth] ERROR: Unexpected error when parsing state: {str(e)}")
         import traceback
         print(f"  - traceback: {traceback.format_exc()}")
-        error_url = f"{frontend_url}/settings?meta_oauth=error&message={urllib.parse.quote(f'無効なステートパラメータです: {str(e)}')}"
+        normalized_url = frontend_url.replace('https://', 'http://') if (frontend_url.startswith('https://localhost') or frontend_url.startswith('https://127.0.0.1')) else frontend_url
+        error_url = f"{normalized_url}/settings?meta_oauth=error&message={urllib.parse.quote(f'無効なステートパラメータです: {str(e)}')}"
         return RedirectResponse(url=error_url)
     
     # ユーザーを取得
@@ -1732,7 +1745,8 @@ async def meta_oauth_callback(
             
     except httpx.HTTPStatusError as e:
         error_text = e.response.text if hasattr(e.response, 'text') else str(e)
-        error_url = f"{frontend_url}/settings?meta_oauth=error&message={urllib.parse.quote(f'Meta APIエラー: {error_text}')}"
+        normalized_url = frontend_url.replace('https://', 'http://') if (frontend_url.startswith('https://localhost') or frontend_url.startswith('https://127.0.0.1')) else frontend_url
+        error_url = f"{normalized_url}/settings?meta_oauth=error&message={urllib.parse.quote(f'Meta APIエラー: {error_text}')}"
         return RedirectResponse(url=error_url)
     except HTTPException:
         # HTTPExceptionはそのまま再スロー（ただし、リダイレクトに変換する）
@@ -1742,6 +1756,7 @@ async def meta_oauth_callback(
         error_details = traceback.format_exc()
         print(f"[Meta OAuth] Error in callback: {str(e)}")
         print(f"[Meta OAuth] Error details: {error_details}")
-        error_url = f"{frontend_url}/settings?meta_oauth=error&message={urllib.parse.quote(f'OAuth認証に失敗しました: {str(e)}')}"
+        normalized_url = frontend_url.replace('https://', 'http://') if (frontend_url.startswith('https://localhost') or frontend_url.startswith('https://127.0.0.1')) else frontend_url
+        error_url = f"{normalized_url}/settings?meta_oauth=error&message={urllib.parse.quote(f'OAuth認証に失敗しました: {str(e)}')}"
         return RedirectResponse(url=error_url)
 
