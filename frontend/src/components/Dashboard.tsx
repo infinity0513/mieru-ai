@@ -483,7 +483,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
   const [selectedCampaignName, setSelectedCampaignName] = useState<string | null>(null);
 
   // Meta Account (Asset) Selection
-  const [metaAccounts, setMetaAccounts] = useState<Array<{ account_id: string; name: string; data_count: number; latest_date: string | null }>>([]);
+  const [metaAccounts, setMetaAccounts] = useState<Array<{ account_id: string; name: string; data_count: number; campaign_count?: number; latest_date: string | null }>>([]);
   const [selectedMetaAccountId, setSelectedMetaAccountId] = useState<string | null>(() => {
     // localStorageから選択されたアセットIDを復元
     try {
