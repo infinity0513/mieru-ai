@@ -487,18 +487,18 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                             
                             if batch_num == 1 and idx < 3:
                                 print(f"[Meta API] Adset {adset_name} ({adset_id}) belongs to campaign: {correct_campaign_name} ({correct_campaign_id})")
-                        
-                        if batch_item.get('code') == 200:
+                            
+                            if batch_item.get('code') == 200:
                             try:
                                 item_body = json.loads(batch_item.get('body', '{}'))
                                 page_insights = item_body.get('data', [])
                                 
-                                if len(page_insights) > 0:
-                                    # 各Insightに正しいキャンペーン名を設定
-                                    for insight in page_insights:
-                                        # Insights APIのcampaign_nameを、広告セットが属する正しいキャンペーン名で上書き
-                                        insight['campaign_name'] = correct_campaign_name
-                                        insight['campaign_id'] = campaign_id
+                                    if len(page_insights) > 0:
+                                        # 各Insightに正しいキャンペーン名を設定（現在処理中のキャンペーン）
+                                        for insight in page_insights:
+                                            # Insights APIのcampaign_nameを、広告セットが属する正しいキャンペーン名で上書き
+                                            insight['campaign_name'] = correct_campaign_name
+                                            insight['campaign_id'] = correct_campaign_id
                                     all_insights.extend(page_insights)
                                     
                                     # サンプルデータをログ出力（最初のバッチの最初の広告セットのみ）
@@ -521,10 +521,10 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                                         next_response.raise_for_status()
                                         next_data = next_response.json()
                                         next_insights = next_data.get('data', [])
-                                        # 各Insightに正しいキャンペーン名を設定
+                                        # 各Insightに正しいキャンペーン名を設定（現在処理中のキャンペーン）
                                         for insight in next_insights:
                                             insight['campaign_name'] = correct_campaign_name
-                                            insight['campaign_id'] = campaign_id
+                                            insight['campaign_id'] = correct_campaign_id
                                         all_insights.extend(next_insights)
                                         paging = next_data.get('paging', {})
                                         print(f"[Meta API] Retrieved {len(next_insights)} more insights for {adset_name} (total: {len(all_insights)})")
