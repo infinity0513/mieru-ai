@@ -295,6 +295,98 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
             
             print(f"[Meta API] Campaign-level insights retrieved: {len([i for i in all_insights if 'adset_id' not in i or not i.get('adset_id')])}")
             
+            # キャンペーンごとに広告セットと広告を取得（階層構造を保持）
+            print(f"[Meta API] Fetching adsets and ads for each campaign...")
+            campaign_adsets_map = {}  # campaign_id -> [adsets]
+            campaign_ads_map = {}  # campaign_id -> [ads]
+            adset_ads_map = {}  # adset_id -> [ads]
+            
+            for campaign in all_campaigns:
+                campaign_id = campaign['id']
+                campaign_name = campaign.get('name', 'Unknown')
+                
+                # 各キャンペーンに属する広告セットを取得
+                campaign_adsets_url = f"https://graph.facebook.com/v24.0/{campaign_id}/adsets"
+                campaign_adsets_params = {
+                    "access_token": access_token,
+                    "fields": "id,name,campaign_id",
+                    "limit": 100
+                }
+                
+                campaign_adsets = []
+                while True:
+                    try:
+                        adsets_response = await client.get(campaign_adsets_url, params=campaign_adsets_params)
+                        adsets_response.raise_for_status()
+                        adsets_data = adsets_response.json()
+                        
+                        page_adsets = adsets_data.get('data', [])
+                        campaign_adsets.extend(page_adsets)
+                        
+                        paging = adsets_data.get('paging', {})
+                        next_url = paging.get('next')
+                        if not next_url:
+                            break
+                        campaign_adsets_url = next_url
+                        campaign_adsets_params = {}
+                    except Exception as e:
+                        print(f"[Meta API] Error fetching adsets for campaign {campaign_name} ({campaign_id}): {str(e)}")
+                        break
+                
+                campaign_adsets_map[campaign_id] = campaign_adsets
+                print(f"[Meta API] Campaign {campaign_name} ({campaign_id}): {len(campaign_adsets)} adsets")
+                
+                # 各広告セットに属する広告を取得
+                campaign_ads = []
+                for adset in campaign_adsets:
+                    adset_id = adset['id']
+                    adset_name = adset.get('name', 'Unknown')
+                    
+                    ads_url = f"https://graph.facebook.com/v24.0/{adset_id}/ads"
+                    ads_params = {
+                        "access_token": access_token,
+                        "fields": "id,name,adset_id,campaign_id",
+                        "limit": 100
+                    }
+                    
+                    adset_ads = []
+                    while True:
+                        try:
+                            ads_response = await client.get(ads_url, params=ads_params)
+                            ads_response.raise_for_status()
+                            ads_data = ads_response.json()
+                            
+                            page_ads = ads_data.get('data', [])
+                            adset_ads.extend(page_ads)
+                            
+                            paging = ads_data.get('paging', {})
+                            next_url = paging.get('next')
+                            if not next_url:
+                                break
+                            ads_url = next_url
+                            ads_params = {}
+                        except Exception as e:
+                            print(f"[Meta API] Error fetching ads for adset {adset_name} ({adset_id}): {str(e)}")
+                            break
+                    
+                    adset_ads_map[adset_id] = adset_ads
+                    campaign_ads.extend(adset_ads)
+                
+                campaign_ads_map[campaign_id] = campaign_ads
+                print(f"[Meta API] Campaign {campaign_name} ({campaign_id}): {len(campaign_ads)} ads")
+            
+            # 全広告セットと全広告のリストを作成（後方互換性のため）
+            all_adsets = []
+            for adsets in campaign_adsets_map.values():
+                all_adsets.extend(adsets)
+            
+            all_ads = []
+            for ads in campaign_ads_map.values():
+                all_ads.extend(ads)
+            
+            print(f"[Meta API] Total adsets fetched (by campaign): {len(all_adsets)}")
+            print(f"[Meta API] Total ads fetched (by campaign): {len(all_ads)}")
+            
             # 各広告セットのInsightsを取得（広告セットレベル）
             print(f"[Meta API] Processing {len(all_adsets)} adsets for adset-level insights...")
             # 広告セットレベルでも同じ期間制限を適用
