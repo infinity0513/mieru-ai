@@ -1050,7 +1050,7 @@ class ApiClient {
       if (metaAccountId) params.append('meta_account_id', metaAccountId);
       
       const response = await fetch(
-        `${this.baseURL}/campaigns/summary?${params}`,
+        `${this.baseURL}/campaigns/summary/?${params}`,
         { 
           credentials: 'include',  // CORS credentials をサポート
           headers: this.getHeaders() 
@@ -1088,7 +1088,7 @@ class ApiClient {
       if (metaAccountId) params.append('meta_account_id', metaAccountId);
       
       const response = await fetch(
-        `${this.baseURL}/campaigns/trends?${params}`,
+        `${this.baseURL}/campaigns/trends/?${params}`,
         { 
           credentials: 'include',  // CORS credentials をサポート
           headers: this.getHeaders() 
@@ -1118,7 +1118,7 @@ class ApiClient {
     if (endDate) params.append('end_date', endDate);
     
     const response = await fetch(
-      `${this.baseURL}/campaigns/by-campaign?${params}`,
+      `${this.baseURL}/campaigns/by-campaign/?${params}`,
       { 
         credentials: 'include',  // CORS credentials をサポート
         headers: this.getHeaders() 
@@ -1133,7 +1133,7 @@ class ApiClient {
     const params = new URLSearchParams({ metric, limit: limit.toString() });
     
     const response = await fetch(
-      `${this.baseURL}/campaigns/top-performers?${params}`,
+      `${this.baseURL}/campaigns/top-performers/?${params}`,
       { 
         credentials: 'include',  // CORS credentials をサポート
         headers: this.getHeaders() 
@@ -1148,7 +1148,7 @@ class ApiClient {
     const params = new URLSearchParams({ metric, limit: limit.toString() });
     
     const response = await fetch(
-      `${this.baseURL}/campaigns/bottom-performers?${params}`,
+      `${this.baseURL}/campaigns/bottom-performers/?${params}`,
       { 
         credentials: 'include',  // CORS credentials をサポート
         headers: this.getHeaders() 
@@ -1228,7 +1228,7 @@ class ApiClient {
     if (campaignName) params.append('campaign_name', campaignName);
     
     const response = await fetch(
-      `${this.baseURL}/analysis?${params}`,
+      `${this.baseURL}/analysis/?${params}`,
       {
         method: 'POST',
         credentials: 'include',  // CORS credentials をサポート
@@ -1262,7 +1262,7 @@ class ApiClient {
 
   async getAnalysis(analysisId: string) {
     const response = await fetch(
-      `${this.baseURL}/analysis/${analysisId}`,
+      `${this.baseURL}/analysis/${analysisId}/`,
       { 
         credentials: 'include',  // CORS credentials をサポート
         headers: this.getHeaders() 
@@ -1275,7 +1275,7 @@ class ApiClient {
 
   async deleteAnalysis(analysisId: string) {
     const response = await fetch(
-      `${this.baseURL}/analysis/${analysisId}`,
+      `${this.baseURL}/analysis/${analysisId}/`,
       {
         method: 'DELETE',
         credentials: 'include',  // CORS credentials をサポート
@@ -1291,7 +1291,7 @@ class ApiClient {
     // Poll every 5 seconds for up to 5 minutes
     for (let i = 0; i < maxAttempts; i++) {
       const response = await fetch(
-        `${this.baseURL}/analysis/status/${analysisId}`,
+        `${this.baseURL}/analysis/status/${analysisId}/`,
         {
           credentials: 'include',
           headers: this.getHeaders(),
@@ -1319,7 +1319,7 @@ class ApiClient {
 
   async downloadPDFReport(analysisId: string) {
     const response = await fetch(
-      `${this.baseURL}/reports/pdf/${analysisId}`,
+      `${this.baseURL}/reports/pdf/${analysisId}/`,
       { 
         credentials: 'include',  // CORS credentials をサポート
         headers: this.getHeaders() 
@@ -1345,7 +1345,7 @@ class ApiClient {
     if (endDate) params.append('end_date', endDate);
     
     const response = await fetch(
-      `${this.baseURL}/reports/excel?${params}`,
+      `${this.baseURL}/reports/excel/?${params}`,
       { 
         credentials: 'include',  // CORS credentials をサポート
         headers: this.getHeaders() 
@@ -1372,7 +1372,7 @@ class ApiClient {
     if (endDate) params.append('end_date', endDate);
     
     const response = await fetch(
-      `${this.baseURL}/reports/csv?${params}`,
+      `${this.baseURL}/reports/csv/?${params}`,
       { 
         credentials: 'include',  // CORS credentials をサポート
         headers: this.getHeaders() 
@@ -1395,7 +1395,7 @@ class ApiClient {
 
   // Teams
   async createTeam(name: string) {
-    const response = await fetch(`${this.baseURL}/teams`, {
+    const response = await fetch(`${this.baseURL}/teams/`, {
       method: 'POST',
       credentials: 'include',  // CORS credentials をサポート
       headers: this.getHeaders(),
@@ -1411,7 +1411,7 @@ class ApiClient {
   }
 
   async getMyTeams() {
-    const response = await fetch(`${this.baseURL}/teams`, {
+    const response = await fetch(`${this.baseURL}/teams/`, {
       credentials: 'include',  // CORS credentials をサポート
       headers: this.getHeaders(),
     });
@@ -1421,7 +1421,7 @@ class ApiClient {
   }
 
   async inviteTeamMember(teamId: string, email: string, role: string = 'member') {
-    const response = await fetch(`${this.baseURL}/teams/${teamId}/invite`, {
+    const response = await fetch(`${this.baseURL}/teams/${teamId}/invite/`, {
       method: 'POST',
       credentials: 'include',  // CORS credentials をサポート
       headers: this.getHeaders(),
@@ -1437,7 +1437,7 @@ class ApiClient {
   }
 
   async getTeamMembers(teamId: string) {
-    const response = await fetch(`${this.baseURL}/teams/${teamId}/members`, {
+    const response = await fetch(`${this.baseURL}/teams/${teamId}/members/`, {
       credentials: 'include',  // CORS credentials をサポート
       headers: this.getHeaders(),
     });
@@ -1447,7 +1447,7 @@ class ApiClient {
   }
 
   async removeTeamMember(teamId: string, memberId: string) {
-    const response = await fetch(`${this.baseURL}/teams/${teamId}/members/${memberId}`, {
+    const response = await fetch(`${this.baseURL}/teams/${teamId}/members/${memberId}/`, {
       method: 'DELETE',
       credentials: 'include',  // CORS credentials をサポート
       headers: this.getHeaders(),
