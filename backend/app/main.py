@@ -10,7 +10,7 @@ from .routers import users
 from .routers import uploads
 from .routers import campaigns
 from .routers import analysis
-from .routers import notification
+from .routers import notifications
 # from .routers import teams  # Temporarily disabled
 from .middleware.security import RateLimitMiddleware, SecurityHeadersMiddleware
 # Import all models to ensure they are registered with Base
