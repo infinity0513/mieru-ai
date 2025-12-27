@@ -1512,34 +1512,49 @@ async def meta_oauth_callback(
     # ステートからユーザーIDとフロントエンドURLを取得
     try:
         print(f"[Meta OAuth] Parsing state: {state}")
-        state_parts = state.split(":")
-        print(f"  - state_parts: {state_parts}")
-        print(f"  - state_parts length: {len(state_parts)}")
         
-        if len(state_parts) < 2:
-            print(f"[Meta OAuth] ERROR: State parts length is less than 2: {len(state_parts)}")
-            # localhostの場合、https://をhttp://に強制的に変換
+        # stateパラメータのフォーマット: {state}:{user_id}:{frontend_url}
+        # frontend_urlはURLエンコードされている可能性があるため、最初の2つのコロンで分割
+        # 例: "abc123:user-id:http%3A//localhost%3A3000" -> ["abc123", "user-id", "http%3A//localhost%3A3000"]
+        colon_count = state.count(':')
+        print(f"  - state colon count: {colon_count}")
+        
+        if colon_count < 2:
+            print(f"[Meta OAuth] ERROR: State has less than 2 colons: {colon_count}")
             normalized_url = frontend_url.replace('https://', 'http://') if (frontend_url.startswith('https://localhost') or frontend_url.startswith('https://127.0.0.1')) else frontend_url
             error_url = f"{normalized_url}/settings?meta_oauth=error&message={urllib.parse.quote('無効なステートパラメータです')}"
             return RedirectResponse(url=error_url)
         
-        user_id_str = state_parts[1]
-        print(f"  - user_id (string): {user_id_str}")
+        # 最初の2つのコロンの位置を探す
+        first_colon = state.find(':')
+        second_colon = state.find(':', first_colon + 1)
         
-        # フロントエンドURLがstateに含まれている場合（3つ以上のパーツがある場合）
-        if len(state_parts) >= 3:
-            frontend_url_from_state = urllib.parse.unquote(':'.join(state_parts[2:]))  # 3つ目以降を結合（URLエンコードされている可能性があるため）
-            print(f"  - frontend_url from state (raw): {frontend_url_from_state}")
-            
-            # localhostの場合、https://をhttp://に変換（ローカル開発環境はHTTPで起動しているため）
-            if frontend_url_from_state.startswith('https://localhost') or frontend_url_from_state.startswith('https://127.0.0.1'):
-                frontend_url = frontend_url_from_state.replace('https://', 'http://')
-                print(f"[Meta OAuth] Converted HTTPS to HTTP for localhost: {frontend_url}")
-            else:
-                frontend_url = frontend_url_from_state
-                print(f"[Meta OAuth] Using frontend URL from state: {frontend_url}")
+        if first_colon == -1 or second_colon == -1:
+            print(f"[Meta OAuth] ERROR: Could not find 2 colons in state")
+            normalized_url = frontend_url.replace('https://', 'http://') if (frontend_url.startswith('https://localhost') or frontend_url.startswith('https://127.0.0.1')) else frontend_url
+            error_url = f"{normalized_url}/settings?meta_oauth=error&message={urllib.parse.quote('無効なステートパラメータです')}"
+            return RedirectResponse(url=error_url)
+        
+        # 3つの部分に分割
+        state_token = state[:first_colon]
+        user_id_str = state[first_colon + 1:second_colon]
+        frontend_url_encoded = state[second_colon + 1:]
+        
+        print(f"  - state_token: {state_token[:20]}...")
+        print(f"  - user_id_str: {user_id_str}")
+        print(f"  - frontend_url_encoded: {frontend_url_encoded}")
+        
+        # フロントエンドURLをデコード
+        frontend_url_from_state = urllib.parse.unquote(frontend_url_encoded)
+        print(f"  - frontend_url from state (decoded): {frontend_url_from_state}")
+        
+        # localhostの場合、https://をhttp://に変換（ローカル開発環境はHTTPで起動しているため）
+        if frontend_url_from_state.startswith('https://localhost') or frontend_url_from_state.startswith('https://127.0.0.1'):
+            frontend_url = frontend_url_from_state.replace('https://', 'http://')
+            print(f"[Meta OAuth] Converted HTTPS to HTTP for localhost: {frontend_url_from_state} -> {frontend_url}")
         else:
-            print(f"[Meta OAuth] No frontend URL in state, using default: {frontend_url}")
+            frontend_url = frontend_url_from_state
+            print(f"[Meta OAuth] Using frontend URL from state: {frontend_url}")
         
         # user_idはUUID形式なので、UUIDとして扱う
         try:
