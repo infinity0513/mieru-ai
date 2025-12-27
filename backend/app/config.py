@@ -57,7 +57,7 @@ class Settings(BaseSettings):
     RESEND_API_KEY: Optional[str] = None
     RESEND_FROM_EMAIL: Optional[str] = None  # 例: "noreply@yourdomain.com"
     RESEND_FROM_NAME: Optional[str] = None  # 例: "MIERU AI"
-    FRONTEND_URL: Optional[str] = "http://localhost:3000"  # パスワードリセットリンク用
+    FRONTEND_URL: Optional[str] = None  # フロントエンドURL（環境変数から取得、未設定時はローカル環境用デフォルト値を使用）
     
     # Meta OAuth
     META_APP_ID: Optional[str] = None

@@ -1403,26 +1403,26 @@ async def meta_oauth_callback(
     db: Session = Depends(get_db)
 ):
     """Meta OAuthコールバック - トークンを取得して保存"""
+    # フロントエンドURLを環境変数から取得（未設定時はローカル環境用デフォルト値を使用）
+    frontend_url = settings.FRONTEND_URL or "http://localhost:3000"
+    print(f"[Meta OAuth] Frontend URL: {frontend_url}")
+    
     # エラーパラメータが存在する場合（認証拒否など）
     if error:
-        frontend_url = settings.FRONTEND_URL or "http://localhost:3000"
         error_message = error_description or error_reason or error
         error_url = f"{frontend_url}/settings?meta_oauth=error&message={urllib.parse.quote(error_message)}"
         return RedirectResponse(url=error_url)
     
     # codeとstateが必須
     if not code:
-        frontend_url = settings.FRONTEND_URL or "http://localhost:3000"
         error_url = f"{frontend_url}/settings?meta_oauth=error&message={urllib.parse.quote('認証コードが取得できませんでした')}"
         return RedirectResponse(url=error_url)
     
     if not state:
-        frontend_url = settings.FRONTEND_URL or "http://localhost:3000"
         error_url = f"{frontend_url}/settings?meta_oauth=error&message={urllib.parse.quote('ステートパラメータが取得できませんでした')}"
         return RedirectResponse(url=error_url)
     
     if not settings.META_APP_ID or not settings.META_APP_SECRET:
-        frontend_url = settings.FRONTEND_URL or "http://localhost:3000"
         error_url = f"{frontend_url}/settings?meta_oauth=error&message={urllib.parse.quote('Meta OAuthが設定されていません')}"
         return RedirectResponse(url=error_url)
     
@@ -1450,7 +1450,6 @@ async def meta_oauth_callback(
         
         if len(state_parts) < 2:
             print(f"[Meta OAuth] ERROR: State parts length is less than 2: {len(state_parts)}")
-            frontend_url = settings.FRONTEND_URL or "http://localhost:3000"
             error_url = f"{frontend_url}/settings?meta_oauth=error&message={urllib.parse.quote('無効なステートパラメータです')}"
             return RedirectResponse(url=error_url)
         
@@ -1466,20 +1465,17 @@ async def meta_oauth_callback(
     except ValueError as e:
         print(f"[Meta OAuth] ERROR: ValueError when parsing state: {str(e)}")
         print(f"  - state_parts: {state_parts if 'state_parts' in locals() else 'N/A'}")
-        frontend_url = settings.FRONTEND_URL or "http://localhost:3000"
         error_url = f"{frontend_url}/settings?meta_oauth=error&message={urllib.parse.quote(f'無効なステートパラメータです: {str(e)}')}"
         return RedirectResponse(url=error_url)
     except IndexError as e:
         print(f"[Meta OAuth] ERROR: IndexError when parsing state: {str(e)}")
         print(f"  - state_parts: {state_parts if 'state_parts' in locals() else 'N/A'}")
-        frontend_url = settings.FRONTEND_URL or "http://localhost:3000"
         error_url = f"{frontend_url}/settings?meta_oauth=error&message={urllib.parse.quote(f'無効なステートパラメータです: {str(e)}')}"
         return RedirectResponse(url=error_url)
     except Exception as e:
         print(f"[Meta OAuth] ERROR: Unexpected error when parsing state: {str(e)}")
         import traceback
         print(f"  - traceback: {traceback.format_exc()}")
-        frontend_url = settings.FRONTEND_URL or "http://localhost:3000"
         error_url = f"{frontend_url}/settings?meta_oauth=error&message={urllib.parse.quote(f'無効なステートパラメータです: {str(e)}')}"
         return RedirectResponse(url=error_url)
     
@@ -1644,7 +1640,6 @@ async def meta_oauth_callback(
                 # データ同期エラーは無視して、OAuth認証は成功として扱う
             
             # フロントエンドにリダイレクト（成功メッセージ付き）
-            frontend_url = settings.FRONTEND_URL or "http://localhost:3000"
             account_count = len(accounts)
             if account_count > 1:
                 success_url = f"{frontend_url}/settings?meta_oauth=success&account_id={account_id}&account_count={account_count}"
@@ -1654,7 +1649,6 @@ async def meta_oauth_callback(
             
     except httpx.HTTPStatusError as e:
         error_text = e.response.text if hasattr(e.response, 'text') else str(e)
-        frontend_url = settings.FRONTEND_URL or "http://localhost:3000"
         error_url = f"{frontend_url}/settings?meta_oauth=error&message={urllib.parse.quote(f'Meta APIエラー: {error_text}')}"
         return RedirectResponse(url=error_url)
     except HTTPException:
@@ -1665,7 +1659,6 @@ async def meta_oauth_callback(
         error_details = traceback.format_exc()
         print(f"[Meta OAuth] Error in callback: {str(e)}")
         print(f"[Meta OAuth] Error details: {error_details}")
-        frontend_url = settings.FRONTEND_URL or "http://localhost:3000"
         error_url = f"{frontend_url}/settings?meta_oauth=error&message={urllib.parse.quote(f'OAuth認証に失敗しました: {str(e)}')}"
         return RedirectResponse(url=error_url)
 
