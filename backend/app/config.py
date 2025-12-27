@@ -34,7 +34,10 @@ class Settings(BaseSettings):
     @property
     def cors_origins_list(self) -> List[str]:
         """Parse CORS_ORIGINS string into list"""
-        return [origin.strip() for origin in self.CORS_ORIGINS.split(",")]
+        origins = [origin.strip() for origin in self.CORS_ORIGINS.split(",") if origin.strip()]
+        # Debug: Print CORS origins for troubleshooting
+        print(f"[Config] CORS origins configured: {origins}")
+        return origins
     
     # Rate Limiting
     RATE_LIMIT_PER_MINUTE: int = 60  # 本番環境用

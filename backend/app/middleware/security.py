@@ -60,9 +60,14 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
                 response.headers["location"] = location
         
         # Add security headers (but don't overwrite CORS headers)
-        response.headers["X-Content-Type-Options"] = "nosniff"
-        response.headers["X-Frame-Options"] = "DENY"
-        response.headers["X-XSS-Protection"] = "1; mode=block"
-        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        # Only add headers if they don't already exist (to preserve CORS headers)
+        if "X-Content-Type-Options" not in response.headers:
+            response.headers["X-Content-Type-Options"] = "nosniff"
+        if "X-Frame-Options" not in response.headers:
+            response.headers["X-Frame-Options"] = "DENY"
+        if "X-XSS-Protection" not in response.headers:
+            response.headers["X-XSS-Protection"] = "1; mode=block"
+        if "Strict-Transport-Security" not in response.headers:
+            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
         
         return response
