@@ -1554,12 +1554,11 @@ async def meta_oauth_callback(
         frontend_url_from_state = urllib.parse.unquote(frontend_url_encoded)
         print(f"  - frontend_url from state (decoded): {frontend_url_from_state}")
         
-        # localhostの場合、https://をhttp://に変換（ローカル開発環境はHTTPで起動しているため）
-        if frontend_url_from_state.startswith('https://localhost') or frontend_url_from_state.startswith('https://127.0.0.1'):
-            frontend_url = frontend_url_from_state.replace('https://', 'http://')
+        # localhostの場合、https://をhttp://に強制的に変換（normalize_localhost_url関数を使用）
+        frontend_url = normalize_localhost_url(frontend_url_from_state)
+        if frontend_url != frontend_url_from_state:
             print(f"[Meta OAuth] Converted HTTPS to HTTP for localhost: {frontend_url_from_state} -> {frontend_url}")
         else:
-            frontend_url = frontend_url_from_state
             print(f"[Meta OAuth] Using frontend URL from state: {frontend_url}")
         
         # user_idはUUID形式なので、UUIDとして扱う
@@ -1752,18 +1751,15 @@ async def meta_oauth_callback(
             # フロントエンドにリダイレクト（成功メッセージ付き）
             account_count = len(accounts)
             
-            # localhostの場合、https://をhttp://に強制的に変換
-            final_frontend_url = frontend_url
+            # localhostの場合、https://をhttp://に強制的に変換（normalize_localhost_url関数を使用）
+            final_frontend_url = normalize_localhost_url(frontend_url)
             print(f"[Meta OAuth] ===== BEFORE REDIRECT URL GENERATION =====")
             print(f"[Meta OAuth] frontend_url (before conversion): {frontend_url}")
-            print(f"[Meta OAuth] frontend_url starts with https://localhost: {frontend_url.startswith('https://localhost')}")
-            print(f"[Meta OAuth] frontend_url starts with https://127.0.0.1: {frontend_url.startswith('https://127.0.0.1')}")
-            
-            if final_frontend_url.startswith('https://localhost') or final_frontend_url.startswith('https://127.0.0.1'):
-                final_frontend_url = final_frontend_url.replace('https://', 'http://')
+            print(f"[Meta OAuth] final_frontend_url (after conversion): {final_frontend_url}")
+            if final_frontend_url != frontend_url:
                 print(f"[Meta OAuth] Converted HTTPS to HTTP: {frontend_url} -> {final_frontend_url}")
             else:
-                print(f"[Meta OAuth] No conversion needed (not https://localhost or https://127.0.0.1)")
+                print(f"[Meta OAuth] No conversion needed")
             
             if account_count > 1:
                 success_url = f"{final_frontend_url}/settings?meta_oauth=success&account_id={account_id}&account_count={account_count}"
