@@ -585,6 +585,11 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                                             next_response.raise_for_status()
                                             next_data = next_response.json()
                                             next_insights = next_data.get('data', [])
+                                            # 各Insightに正しいキャンペーン名と広告セットIDを設定
+                                            for insight in next_insights:
+                                                insight['campaign_name'] = correct_campaign_name
+                                                insight['campaign_id'] = correct_campaign_id
+                                                insight['adset_id'] = correct_adset_id
                                             all_insights.extend(next_insights)
                                             paging = next_data.get('paging', {})
                                             if batch_num == 1 and idx < 3:
