@@ -545,11 +545,11 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                                     print(f"[Meta API] Error fetching insights for {adset_name} ({adset_id}): {error_msg}")
                                 except:
                                     print(f"[Meta API] Error fetching insights for {adset_name} ({adset_id}): {error_body}")
-                
-                except Exception as e:
-                    print(f"[Meta API] Error processing adset batch {batch_num}: {str(e)}")
-                    # バッチエラーが発生しても次のバッチの処理を続行
-                    continue
+                    
+                    except Exception as e:
+                        print(f"[Meta API] Error processing adset batch {batch_num}: {str(e)}")
+                        # バッチエラーが発生しても次のバッチの処理を続行
+                        continue
             
             print(f"[Meta API] Total insights retrieved (campaign + adset level): {len(all_insights)}")
             
