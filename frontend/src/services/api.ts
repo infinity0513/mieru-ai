@@ -463,9 +463,11 @@ class ApiClient {
   private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
     // エンドポイントが既にhttpで始まる場合はそのまま使用
     if (endpoint.startsWith('http')) {
+      const fetchOptions = this.getFetchOptions(options);
+      const { headers: _, ...restOptions } = options;
       const response = await fetch(endpoint, {
-        ...this.getFetchOptions(options),
-        ...options,
+        ...restOptions,
+        ...fetchOptions,
       });
 
       if (!response.ok) {
