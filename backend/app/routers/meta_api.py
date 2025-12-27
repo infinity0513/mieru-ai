@@ -40,8 +40,13 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
     db.add(upload)
     db.flush()  # upload.idを取得するためにflush
     
+    # 現在のUTC時刻を取得してログ出力（デバッグ用）
+    current_utc = datetime.utcnow()
+    print(f"[Meta API] Current UTC time: {current_utc.strftime('%Y-%m-%d %H:%M:%S')}")
+    
     # 昨日までのデータを取得（未来の日付を指定すると400エラーになるため）
-    until = (datetime.utcnow() - timedelta(days=1)).strftime('%Y-%m-%d')
+    until_dt = current_utc - timedelta(days=1)
+    until = until_dt.strftime('%Y-%m-%d')
     
     # 取得期間の決定
     if days is None:
@@ -51,12 +56,20 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
         # - Reach + Breakdown使用時: 13ヶ月（394日）のみ
         # - 現在の実装ではReachフィールドを使用しているが、Breakdownは使用していないため、37ヶ月が可能
         max_days_total = 1095  # 37ヶ月（1,095日）
-        since = (datetime.utcnow() - timedelta(days=max_days_total)).strftime('%Y-%m-%d')
+        since_dt = until_dt - timedelta(days=max_days_total)
+        since = since_dt.strftime('%Y-%m-%d')
         print(f"[Meta API] Full period sync: {since} to {until} (max {max_days_total} days / 37 months)")
+        print(f"[Meta API] Date validation: since={since} (year={since_dt.year}), until={until} (year={until_dt.year})")
     else:
         # 指定された日数分のデータを取得（例: 90日 = 3ヶ月）
-        since = (datetime.utcnow() - timedelta(days=days)).strftime('%Y-%m-%d')
+        since_dt = until_dt - timedelta(days=days)
+        since = since_dt.strftime('%Y-%m-%d')
         print(f"[Meta API] Partial sync: {since} to {until} ({days} days)")
+        print(f"[Meta API] Date validation: since={since} (year={since_dt.year}), until={until} (year={until_dt.year})")
+        
+        # 未来の日付が含まれている場合は警告
+        if since_dt > current_utc or until_dt > current_utc:
+            print(f"[Meta API] WARNING: Date range includes future dates! Current UTC: {current_utc.strftime('%Y-%m-%d')}, Since: {since}, Until: {until}")
     
     try:
         async with httpx.AsyncClient() as client:
