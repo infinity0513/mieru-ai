@@ -165,6 +165,66 @@ def debug_count_by_level(
         "ad_names": [f"{a[0]} > {a[1]} > {a[2]}" for a in unique_ads]
     }
 
+@router.get("/debug/campaign-adsets-count")
+def debug_campaign_adsets_count(
+    meta_account_id: Optional[str] = Query(None, description="Meta広告アカウントIDでフィルタリング"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    デバッグ用: 各キャンペーンごとの広告セット数を取得
+    """
+    base_query = db.query(Campaign).filter(Campaign.user_id == current_user.id)
+    
+    if meta_account_id:
+        base_query = base_query.filter(Campaign.meta_account_id == meta_account_id)
+    
+    # ユニークなキャンペーン名を取得（キャンペーンレベルのみ）
+    unique_campaigns = base_query.filter(
+        or_(
+            Campaign.ad_set_name == '',
+            Campaign.ad_set_name.is_(None)
+        ),
+        or_(
+            Campaign.ad_name == '',
+            Campaign.ad_name.is_(None)
+        )
+    ).with_entities(Campaign.campaign_name).distinct().all()
+    
+    result = []
+    for campaign_tuple in unique_campaigns:
+        campaign_name = campaign_tuple[0]
+        
+        # このキャンペーンの広告セット数を取得
+        # 広告セットレベル: ad_set_nameはあるが、ad_nameは空
+        adset_count = base_query.filter(
+            Campaign.campaign_name == campaign_name,
+            Campaign.ad_set_name != '',
+            Campaign.ad_set_name.isnot(None),
+            or_(
+                Campaign.ad_name == '',
+                Campaign.ad_name.is_(None)
+            )
+        ).with_entities(Campaign.ad_set_name).distinct().count()
+        
+        # このキャンペーンの広告数を取得
+        ad_count = base_query.filter(
+            Campaign.campaign_name == campaign_name,
+            Campaign.ad_name != '',
+            Campaign.ad_name.isnot(None)
+        ).with_entities(Campaign.ad_set_name, Campaign.ad_name).distinct().count()
+        
+        result.append({
+            "campaign_name": campaign_name,
+            "adset_count": adset_count,
+            "ad_count": ad_count
+        })
+    
+    return {
+        "meta_account_id": meta_account_id or "all",
+        "campaigns": result
+    }
+
 @router.get("/debug/campaign-hierarchy")
 def debug_campaign_hierarchy(
     campaign_name: Optional[str] = Query(None, description="キャンペーン名でフィルタリング（部分一致）"),
