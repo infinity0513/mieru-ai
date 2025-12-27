@@ -74,7 +74,7 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
               console.log('[Auth] Saving token via Api.setToken...');
               Api.setToken(result.access_token);
               // Verify token was saved
-              const savedToken = localStorage.getItem('token') || localStorage.getItem('access_token');
+              const savedToken = localStorage.getItem('access_token');
               console.log('[Auth] Token verification after save:', !!savedToken, 'length:', savedToken?.length || 0);
             } else {
               console.error('[Auth] No access_token to save!');
@@ -156,7 +156,7 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
       const user = await Api.verifyLoginCode(pendingEmail, verificationCode);
       console.log('[Auth] Verification successful, user:', user);
       // Verify token was saved after verifyLoginCode
-      const savedToken = localStorage.getItem('token') || localStorage.getItem('access_token');
+      const savedToken = localStorage.getItem('access_token');
       console.log('[Auth] Token verification after verifyLoginCode:', !!savedToken, 'length:', savedToken?.length || 0);
       if (!savedToken) {
         console.error('[Auth] WARNING: Token not found in localStorage after verifyLoginCode!');

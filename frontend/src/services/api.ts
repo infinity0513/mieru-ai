@@ -143,11 +143,10 @@ class ApiClient {
 
   setToken(token: string) {
     // Always write directly to localStorage - single source of truth
-    // Save to both 'access_token' and 'token' for compatibility
+    // Use 'access_token' as the primary key (unified)
     try {
       localStorage.setItem('access_token', token);
-      localStorage.setItem('token', token); // Also save as 'token' for compatibility
-      console.log('[Api] Token saved to localStorage (both access_token and token keys)');
+      console.log('[Api] Token saved to localStorage (access_token key)');
       console.log('[Api] Token length:', token.length);
       console.log('[Api] Token preview:', token.substring(0, 20) + '...');
     } catch (e: any) {
@@ -158,11 +157,12 @@ class ApiClient {
 
   clearToken() {
     // Clear token from localStorage - single source of truth
-    // Remove both 'access_token' and 'token' keys
+    // Remove 'access_token' key (unified)
     try {
       localStorage.removeItem('access_token');
-      localStorage.removeItem('token'); // Also remove 'token' key
-      console.log('[Api] Token cleared from localStorage (both keys)');
+      // Also remove 'token' key for backward compatibility (cleanup)
+      localStorage.removeItem('token');
+      console.log('[Api] Token cleared from localStorage');
     } catch (e) {
       // Ignore errors
       console.error('[Api] Error clearing token:', e);
@@ -171,8 +171,8 @@ class ApiClient {
 
   private getToken(): string | null {
     // Always read from localStorage - single source of truth
-    // Try 'access_token' first, then fallback to 'token' for compatibility
-    const token = localStorage.getItem('access_token') || localStorage.getItem('token');
+    // Use 'access_token' as the primary key (unified)
+    const token = localStorage.getItem('access_token');
     if (token) {
       console.log('[Api] Token retrieved from localStorage, length:', token.length);
     } else {
@@ -308,7 +308,7 @@ class ApiClient {
         this.setToken(data.access_token);
         console.log('[Api] requestLoginCode: Token saved');
         // Verify token was saved
-        const savedToken = localStorage.getItem('token') || localStorage.getItem('access_token');
+        const savedToken = localStorage.getItem('access_token');
         console.log('[Api] requestLoginCode: Token verification - saved:', !!savedToken, 'length:', savedToken?.length || 0);
       }
       
@@ -366,7 +366,7 @@ class ApiClient {
         this.setToken(data.access_token);
         console.log('[Api] Token saved after verifyLoginCode');
         // Verify token was saved
-        const savedToken = localStorage.getItem('token') || localStorage.getItem('access_token');
+        const savedToken = localStorage.getItem('access_token');
         console.log('[Api] Token verification - saved:', !!savedToken, 'length:', savedToken?.length || 0);
       } else {
         console.error('[Api] verifyLoginCode: No access_token in response!');
@@ -514,14 +514,14 @@ class ApiClient {
   }
 
   async getMe(): Promise<User> {
-    const response = await this.request<User>('/users/me', {
+    const response = await this.request<User>('/users/me/', {
       method: 'GET',
     });
     return response;
   }
 
   async updateMetaSettings(metaAccountId: string, metaAccessToken: string): Promise<{ message: string; meta_account_id: string | null }> {
-    const response = await this.request<{ message: string; meta_account_id: string | null }>('/users/me/meta-settings', {
+    const response = await this.request<{ message: string; meta_account_id: string | null }>('/users/me/meta-settings/', {
       method: 'PUT',
       body: JSON.stringify({
         meta_account_id: metaAccountId,
@@ -533,7 +533,7 @@ class ApiClient {
 
   async startMetaOAuth(): Promise<void> {
     // OAuth認証を開始 - バックエンドからOAuth認証URLを取得してリダイレクト
-    const response = await this.request<{ oauth_url: string }>('/meta/oauth/authorize-url', {
+    const response = await this.request<{ oauth_url: string }>('/meta/oauth/authorize-url/', {
       method: 'GET',
     });
     
@@ -545,14 +545,14 @@ class ApiClient {
   }
 
   async getMetaSettings(): Promise<{ meta_account_id: string | null }> {
-    const response = await this.request<{ meta_account_id: string | null }>('/users/me/meta-settings', {
+    const response = await this.request<{ meta_account_id: string | null }>('/users/me/meta-settings/', {
       method: 'GET',
     });
     return response;
   }
 
   async getMetaAccounts(): Promise<{ accounts: Array<{ account_id: string; name: string; data_count: number; latest_date: string | null }>; total: number }> {
-    const response = await this.request<{ accounts: Array<{ account_id: string; name: string; data_count: number; latest_date: string | null }>; total: number }>('/meta/accounts', {
+    const response = await this.request<{ accounts: Array<{ account_id: string; name: string; data_count: number; latest_date: string | null }>; total: number }>('/meta/accounts/', {
       method: 'GET',
     });
     return response;
