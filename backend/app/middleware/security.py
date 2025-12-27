@@ -59,15 +59,22 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
                 location = location.replace("http://", "https://", 1)
                 response.headers["location"] = location
         
-        # Add security headers (but don't overwrite CORS headers)
-        # Only add headers if they don't already exist (to preserve CORS headers)
-        if "X-Content-Type-Options" not in response.headers:
-            response.headers["X-Content-Type-Options"] = "nosniff"
-        if "X-Frame-Options" not in response.headers:
-            response.headers["X-Frame-Options"] = "DENY"
-        if "X-XSS-Protection" not in response.headers:
-            response.headers["X-XSS-Protection"] = "1; mode=block"
-        if "Strict-Transport-Security" not in response.headers:
-            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        # Check if CORS headers are present - if so, don't modify headers at all
+        has_cors_headers = any(
+            header.lower().startswith('access-control-') 
+            for header in response.headers.keys()
+        )
+        
+        # Only add security headers if CORS headers are not present
+        # This ensures CORS middleware can set headers without interference
+        if not has_cors_headers:
+            if "X-Content-Type-Options" not in response.headers:
+                response.headers["X-Content-Type-Options"] = "nosniff"
+            if "X-Frame-Options" not in response.headers:
+                response.headers["X-Frame-Options"] = "DENY"
+            if "X-XSS-Protection" not in response.headers:
+                response.headers["X-XSS-Protection"] = "1; mode=block"
+            if "Strict-Transport-Security" not in response.headers:
+                response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
         
         return response
