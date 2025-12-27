@@ -143,25 +143,42 @@ class ApiClient {
 
   setToken(token: string) {
     // Always write directly to localStorage - single source of truth
+    // Save to both 'access_token' and 'token' for compatibility
     try {
       localStorage.setItem('access_token', token);
+      localStorage.setItem('token', token); // Also save as 'token' for compatibility
+      console.log('[Api] Token saved to localStorage (both access_token and token keys)');
+      console.log('[Api] Token length:', token.length);
+      console.log('[Api] Token preview:', token.substring(0, 20) + '...');
     } catch (e: any) {
+      console.error('[Api] Failed to save token to localStorage:', e);
       throw new Error('認証トークンの設定に失敗しました');
     }
   }
 
   clearToken() {
     // Clear token from localStorage - single source of truth
+    // Remove both 'access_token' and 'token' keys
     try {
       localStorage.removeItem('access_token');
+      localStorage.removeItem('token'); // Also remove 'token' key
+      console.log('[Api] Token cleared from localStorage (both keys)');
     } catch (e) {
       // Ignore errors
+      console.error('[Api] Error clearing token:', e);
     }
   }
 
   private getToken(): string | null {
     // Always read from localStorage - single source of truth
-    return localStorage.getItem('access_token');
+    // Try 'access_token' first, then fallback to 'token' for compatibility
+    const token = localStorage.getItem('access_token') || localStorage.getItem('token');
+    if (token) {
+      console.log('[Api] Token retrieved from localStorage, length:', token.length);
+    } else {
+      console.log('[Api] No token found in localStorage');
+    }
+    return token;
   }
 
   private getHeaders(): HeadersInit {
@@ -282,6 +299,19 @@ class ApiClient {
       console.log('[Api] requestLoginCode: Parsing response JSON...');
       const data = await response.json();
       console.log('[Api] requestLoginCode response data:', data);
+      console.log('[Api] requestLoginCode access_token exists:', !!data.access_token);
+      console.log('[Api] requestLoginCode requires_code:', data.requires_code);
+      
+      // If 2FA is skipped and token is provided, save it here as well (for safety)
+      if (data.access_token && data.requires_code === false) {
+        console.log('[Api] requestLoginCode: 2FA skipped, saving token...');
+        this.setToken(data.access_token);
+        console.log('[Api] requestLoginCode: Token saved');
+        // Verify token was saved
+        const savedToken = localStorage.getItem('token') || localStorage.getItem('access_token');
+        console.log('[Api] requestLoginCode: Token verification - saved:', !!savedToken, 'length:', savedToken?.length || 0);
+      }
+      
       return data;
     } catch (error: any) {
       clearTimeout(timeoutId);
@@ -328,11 +358,18 @@ class ApiClient {
 
       const data = await response.json();
       console.log('[Api] verifyLoginCode response data:', data);
+      console.log('[Api] verifyLoginCode access_token exists:', !!data.access_token);
       
       // Save token to localStorage
       if (data.access_token) {
+        console.log('[Api] Saving token from verifyLoginCode...');
         this.setToken(data.access_token);
         console.log('[Api] Token saved after verifyLoginCode');
+        // Verify token was saved
+        const savedToken = localStorage.getItem('token') || localStorage.getItem('access_token');
+        console.log('[Api] Token verification - saved:', !!savedToken, 'length:', savedToken?.length || 0);
+      } else {
+        console.error('[Api] verifyLoginCode: No access_token in response!');
       }
       
       // If user data is included in response, use it directly

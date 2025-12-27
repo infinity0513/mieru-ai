@@ -67,9 +67,17 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
           if (result && result.requires_code === false && result.access_token && result.user) {
             // 2FA skipped - direct login
             console.log('[Auth] 2FA skipped, direct login');
+            console.log('[Auth] Access token received:', result.access_token ? 'Yes' : 'No');
+            console.log('[Auth] Access token length:', result.access_token?.length || 0);
             // Save token
             if (result.access_token) {
+              console.log('[Auth] Saving token via Api.setToken...');
               Api.setToken(result.access_token);
+              // Verify token was saved
+              const savedToken = localStorage.getItem('token') || localStorage.getItem('access_token');
+              console.log('[Auth] Token verification after save:', !!savedToken, 'length:', savedToken?.length || 0);
+            } else {
+              console.error('[Auth] No access_token to save!');
             }
             // Convert UserResponse to User type
             const user: User = {
@@ -147,6 +155,12 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
       console.log('[Auth] Verifying code for:', pendingEmail);
       const user = await Api.verifyLoginCode(pendingEmail, verificationCode);
       console.log('[Auth] Verification successful, user:', user);
+      // Verify token was saved after verifyLoginCode
+      const savedToken = localStorage.getItem('token') || localStorage.getItem('access_token');
+      console.log('[Auth] Token verification after verifyLoginCode:', !!savedToken, 'length:', savedToken?.length || 0);
+      if (!savedToken) {
+        console.error('[Auth] WARNING: Token not found in localStorage after verifyLoginCode!');
+      }
       onLogin(user);
       setLoading(false);
     } catch (err: any) {
