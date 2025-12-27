@@ -58,9 +58,12 @@ export const DailyData: React.FC<DailyDataProps> = ({ data: propData }) => {
 
   // Load meta accounts on mount
   useEffect(() => {
+    console.log('[DailyData] useEffect for loadMetaAccounts triggered');
     const loadMetaAccounts = async () => {
       try {
+        console.log('[DailyData] Calling Api.getMetaAccounts()');
         const accounts = await Api.getMetaAccounts();
+        console.log('[DailyData] Api.getMetaAccounts() completed, accounts count:', accounts.accounts?.length || 0);
         setMetaAccounts(accounts.accounts || []);
       } catch (error) {
         console.error('[DailyData] Failed to load meta accounts:', error);

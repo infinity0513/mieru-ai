@@ -9,8 +9,11 @@ if (!rootElement) {
 }
 
 const root = ReactDOM.createRoot(rootElement);
+// 一時的にReact Strict Modeを無効化（開発環境での重複リクエストを防ぐため）
+// 本番デプロイ前に戻してください
 root.render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
+  <App />
+  // <React.StrictMode>
+  //   <App />
+  // </React.StrictMode>
 );

@@ -499,12 +499,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
 
   // Load Meta Accounts list
   useEffect(() => {
+    console.log('[Dashboard] useEffect for loadMetaAccounts triggered');
     const loadMetaAccounts = async () => {
       try {
+        console.log('[Dashboard] Calling Api.getMetaAccounts()');
         const result = await Api.getMetaAccounts();
+        console.log('[Dashboard] Api.getMetaAccounts() completed, accounts count:', result.accounts?.length || 0);
         setMetaAccounts(result.accounts || []);
       } catch (error) {
-        console.error('Failed to load Meta accounts:', error);
+        console.error('[Dashboard] Failed to load Meta accounts:', error);
         // エラー時は空配列を設定
         setMetaAccounts([]);
       }

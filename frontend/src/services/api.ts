@@ -497,10 +497,16 @@ class ApiClient {
     const finalEndpoint = queryString ? `${pathWithSlash}?${queryString}` : pathWithSlash;
 
     const url = `${this.baseURL}${finalEndpoint}`;
+    console.log('[API] Request URL:', url);
+    console.log('[API] Request method:', options.method || 'GET');
+    
     const response = await fetch(url, {
       ...this.getFetchOptions(options),
       ...options,
     });
+    
+    console.log('[API] Response status:', response.status, response.statusText);
+    console.log('[API] Response URL:', response.url);
 
     if (!response.ok) {
       if (response.status === 401) {
@@ -552,9 +558,12 @@ class ApiClient {
   }
 
   async getMetaAccounts(): Promise<{ accounts: Array<{ account_id: string; name: string; data_count: number; latest_date: string | null }>; total: number }> {
+    console.log('[API] getMetaAccounts called');
+    console.trace('[API] Call stack');  // どこから呼ばれているか確認
     const response = await this.request<{ accounts: Array<{ account_id: string; name: string; data_count: number; latest_date: string | null }>; total: number }>('/meta/accounts/', {
       method: 'GET',
     });
+    console.log('[API] getMetaAccounts response received');
     return response;
   }
 
