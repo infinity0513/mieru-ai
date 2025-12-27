@@ -539,8 +539,15 @@ class ApiClient {
 
   async startMetaOAuth(): Promise<void> {
     // OAuth認証を開始 - バックエンドからOAuth認証URLを取得してリダイレクト
+    // 現在のフロントエンドURLをヘッダーで送信（リダイレクト先を決定するため）
+    const currentFrontendUrl = window.location.origin;
+    console.log('[API] Current frontend URL:', currentFrontendUrl);
+    
     const response = await this.request<{ oauth_url: string }>('/meta/oauth/authorize-url/', {
       method: 'GET',
+      headers: {
+        'X-Frontend-URL': currentFrontendUrl,
+      },
     });
     
     if (response.oauth_url) {

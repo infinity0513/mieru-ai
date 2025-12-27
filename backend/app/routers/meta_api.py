@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks, Request
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import func, or_
@@ -1294,6 +1294,7 @@ async def get_meta_insights(
 
 @router.get("/oauth/authorize")
 async def meta_oauth_authorize(
+    request: Request,
     current_user: User = Depends(get_current_user)
 ):
     """Meta OAuth認証を開始 - 認証URLを生成してリダイレクト"""
@@ -1306,10 +1307,39 @@ async def meta_oauth_authorize(
     # リダイレクトURIを設定（デフォルト値を固定）
     redirect_uri = settings.META_REDIRECT_URI or "https://mieru-ai-production.up.railway.app/api/meta/oauth/callback"
     
+    # フロントエンドURLをリクエストヘッダーから取得（X-Frontend-URL）またはOrigin/Refererから判定
+    frontend_url_from_header = request.headers.get("X-Frontend-URL")
+    origin = request.headers.get("origin") or request.headers.get("referer", "")
+    
+    # ローカル環境からのリクエストかどうかを判定
+    is_local = (
+        frontend_url_from_header and (
+            "localhost" in frontend_url_from_header or 
+            "127.0.0.1" in frontend_url_from_header
+        )
+    ) or (
+        "localhost" in origin or 
+        "127.0.0.1" in origin or
+        "localhost:3000" in origin or
+        "localhost:5173" in origin or
+        origin.startswith("http://localhost") or
+        origin.startswith("http://127.0.0.1")
+    )
+    
+    if is_local:
+        frontend_url_for_state = "http://localhost:3000"
+    else:
+        frontend_url_for_state = settings.FRONTEND_URL or "https://mieru.netlify.app"
+    
+    print(f"[Meta OAuth] Frontend URL from header (X-Frontend-URL): {frontend_url_from_header}")
+    print(f"[Meta OAuth] Origin: {origin}")
+    print(f"[Meta OAuth] Detected frontend URL for state: {frontend_url_for_state}")
+    
     # ステートパラメータを生成（CSRF対策）
     state = secrets.token_urlsafe(32)
-    # ステートをセッションに保存する代わりに、ユーザーIDを含める（簡易版）
-    state_with_user = f"{state}:{current_user.id}"
+    # ステートにユーザーIDとフロントエンドURLを含める（簡易版）
+    # フォーマット: {state}:{user_id}:{frontend_url}
+    state_with_user = f"{state}:{current_user.id}:{urllib.parse.quote(frontend_url_for_state)}"
     
     # デバッグ: パラメータの値をログ出力
     print(f"[Meta OAuth] OAuth URL Parameters (authorize endpoint):")
@@ -1338,6 +1368,7 @@ async def meta_oauth_authorize(
 
 @router.get("/oauth/authorize-url")
 async def meta_oauth_authorize_url(
+    request: Request,
     current_user: User = Depends(get_current_user)
 ):
     """Meta OAuth認証URLを取得（JSON形式で返す）"""
@@ -1351,10 +1382,39 @@ async def meta_oauth_authorize_url(
         # リダイレクトURIを設定（デフォルト値を固定）
         redirect_uri = settings.META_REDIRECT_URI or "https://mieru-ai-production.up.railway.app/api/meta/oauth/callback"
         
+        # フロントエンドURLをリクエストヘッダーから取得（X-Frontend-URL）またはOrigin/Refererから判定
+        frontend_url_from_header = request.headers.get("X-Frontend-URL")
+        origin = request.headers.get("origin") or request.headers.get("referer", "")
+        
+        # ローカル環境からのリクエストかどうかを判定
+        is_local = (
+            frontend_url_from_header and (
+                "localhost" in frontend_url_from_header or 
+                "127.0.0.1" in frontend_url_from_header
+            )
+        ) or (
+            "localhost" in origin or 
+            "127.0.0.1" in origin or
+            "localhost:3000" in origin or
+            "localhost:5173" in origin or
+            origin.startswith("http://localhost") or
+            origin.startswith("http://127.0.0.1")
+        )
+        
+        if is_local:
+            frontend_url_for_state = "http://localhost:3000"
+        else:
+            frontend_url_for_state = settings.FRONTEND_URL or "https://mieru.netlify.app"
+        
+        print(f"[Meta OAuth] Frontend URL from header (X-Frontend-URL): {frontend_url_from_header}")
+        print(f"[Meta OAuth] Origin: {origin}")
+        print(f"[Meta OAuth] Detected frontend URL for state: {frontend_url_for_state}")
+        
         # ステートパラメータを生成（CSRF対策）
         state = secrets.token_urlsafe(32)
-        # ステートをセッションに保存する代わりに、ユーザーIDを含める（簡易版）
-        state_with_user = f"{state}:{current_user.id}"
+        # ステートにユーザーIDとフロントエンドURLを含める（簡易版）
+        # フォーマット: {state}:{user_id}:{frontend_url}
+        state_with_user = f"{state}:{current_user.id}:{urllib.parse.quote(frontend_url_for_state)}"
         
         # デバッグ: パラメータの値をログ出力
         print(f"[Meta OAuth] OAuth URL Parameters:")
@@ -1394,6 +1454,7 @@ async def meta_oauth_authorize_url(
 
 @router.get("/oauth/callback")
 async def meta_oauth_callback(
+    request: Request,
     code: Optional[str] = Query(None, description="OAuth認証コード"),
     state: Optional[str] = Query(None, description="ステートパラメータ（CSRF対策）"),
     error: Optional[str] = Query(None, description="エラーメッセージ"),
@@ -1403,9 +1464,8 @@ async def meta_oauth_callback(
     db: Session = Depends(get_db)
 ):
     """Meta OAuthコールバック - トークンを取得して保存"""
-    # フロントエンドURLを環境変数から取得（未設定時はローカル環境用デフォルト値を使用）
-    frontend_url = settings.FRONTEND_URL or "http://localhost:3000"
-    print(f"[Meta OAuth] Frontend URL: {frontend_url}")
+    # フロントエンドURLは後でstateパラメータから取得する（初期値として設定）
+    frontend_url = settings.FRONTEND_URL or "https://mieru.netlify.app"
     
     # エラーパラメータが存在する場合（認証拒否など）
     if error:
@@ -1441,7 +1501,7 @@ async def meta_oauth_callback(
         print(f"  - state decode error: {str(e)}")
         # デコードに失敗した場合は元のstateを使用
     
-    # ステートからユーザーIDを取得
+    # ステートからユーザーIDとフロントエンドURLを取得
     try:
         print(f"[Meta OAuth] Parsing state: {state}")
         state_parts = state.split(":")
@@ -1455,6 +1515,16 @@ async def meta_oauth_callback(
         
         user_id_str = state_parts[1]
         print(f"  - user_id (string): {user_id_str}")
+        
+        # フロントエンドURLがstateに含まれている場合（3つ以上のパーツがある場合）
+        if len(state_parts) >= 3:
+            frontend_url_from_state = urllib.parse.unquote(':'.join(state_parts[2:]))  # 3つ目以降を結合（URLエンコードされている可能性があるため）
+            print(f"  - frontend_url from state: {frontend_url_from_state}")
+            frontend_url = frontend_url_from_state
+            print(f"[Meta OAuth] Using frontend URL from state: {frontend_url}")
+        else:
+            print(f"[Meta OAuth] No frontend URL in state, using default: {frontend_url}")
+        
         # user_idはUUID形式なので、UUIDとして扱う
         try:
             user_id = uuid.UUID(user_id_str)
