@@ -1826,9 +1826,8 @@ async def meta_oauth_callback(
             # RedirectResponseを明示的に302ステータスコードで生成（デフォルトは307）
             redirect_response = RedirectResponse(url=success_url, status_code=302)
             
-            # RedirectResponseのURLを再度確認
+            # RedirectResponseのURLを再度確認（headers['location']から取得）
             print(f"[Meta OAuth] ===== REDIRECT RESPONSE CREATED =====")
-            print(f"[Meta OAuth] RedirectResponse.url: {redirect_response.url}")
             print(f"[Meta OAuth] RedirectResponse.status_code: {redirect_response.status_code}")
             print(f"[Meta OAuth] RedirectResponse.headers['location']: {redirect_response.headers.get('location', 'N/A')}")
             print(f"[Meta OAuth] =====================================")
