@@ -326,7 +326,8 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                 campaign_adsets_params = {
                     "access_token": access_token,
                     "fields": "id,name,campaign_id,status,effective_status",
-                    "limit": 100
+                    "limit": 100,
+                    "filtering": json.dumps([])  # 全ステータスの広告セットを取得（ACTIVE, PAUSED, ARCHIVED, DELETED を含む）
                 }
                 
                 print(f"[Meta API] AdSets URL: {campaign_adsets_url}")
