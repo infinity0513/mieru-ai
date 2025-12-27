@@ -610,7 +610,7 @@ class ApiClient {
     debugLogin('ログイン処理開始', {
       action: 'login',
       baseURL: this.baseURL,
-      loginUrl: `${this.baseURL}/auth/login`,
+      loginUrl: `${this.baseURL}/auth/login/`,
       email: email.substring(0, 3) + '***' // セキュリティのためメールアドレスを一部マスク
     });
     
@@ -795,7 +795,7 @@ class ApiClient {
     debugLogin('ユーザー情報取得開始', {
       action: 'getCurrentUser',
       baseURL: this.baseURL,
-      url: `${this.baseURL}/users/me`
+      url: `${this.baseURL}/users/me/`
     });
     
     // Always get the latest token from localStorage - single source of truth
@@ -1052,7 +1052,7 @@ class ApiClient {
       if (error.message?.includes('Failed to fetch') || error.message?.includes('NetworkError') || error.name === 'TypeError') {
         console.error("[ApiClient] Network error when fetching campaigns. Token exists:", !!token);
         console.error("[ApiClient] Base URL:", this.baseURL);
-        console.error("[ApiClient] Full URL:", `${this.baseURL}/campaigns`);
+        console.error("[ApiClient] Full URL:", `${this.baseURL}/campaigns/`);
       }
       
       // Return empty array on error
