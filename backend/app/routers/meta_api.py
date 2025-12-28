@@ -771,6 +771,28 @@ async def sync_all_meta_data(
             )
         
         # 各アカウントの全期間データを取得
+        # まず、全アカウントの全期間データを削除（sync_meta_data_to_campaigns内の削除処理は期間内のみのため）
+        print(f"[Meta Sync All] Deleting all existing data for {len(account_ids)} account(s) before sync...")
+        for acc_id in account_ids:
+            try:
+                # このアカウントの全期間データを削除（期間制限なし）
+                delete_count = db.query(Campaign).filter(
+                    Campaign.user_id == current_user.id,
+                    Campaign.meta_account_id == acc_id,
+                    Campaign.ad_set_name.is_(None),
+                    Campaign.ad_name.is_(None)
+                ).delete(synchronize_session=False)
+                print(f"[Meta Sync All] Deleted {delete_count} existing records for account {acc_id}")
+            except Exception as e:
+                import traceback
+                print(f"[Meta Sync All] Error deleting existing data for account {acc_id}: {str(e)}")
+                print(f"[Meta Sync All] Error details: {traceback.format_exc()}")
+                # 削除エラーが発生しても続行（同期処理で期間内のデータは削除される）
+        
+        # コミットして削除を確定
+        db.commit()
+        print(f"[Meta Sync All] Deletion completed, starting data sync...")
+        
         total_synced = 0
         results = []
         
