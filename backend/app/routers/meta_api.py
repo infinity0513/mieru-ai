@@ -276,15 +276,29 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                     return default
             
             # InsightsデータをCampaignテーブルに保存（キャンペーンレベルのみ）
-            # 同じ期間の既存データを削除（重複を防ぐ）
-            db.query(Campaign).filter(
+            # 同じ期間の既存データを削除（重複を防ぐ、CSVデータも含む）
+            # days=None（全期間取得）の場合は期間制限なしで削除、それ以外は期間内のみ削除
+            # Meta APIデータとCSVデータの両方を削除（最新データを優先）
+            delete_query = db.query(Campaign).filter(
                 Campaign.user_id == user.id,
-                Campaign.meta_account_id == account_id,
-                Campaign.date >= datetime.strptime(since, '%Y-%m-%d').date(),
-                Campaign.date <= datetime.strptime(until, '%Y-%m-%d').date(),
                 Campaign.ad_set_name.is_(None),
                 Campaign.ad_name.is_(None)
-            ).delete()
+            )
+            # days=Noneの場合は期間制限なしで削除（全期間のデータを削除）
+            if days is not None:
+                # 指定期間内のみ削除
+                delete_query = delete_query.filter(
+                    Campaign.date >= datetime.strptime(since, '%Y-%m-%d').date(),
+                    Campaign.date <= datetime.strptime(until, '%Y-%m-%d').date()
+                )
+            # 削除前のレコード数をログ出力
+            count_before_delete = delete_query.count()
+            if count_before_delete > 0:
+                print(f"[Meta API] Deleting {count_before_delete} existing records (Meta API + CSV data) for account {account_id} (days={'all' if days is None else days})")
+                deleted_count = delete_query.delete(synchronize_session=False)
+                print(f"[Meta API] Deleted {deleted_count} existing records (including CSV data)")
+            else:
+                print(f"[Meta API] No existing records to delete for account {account_id}")
             
             saved_count = 0
             # 重複チェック用のセット（campaign_name, date, meta_account_idの組み合わせ）
@@ -662,46 +676,70 @@ async def get_meta_accounts(
 
 @router.delete("/delete-all")
 async def delete_all_meta_data(
-    account_id: Optional[str] = Query(None, description="削除するMeta広告アカウントID（指定しない場合は全アカウント）"),
+    account_id: Optional[str] = Query(None, description="削除するMeta広告アカウントID（指定しない場合は全アカウント + CSVデータ）"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
-    本番環境テスト用: ユーザーの全期間Metaデータを削除
+    本番環境テスト用: ユーザーの全期間MetaデータとCSVデータを削除
     """
     try:
         print(f"[Meta Delete All] Starting deletion for user: {current_user.id}")
         
-        # 削除条件を構築
-        delete_query = db.query(Campaign).filter(
-            Campaign.user_id == current_user.id
-        )
+        total_deleted = 0
         
         if account_id:
-            delete_query = delete_query.filter(Campaign.meta_account_id == account_id)
-            print(f"[Meta Delete All] Filtering by account_id: {account_id}")
+            # 指定されたアカウントのMeta APIデータのみ削除（全レベル）
+            delete_query = db.query(Campaign).filter(
+                Campaign.user_id == current_user.id,
+                Campaign.meta_account_id == account_id
+            )
+            print(f"[Meta Delete All] Filtering by account_id: {account_id} (Meta API data only)")
+            count_before = delete_query.count()
+            print(f"[Meta Delete All] Records to delete: {count_before}")
+            
+            if count_before > 0:
+                deleted_count = delete_query.delete(synchronize_session=False)
+                total_deleted += deleted_count
+                print(f"[Meta Delete All] Deleted {deleted_count} Meta API records for account {account_id}")
+        else:
+            # 全データを削除（Meta APIデータ + CSVデータ、全レベル）
+            # まず、削除前のレコード数を取得
+            count_before = db.query(Campaign).filter(
+                Campaign.user_id == current_user.id
+            ).count()
+            print(f"[Meta Delete All] Total records to delete: {count_before}")
+            
+            if count_before == 0:
+                return {
+                    "status": "success",
+                    "message": "削除するデータがありませんでした",
+                    "deleted_count": 0
+                }
+            
+            # 全データを削除（Meta APIデータ + CSVデータ、全レベル）
+            delete_query = db.query(Campaign).filter(
+                Campaign.user_id == current_user.id
+            )
+            deleted_count = delete_query.delete(synchronize_session=False)
+            total_deleted = deleted_count
+            print(f"[Meta Delete All] Deleted {deleted_count} total records (Meta API + CSV, all levels)")
         
-        # 削除前のレコード数を取得
-        count_before = delete_query.count()
-        print(f"[Meta Delete All] Records to delete: {count_before}")
-        
-        if count_before == 0:
-            return {
-                "status": "success",
-                "message": "削除するデータがありませんでした",
-                "deleted_count": 0
-            }
-        
-        # データを削除
-        deleted_count = delete_query.delete(synchronize_session=False)
+        # コミットして削除を確定
         db.commit()
+        print(f"[Meta Delete All] Successfully committed deletion: {total_deleted} records")
         
-        print(f"[Meta Delete All] Successfully deleted {deleted_count} records")
+        # 削除後のレコード数を確認
+        count_after = db.query(Campaign).filter(
+            Campaign.user_id == current_user.id
+        ).count()
+        print(f"[Meta Delete All] Records remaining after deletion: {count_after}")
         
         return {
             "status": "success",
-            "message": f"{deleted_count}件のデータを削除しました",
-            "deleted_count": deleted_count
+            "message": f"{total_deleted}件のデータを削除しました（Meta APIデータ + CSVデータ、全レベル）",
+            "deleted_count": total_deleted,
+            "remaining_count": count_after
         }
     except Exception as e:
         db.rollback()
@@ -772,7 +810,10 @@ async def sync_all_meta_data(
         
         # 各アカウントの全期間データを取得
         # まず、全アカウントの全期間データを削除（sync_meta_data_to_campaigns内の削除処理は期間内のみのため）
-        print(f"[Meta Sync All] Deleting all existing data for {len(account_ids)} account(s) before sync...")
+        # CSVデータも含めて全データを削除（重複を防ぐため）
+        print(f"[Meta Sync All] Deleting all existing data (including CSV data) for {len(account_ids)} account(s) before sync...")
+        
+        # 1. Meta APIデータ（meta_account_idが設定されている）を削除
         for acc_id in account_ids:
             try:
                 # このアカウントの全期間データを削除（期間制限なし）
@@ -782,16 +823,32 @@ async def sync_all_meta_data(
                     Campaign.ad_set_name.is_(None),
                     Campaign.ad_name.is_(None)
                 ).delete(synchronize_session=False)
-                print(f"[Meta Sync All] Deleted {delete_count} existing records for account {acc_id}")
+                print(f"[Meta Sync All] Deleted {delete_count} Meta API records for account {acc_id}")
             except Exception as e:
                 import traceback
-                print(f"[Meta Sync All] Error deleting existing data for account {acc_id}: {str(e)}")
+                print(f"[Meta Sync All] Error deleting Meta API data for account {acc_id}: {str(e)}")
                 print(f"[Meta Sync All] Error details: {traceback.format_exc()}")
-                # 削除エラーが発生しても続行（同期処理で期間内のデータは削除される）
+        
+        # 2. CSVアップロードデータ（meta_account_idがNULL）も削除（重複を防ぐため）
+        try:
+            csv_delete_count = db.query(Campaign).filter(
+                Campaign.user_id == current_user.id,
+                or_(
+                    Campaign.meta_account_id.is_(None),
+                    Campaign.meta_account_id == ''
+                ),
+                Campaign.ad_set_name.is_(None),
+                Campaign.ad_name.is_(None)
+            ).delete(synchronize_session=False)
+            print(f"[Meta Sync All] Deleted {csv_delete_count} CSV upload records")
+        except Exception as e:
+            import traceback
+            print(f"[Meta Sync All] Error deleting CSV data: {str(e)}")
+            print(f"[Meta Sync All] Error details: {traceback.format_exc()}")
         
         # コミットして削除を確定
         db.commit()
-        print(f"[Meta Sync All] Deletion completed, starting data sync...")
+        print(f"[Meta Sync All] Deletion completed (Meta API + CSV data), starting data sync...")
         
         total_synced = 0
         results = []

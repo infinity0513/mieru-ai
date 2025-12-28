@@ -127,7 +127,7 @@ class DataService:
             # 数値カラムのNaNを0に置換（Meta CSVフォーマット対応）
             numeric_columns = [
                 'インプレッション', 'クリック数', '費用', 'コンバージョン数', 'リーチ', 'リーチ数', 
-                'エンゲージメント', 'エンゲージメント数', 'リンククリック', 'ランディングページビュー',
+                             'エンゲージメント', 'エンゲージメント数', 'リンククリック', 'ランディングページビュー',
                 'コンバージョン価値', 'コンバージョン値',
                 # Meta CSVフォーマット
                 '結果', '消化金額 (JPY)', '消化金額', '結果の単価'
@@ -226,7 +226,6 @@ class DataService:
     ) -> int:
         """Process dataframe and save to database with duplicate check"""
         saved_count = 0
-        updated_count = 0
         
         print(f"[DataService] Processing {len(df)} rows from CSV")
         print(f"[DataService] CSV columns: {list(df.columns)}")
@@ -340,10 +339,9 @@ class DataService:
                 row.get('Ad Name', '') or row.get('広告の名前', '') or ''
             ).replace('nan', '').replace('NaN', '')
             
-            # Check for duplicate
-            # データソースの優先順位: Meta APIデータ > CSVデータ
-            # Meta APIデータ（meta_account_idがある）を優先し、CSVデータ（meta_account_idがない）で上書きしない
-            query = db.query(Campaign).filter(
+            # 既存データを削除（重複を防ぐ、Meta APIデータも含む）
+            # 最新データを優先するため、同じcampaign_nameとdateの既存データ（Meta APIデータも含む）を削除
+            delete_query = db.query(Campaign).filter(
                 Campaign.user_id == user_id,
                 Campaign.date == campaign_date,
                 Campaign.campaign_name == campaign_name
@@ -351,27 +349,24 @@ class DataService:
             
             # ad_set_nameとad_nameが空でない場合のみ、重複チェックに含める
             if ad_set_name and ad_set_name.strip():
-                query = query.filter(Campaign.ad_set_name == ad_set_name)
+                delete_query = delete_query.filter(Campaign.ad_set_name == ad_set_name)
             else:
-                query = query.filter(
+                delete_query = delete_query.filter(
                     or_(Campaign.ad_set_name == '', Campaign.ad_set_name.is_(None))
                 )
             
             if ad_name and ad_name.strip():
-                query = query.filter(Campaign.ad_name == ad_name)
+                delete_query = delete_query.filter(Campaign.ad_name == ad_name)
             else:
-                query = query.filter(
+                delete_query = delete_query.filter(
                     or_(Campaign.ad_name == '', Campaign.ad_name.is_(None))
                 )
             
-            existing_campaign = query.first()
-            
-            # データソースの優先順位チェック
-            # 既存レコードにmeta_account_idがある場合（Meta APIデータ）、CSVデータで上書きしない
-            if existing_campaign and existing_campaign.meta_account_id:
+            # 既存データを削除（Meta APIデータも含む）
+            deleted_count = delete_query.delete(synchronize_session=False)
+            if deleted_count > 0:
                 if idx < 5:
-                    print(f"[DataService] Row {idx}: Skipping CSV update - existing record has meta_account_id (Meta API data takes priority)")
-                continue  # Meta APIデータを優先し、CSVデータで上書きしない
+                    print(f"[DataService] Row {idx}: Deleted {deleted_count} existing record(s) (including Meta API data) for '{campaign_name}' on {campaign_date}")
             
             # デバッグログ（最初の数件のみ詳細にログ出力）
             if idx < 5:
@@ -385,56 +380,31 @@ class DataService:
                 print(f"  conversion_value={conversion_value}")
                 print(f"  reach={reach}")
                 print(f"  ad_set_name='{ad_set_name}', ad_name='{ad_name}'")
-                print(f"  Existing campaign found: {existing_campaign is not None}")
-                if existing_campaign:
-                    print(f"  Will UPDATE existing campaign (ID: {existing_campaign.id})")
-                else:
-                    print(f"  Will CREATE new campaign")
+                print(f"  Will CREATE new campaign (deleted {deleted_count} existing record(s))")
             
-            if existing_campaign:
-                # Update existing record
-                existing_campaign.upload_id = upload_id
-                existing_campaign.impressions = impressions
-                existing_campaign.clicks = clicks
-                existing_campaign.cost = cost
-                existing_campaign.conversions = conversions
-                existing_campaign.conversion_value = conversion_value
-                existing_campaign.reach = reach
-                existing_campaign.engagements = engagements
-                existing_campaign.link_clicks = link_clicks
-                existing_campaign.landing_page_views = landing_page_views
-                existing_campaign.ctr = metrics['ctr']
-                existing_campaign.cpc = metrics['cpc']
-                existing_campaign.cpm = metrics['cpm']
-                existing_campaign.cpa = metrics['cpa']
-                existing_campaign.cvr = metrics['cvr']
-                existing_campaign.roas = metrics['roas']
-                updated_count += 1
-                print(f"[DataService] Updated existing campaign: '{campaign_name}' on {campaign_date} (updated_count: {updated_count})")
-            else:
-                # Create new campaign record
-                campaign = Campaign(
-                    user_id=user_id,
-                    upload_id=upload_id,
-                    date=campaign_date,
-                    campaign_name=campaign_name,
-                    ad_set_name=ad_set_name,
-                    ad_name=ad_name,
-                    impressions=impressions,
-                    clicks=clicks,
-                    cost=cost,
-                    conversions=conversions,
-                    conversion_value=conversion_value,
-                    reach=reach,
-                    engagements=engagements,
-                    link_clicks=link_clicks,
-                    landing_page_views=landing_page_views,
-                    **metrics
-                )
-                db.add(campaign)
-                saved_count += 1
-                print(f"[DataService] Created new campaign: '{campaign_name}' on {campaign_date} (saved_count: {saved_count})")
+            # 新規データを保存（既存データは削除済み）
+            campaign = Campaign(
+                user_id=user_id,
+                upload_id=upload_id,
+                date=campaign_date,
+                campaign_name=campaign_name,
+                ad_set_name=ad_set_name,
+                ad_name=ad_name,
+                impressions=impressions,
+                clicks=clicks,
+                cost=cost,
+                conversions=conversions,
+                conversion_value=conversion_value,
+                reach=reach,
+                engagements=engagements,
+                link_clicks=link_clicks,
+                landing_page_views=landing_page_views,
+                **metrics
+            )
+            db.add(campaign)
+            saved_count += 1
+            print(f"[DataService] Created new campaign: '{campaign_name}' on {campaign_date} (saved_count: {saved_count})")
         
         db.commit()
-        print(f"[DataService] Saved {saved_count} new campaigns, updated {updated_count} existing campaigns")
-        return saved_count + updated_count
+        print(f"[DataService] Saved {saved_count} new campaigns (deleted existing duplicates)")
+        return saved_count
