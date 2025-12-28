@@ -660,6 +660,168 @@ async def get_meta_accounts(
             detail=f"アセット情報の取得に失敗しました: {str(e)}"
         )
 
+@router.delete("/delete-all")
+async def delete_all_meta_data(
+    account_id: Optional[str] = Query(None, description="削除するMeta広告アカウントID（指定しない場合は全アカウント）"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    本番環境テスト用: ユーザーの全期間Metaデータを削除
+    """
+    try:
+        print(f"[Meta Delete All] Starting deletion for user: {current_user.id}")
+        
+        # 削除条件を構築
+        delete_query = db.query(Campaign).filter(
+            Campaign.user_id == current_user.id
+        )
+        
+        if account_id:
+            delete_query = delete_query.filter(Campaign.meta_account_id == account_id)
+            print(f"[Meta Delete All] Filtering by account_id: {account_id}")
+        
+        # 削除前のレコード数を取得
+        count_before = delete_query.count()
+        print(f"[Meta Delete All] Records to delete: {count_before}")
+        
+        if count_before == 0:
+            return {
+                "status": "success",
+                "message": "削除するデータがありませんでした",
+                "deleted_count": 0
+            }
+        
+        # データを削除
+        deleted_count = delete_query.delete(synchronize_session=False)
+        db.commit()
+        
+        print(f"[Meta Delete All] Successfully deleted {deleted_count} records")
+        
+        return {
+            "status": "success",
+            "message": f"{deleted_count}件のデータを削除しました",
+            "deleted_count": deleted_count
+        }
+    except Exception as e:
+        db.rollback()
+        import traceback
+        error_details = traceback.format_exc()
+        print(f"[Meta Delete All] Error: {str(e)}")
+        print(f"[Meta Delete All] Error details: {error_details}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"データ削除エラー: {str(e)}"
+        )
+
+@router.post("/sync-all")
+async def sync_all_meta_data(
+    account_id: Optional[str] = Query(None, description="同期するMeta広告アカウントID（指定しない場合は全アカウント）"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    本番環境テスト用: ユーザーの全期間Metaデータを再取得
+    """
+    try:
+        print(f"[Meta Sync All] Starting full period sync for user: {current_user.id}")
+        
+        # ユーザーのMetaアカウント情報を確認
+        if not current_user.meta_access_token:
+            raise HTTPException(
+                status_code=400,
+                detail="Metaアクセストークンが設定されていません"
+            )
+        
+        # アカウントIDのリストを取得
+        if account_id:
+            # 指定されたアカウントIDのみ
+            account_ids = [account_id]
+            print(f"[Meta Sync All] Syncing specific account: {account_id}")
+        else:
+            # 全アカウントを取得
+            try:
+                async with httpx.AsyncClient() as client:
+                    accounts_url = "https://graph.facebook.com/v24.0/me/adaccounts"
+                    accounts_params = {
+                        "access_token": current_user.meta_access_token,
+                        "fields": "id,name",
+                        "limit": 100
+                    }
+                    
+                    accounts_response = await client.get(accounts_url, params=accounts_params)
+                    accounts_response.raise_for_status()
+                    accounts_data = accounts_response.json()
+                    
+                    account_ids = [acc.get("id") for acc in accounts_data.get("data", [])]
+                    print(f"[Meta Sync All] Found {len(account_ids)} accounts to sync")
+            except Exception as e:
+                import traceback
+                print(f"[Meta Sync All] Error fetching accounts: {str(e)}")
+                print(f"[Meta Sync All] Error details: {traceback.format_exc()}")
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"アカウント取得エラー: {str(e)}"
+                )
+        
+        if not account_ids:
+            raise HTTPException(
+                status_code=400,
+                detail="同期するアカウントが見つかりませんでした"
+            )
+        
+        # 各アカウントの全期間データを取得
+        total_synced = 0
+        results = []
+        
+        for idx, acc_id in enumerate(account_ids):
+            try:
+                print(f"[Meta Sync All] Syncing account {idx + 1}/{len(account_ids)}: {acc_id}")
+                await sync_meta_data_to_campaigns(
+                    current_user,
+                    current_user.meta_access_token,
+                    acc_id,
+                    db,
+                    days=None  # 全期間（37ヶ月）
+                )
+                total_synced += 1
+                results.append({
+                    "account_id": acc_id,
+                    "status": "success"
+                })
+                print(f"[Meta Sync All] Successfully synced account: {acc_id}")
+            except Exception as e:
+                import traceback
+                error_details = traceback.format_exc()
+                print(f"[Meta Sync All] Error syncing account {acc_id}: {str(e)}")
+                print(f"[Meta Sync All] Error details: {error_details}")
+                results.append({
+                    "account_id": acc_id,
+                    "status": "error",
+                    "error": str(e)
+                })
+                # 1つのアカウントでエラーが発生しても、他のアカウントの同期は続行
+                continue
+        
+        return {
+            "status": "success",
+            "message": f"{total_synced}/{len(account_ids)}アカウントのデータを同期しました",
+            "total_accounts": len(account_ids),
+            "synced_accounts": total_synced,
+            "results": results
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
+        print(f"[Meta Sync All] Unexpected error: {str(e)}")
+        print(f"[Meta Sync All] Error details: {error_details}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"データ同期エラー: {str(e)}"
+        )
+
 @router.get("/insights")
 async def get_meta_insights(
     since: Optional[str] = None,
