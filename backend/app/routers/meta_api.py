@@ -21,7 +21,7 @@ router = APIRouter()
 
 async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id: str, db: Session, days: Optional[int] = None):
     """
-    Meta APIからデータを取得してCampaignテーブルに保存
+    Meta APIからキャンペーンレベルのデータのみを取得してCampaignテーブルに保存（シンプル版）
     
     Args:
         user: ユーザーオブジェクト
@@ -115,53 +115,6 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
             
             print(f"[Meta API] Total campaigns fetched: {len(all_campaigns)}")
             
-            # 広告セット一覧を取得（ページネーション対応）
-            print(f"[Meta API] Fetching adsets from account: {account_id}")
-            adsets_url = f"https://graph.facebook.com/v24.0/{account_id}/adsets"
-            adsets_params = {
-                "access_token": access_token,
-                "fields": "id,name,campaign_id",
-                "limit": 100  # Meta APIの最大取得件数
-            }
-            
-            # ページネーション処理（すべてのadsetsを取得）
-            all_adsets = []
-            page_count = 0
-            while True:
-                page_count += 1
-                print(f"[Meta API] Fetching adsets page {page_count}...")
-                adsets_response = await client.get(adsets_url, params=adsets_params)
-                adsets_response.raise_for_status()
-                adsets_data = adsets_response.json()
-                
-                # 取得した広告セットを追加
-                page_adsets = adsets_data.get('data', [])
-                all_adsets.extend(page_adsets)
-                print(f"[Meta API] Retrieved {len(page_adsets)} adsets (total: {len(all_adsets)})")
-                
-                # 次のページがあるかチェック
-                paging = adsets_data.get('paging', {})
-                next_url = paging.get('next')
-                
-                if not next_url:
-                    # 次のページがない場合は終了
-                    print(f"[Meta API] No more pages. Total adsets retrieved: {len(all_adsets)}")
-                    break
-                
-                # 次のページのURLを設定（パラメータをクリア）
-                adsets_url = next_url
-                adsets_params = {}  # URLにパラメータが含まれているためクリア
-            
-            print(f"[Meta API] Total adsets fetched: {len(all_adsets)}")
-            
-            # 広告セットIDからキャンペーンIDへのマッピングを作成（広告セットが属する正しいキャンペーンを把握するため）
-            adset_to_campaign_map = {}
-            for adset in all_adsets:
-                adset_id = adset['id']
-                campaign_id = adset.get('campaign_id')
-                if campaign_id:
-                    adset_to_campaign_map[adset_id] = campaign_id
-            
             # キャンペーンIDからキャンペーン名へのマッピングを作成
             campaign_id_to_name_map = {}
             for campaign in all_campaigns:
@@ -169,10 +122,9 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                 campaign_name = campaign.get('name', 'Unknown')
                 campaign_id_to_name_map[campaign_id] = campaign_name
             
-            print(f"[Meta API] Created adset-to-campaign mapping: {len(adset_to_campaign_map)} adsets mapped to campaigns")
             print(f"[Meta API] Created campaign-id-to-name mapping: {len(campaign_id_to_name_map)} campaigns")
             
-            # 各キャンペーンのInsightsを取得（キャンペーンレベル）
+            # 各キャンペーンのInsightsを取得（キャンペーンレベルのみ）
             print(f"[Meta API] Processing {len(all_campaigns)} campaigns for campaign-level insights...")
             # 昨日までのデータを取得（UTCを使用して未来の日付を避ける）
             current_until = datetime.utcnow() - timedelta(days=1)
@@ -306,48 +258,281 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                     # バッチエラーが発生しても次のバッチの処理を続行
                     continue
             
-            print(f"[Meta API] Campaign-level insights retrieved: {len([i for i in all_insights if 'adset_id' not in i or not i.get('adset_id')])}")
+            print(f"[Meta API] Campaign-level insights retrieved: {len(all_insights)}")
             
-            # キャンペーンごとに広告セットと広告を取得（階層構造を保持）
-            print(f"[Meta API] Fetching adsets and ads for each campaign...")
-            campaign_adsets_map = {}  # campaign_id -> [adsets]
-            campaign_ads_map = {}  # campaign_id -> [ads]
-            adset_ads_map = {}  # adset_id -> [ads]
+            # InsightsデータをCampaignテーブルに保存（キャンペーンレベルのみ）
+            # 同じ期間の既存データを削除（重複を防ぐ）
+            db.query(Campaign).filter(
+                Campaign.user_id == user.id,
+                Campaign.meta_account_id == account_id,
+                Campaign.date >= datetime.strptime(since, '%Y-%m-%d').date(),
+                Campaign.date <= datetime.strptime(until, '%Y-%m-%d').date(),
+                Campaign.ad_set_name.is_(None),
+                Campaign.ad_name.is_(None)
+            ).delete()
             
-            for campaign in all_campaigns:
-                campaign_id = campaign['id']
-                campaign_name = campaign.get('name', 'Unknown')
-                
-                print(f"\n=== キャンペーン: {campaign_name} (ID: {campaign_id}) ===")
-                print(f"[Meta API] Fetching adsets for campaign...")
-                
-                # 各キャンペーンに属する広告セットを取得
-                campaign_adsets_url = f"https://graph.facebook.com/v24.0/{campaign_id}/adsets"
-                campaign_adsets_params = {
-                    "access_token": access_token,
-                    "fields": "id,name,campaign_id,status,effective_status",
-                    "limit": 100,
-                    "filtering": json.dumps([])  # 全ステータスの広告セットを取得（ACTIVE, PAUSED, ARCHIVED, DELETED を含む）
-                }
-                
-                print(f"[Meta API] AdSets URL: {campaign_adsets_url}")
-                print(f"[Meta API] Params (excluding access_token): fields={campaign_adsets_params['fields']}, limit={campaign_adsets_params['limit']}")
-                
-                campaign_adsets = []
-                page_count = 0
-                while True:
-                    page_count += 1
-                    try:
-                        print(f"[Meta API] Requesting adsets page {page_count}...")
-                        adsets_response = await client.get(campaign_adsets_url, params=campaign_adsets_params)
-                        print(f"[Meta API] Status Code: {adsets_response.status_code}")
-                        
-                        adsets_response.raise_for_status()
-                        adsets_data = adsets_response.json()
-                        
-                        # レスポンスの最初の500文字をログ出力
-                        response_str = json.dumps(adsets_data, indent=2, ensure_ascii=False)
-                        print(f"[Meta API] Response preview (first 500 chars): {response_str[:500]}")
+            saved_count = 0
+            
+            for insight in all_insights:
+                try:
+                    # 日付を取得
+                    date_str = insight.get('date_start')
+                    if not date_str:
+                        continue
+                    campaign_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+                    
+                    # データを取得（キャンペーンレベルのみ）
+                    campaign_name = insight.get('campaign_name', 'Unknown')
+                    # キャンペーンレベルのみなので、ad_set_nameとad_nameは常にNULL
+                    ad_set_name = None
+                    ad_name = None
+                    
+                    # デバッグログ（最初の数件のみ）
+                    if saved_count < 3:
+                        print(f"[Meta API] Saving campaign-level insight: campaign={campaign_name}, date={campaign_date}, spend={insight.get('spend', 0)}")
+                    
+                    spend = float(insight.get('spend', 0))
+                    impressions = int(insight.get('impressions', 0))
+                    all_clicks = int(insight.get('clicks', 0))
+                    inline_link_clicks = int(insight.get('inline_link_clicks', 0))
+                    reach = int(insight.get('reach', 0))
+                    
+                    # クリック数はinline_link_clicksを使用
+                    clicks = inline_link_clicks if inline_link_clicks > 0 else all_clicks
+                    link_clicks = inline_link_clicks if inline_link_clicks > 0 else all_clicks
+                    
+                    # エンゲージメント関連のデータを取得
+                    engagements = int(insight.get('engagements', 0))
+                    if engagements == 0:
+                        actions = insight.get('actions', [])
+                        for action in actions:
+                            if action.get('action_type') == 'post_engagement':
+                                engagements += int(action.get('value', 0))
+                    
+                    # landing_page_viewsはactionsから抽出
+                    landing_page_views = 0
+                    actions = insight.get('actions', [])
+                    for action in actions:
+                        if action.get('action_type') == 'landing_page_view':
+                            landing_page_views += int(action.get('value', 0))
+                    
+                    frequency = float(insight.get('frequency', 0))
+                    if frequency == 0 and reach > 0:
+                        frequency = (impressions / reach) if reach > 0 else 0
+                    
+                    # conversionsとconversion_valueを取得
+                    conversions_data = insight.get('conversions', [])
+                    conversions = 0
+                    if conversions_data:
+                        for conv in conversions_data:
+                            if isinstance(conv, dict):
+                                action_type = conv.get('action_type', '')
+                                if (action_type.startswith('offsite_conversion') or 
+                                    action_type.startswith('onsite_conversion') or 
+                                    action_type in ['omni_purchase', 'purchase'] or
+                                    'complete_registration' in action_type or
+                                    'lead' in action_type or
+                                    'purchase' in action_type):
+                                    value = conv.get('value', 0)
+                                    try:
+                                        conversions += int(value) if isinstance(value, (int, str)) else 0
+                                    except (ValueError, TypeError):
+                                        pass
+                            else:
+                                conversions += int(conv)
+                    
+                    # フォールバック: actionsから取得
+                    if conversions == 0:
+                        actions = insight.get('actions', [])
+                        for action in actions:
+                            action_type = action.get('action_type', '')
+                            if (action_type.startswith('offsite_conversion') or 
+                                action_type.startswith('onsite_conversion') or 
+                                action_type in ['omni_purchase', 'purchase'] or
+                                'complete_registration' in action_type or
+                                'lead' in action_type or
+                                'purchase' in action_type):
+                                value = action.get('value', 0)
+                                try:
+                                    conversions += int(value) if isinstance(value, (int, str)) else 0
+                                except (ValueError, TypeError):
+                                    pass
+                    
+                    # conversion_valueを取得（action_valuesから）
+                    action_values = insight.get('action_values', [])
+                    conversion_value = 0.0
+                    
+                    if action_values:
+                        for av in action_values:
+                            if isinstance(av, dict):
+                                av_type = av.get('action_type', '')
+                                if (av_type.startswith('offsite_conversion') or 
+                                    av_type.startswith('onsite_conversion') or 
+                                    av_type in ['omni_purchase', 'purchase'] or
+                                    'purchase' in av_type):
+                                    value = av.get('value', 0)
+                                    try:
+                                        conversion_value += float(value) if isinstance(value, (int, float, str)) else 0.0
+                                    except (ValueError, TypeError):
+                                        pass
+                    
+                    # フォールバック: actionsから取得
+                    if conversion_value == 0:
+                        actions = insight.get('actions', [])
+                        for action in actions:
+                            action_type = action.get('action_type', '')
+                            if (action_type in ['purchase', 'omni_purchase'] or
+                                'purchase' in action_type):
+                                value = action.get('value', 0)
+                                try:
+                                    conversion_value += float(value) if isinstance(value, (int, float, str)) else 0.0
+                                except (ValueError, TypeError):
+                                    pass
+                    
+                    # メトリクスを計算
+                    ctr = (clicks / impressions * 100) if impressions > 0 else 0
+                    cpc = (spend / clicks) if clicks > 0 else 0
+                    cpm = (spend / impressions * 1000) if impressions > 0 else 0
+                    cpa = (spend / conversions) if conversions > 0 else 0
+                    cvr = (conversions / clicks * 100) if clicks > 0 else 0
+                    roas = (conversion_value / spend) if spend > 0 else 0
+                    
+                    # 新規作成（既に同じ期間のデータは削除済み）
+                    campaign = Campaign(
+                        user_id=user.id,
+                        upload_id=upload.id,
+                        meta_account_id=account_id,
+                        date=campaign_date,
+                        campaign_name=campaign_name,
+                        ad_set_name=None,  # キャンペーンレベルのみ
+                        ad_name=None,  # キャンペーンレベルのみ
+                        cost=Decimal(str(spend)),
+                        impressions=impressions,
+                        clicks=clicks,
+                        conversions=conversions,
+                        conversion_value=Decimal(str(conversion_value)),
+                        reach=reach,
+                        engagements=engagements,
+                        link_clicks=link_clicks,
+                        landing_page_views=landing_page_views,
+                        ctr=Decimal(str(round(ctr, 2))),
+                        cpc=Decimal(str(round(cpc, 2))),
+                        cpm=Decimal(str(round(cpm, 2))),
+                        cpa=Decimal(str(round(cpa, 2))),
+                        cvr=Decimal(str(round(cvr, 2))),
+                        roas=Decimal(str(round(roas, 2)))
+                    )
+                    db.add(campaign)
+                    saved_count += 1
+                except Exception as e:
+                    print(f"[Meta API] Error processing insight: {str(e)}")
+                    continue
+            
+            # Uploadレコードを更新
+            upload.row_count = saved_count
+            if all_insights:
+                dates = [datetime.strptime(i.get('date_start', ''), '%Y-%m-%d').date() for i in all_insights if i.get('date_start')]
+                if dates:
+                    upload.start_date = min(dates)
+                    upload.end_date = max(dates)
+            
+            db.commit()
+            print(f"[Meta API] Saved {saved_count} campaign-level records")
+    except Exception as e:
+        db.rollback()
+        raise
+
+@router.get("/accounts/")
+async def get_meta_accounts(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """ユーザーが連携しているMeta広告アカウント（アセット）一覧を取得"""
+    try:
+        print(f"[Meta Accounts] Getting accounts for user: {current_user.id}")
+        
+        # Campaignテーブルからユニークなmeta_account_idを取得
+        accounts = db.query(Campaign.meta_account_id).filter(
+            Campaign.user_id == current_user.id,
+            Campaign.meta_account_id.isnot(None)
+        ).distinct().all()
+        
+        print(f"[Meta Accounts] Found {len(accounts)} unique account IDs")
+        
+        # アカウントIDのリストを作成
+        account_ids = [acc[0] for acc in accounts if acc[0]]
+        print(f"[Meta Accounts] Account IDs: {account_ids}")
+        
+        # Meta APIからアカウント名を取得（アクセストークンがある場合）
+        account_names = {}
+        if current_user.meta_access_token:
+            try:
+                print(f"[Meta Accounts] Fetching account names from Meta API...")
+                async with httpx.AsyncClient() as client:
+                    # すべての広告アカウント情報を取得
+                    accounts_url = "https://graph.facebook.com/v24.0/me/adaccounts"
+                    accounts_params = {
+                        "access_token": current_user.meta_access_token,
+                        "fields": "account_id,id,name"
+                    }
+                    
+                    accounts_response = await client.get(accounts_url, params=accounts_params)
+                    accounts_response.raise_for_status()
+                    accounts_data = accounts_response.json()
+                    
+                    if "data" in accounts_data:
+                        for account in accounts_data["data"]:
+                            account_id = account.get("id")
+                            account_name = account.get("name", account_id)
+                            account_names[account_id] = account_name
+                    print(f"[Meta Accounts] Fetched {len(account_names)} account names from Meta API")
+            except Exception as e:
+                import traceback
+                print(f"[Meta Accounts] Error fetching account names: {str(e)}")
+                print(f"[Meta Accounts] Error details: {traceback.format_exc()}")
+                # エラーが発生しても続行（アカウントIDをそのまま使用）
+        
+        # レスポンスを作成
+        result = []
+        for account_id in account_ids:
+            result.append({
+                "id": account_id,
+                "name": account_names.get(account_id, account_id)
+            })
+        
+        return {"accounts": result}
+    except Exception as e:
+        import traceback
+        print(f"[Meta Accounts] Error: {str(e)}")
+        print(f"[Meta Accounts] Error details: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"アカウント取得エラー: {str(e)}")
+
+@router.get("/insights")
+async def get_meta_insights(
+    since: Optional[str] = None,
+    until: Optional[str] = None,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """ユーザーのMetaアカウント情報を使用してInsightsを取得"""
+    
+    # ユーザーのMetaアカウント情報を確認
+    if not current_user.meta_account_id or not current_user.meta_access_token:
+        raise HTTPException(
+            status_code=400,
+            detail="Metaアカウント情報が設定されていません。設定画面でMetaアカウント情報を登録してください。"
+        )
+    
+    # プランに応じた最大取得件数を取得
+    max_limit = get_max_adset_limit(current_user.plan)
+    
+    # デフォルトの日付範囲（最近37ヶ月間、未来の日付を避ける）
+    if not since:
+        until_dt = datetime.utcnow() - timedelta(days=1)
+        since_dt = until_dt - timedelta(days=1095)  # 37ヶ月
+        since = since_dt.strftime('%Y-%m-%d')
+    if not until:
+        until = (datetime.utcnow() - timedelta(days=1)).strftime('%Y-%m-%d')
                         
                         page_adsets = adsets_data.get('data', [])
                         campaign_adsets.extend(page_adsets)
@@ -898,10 +1083,6 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                     action_values = insight.get('action_values', [])
                     conversion_value = 0.0
                     
-                    # デバッグログ
-                    if debug_logging:
-                        print(f"[Meta API Debug] action_values: {action_values}")
-                    
                     if action_values:
                         # action_valuesが配列の場合
                         for av in action_values:
@@ -971,86 +1152,33 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                         print(f"  - conversions: {conversions}, conversion_value: {conversion_value}")
                         print(f"  - reach: {reach}, engagements: {engagements}, landing_page_views: {landing_page_views}")
                     
-                    # 既存のレコードをチェック（meta_account_idも含める）
-                    # データソースの優先順位: Meta APIデータ > CSVデータ
-                    # Meta APIデータは常に最新のデータで上書きする
-                    existing = db.query(Campaign).filter(
-                        Campaign.user_id == user.id,
-                        Campaign.date == campaign_date,
-                        Campaign.campaign_name == campaign_name,
-                        Campaign.ad_set_name == ad_set_name,
-                        Campaign.ad_name == ad_name
-                    ).first()
-                    
-                    # 既存レコードがあるが、meta_account_idが異なる場合は新規作成
-                    # （同じキャンペーン名でも、異なるアカウントのデータは別レコードとして扱う）
-                    if existing and existing.meta_account_id and existing.meta_account_id != account_id:
-                        existing = None  # 異なるアカウントのデータは別レコードとして扱う
-                    elif existing and not existing.meta_account_id:
-                        # CSVデータをMeta APIデータで上書き（Meta APIデータを優先）
-                        if saved_count < 3:
-                            print(f"[Meta API] Updating CSV data with Meta API data (Meta API takes priority)")
-                    
-                    if existing:
-                        # 更新
-                        # デバッグログ: 更新前後のデータを比較（最初の数件のみ）
-                        if saved_count < 3:
-                            print(f"[Meta API Debug] Updating existing record:")
-                            print(f"  Before: impressions={existing.impressions}, clicks={existing.clicks}, cost={existing.cost}")
-                            print(f"  Before: conversions={existing.conversions}, conversion_value={existing.conversion_value}")
-                            print(f"  Before: ad_set_name={existing.ad_set_name}, ad_name={existing.ad_name}")
-                            print(f"  After: impressions={impressions}, clicks={clicks}, cost={spend}")
-                            print(f"  After: conversions={conversions}, conversion_value={conversion_value}")
-                            print(f"  After: ad_set_name={ad_set_name}, ad_name={ad_name}")
-                        
-                        existing.upload_id = upload.id
-                        existing.meta_account_id = account_id
-                        existing.campaign_name = campaign_name  # キャンペーン名も更新（変更される可能性があるため）
-                        existing.ad_set_name = ad_set_name if ad_set_name else ''  # 広告セット名を更新
-                        existing.ad_name = ad_name if ad_name else ''  # 広告名を更新
-                        existing.cost = Decimal(str(spend))
-                        existing.impressions = impressions
-                        existing.clicks = clicks
-                        existing.conversions = conversions
-                        existing.conversion_value = Decimal(str(conversion_value))
-                        existing.reach = reach
-                        existing.engagements = engagements
-                        existing.link_clicks = link_clicks
-                        existing.landing_page_views = landing_page_views
-                        existing.ctr = Decimal(str(round(ctr, 2)))
-                        existing.cpc = Decimal(str(round(cpc, 2)))
-                        existing.cpm = Decimal(str(round(cpm, 2)))
-                        existing.cpa = Decimal(str(round(cpa, 2)))
-                        existing.cvr = Decimal(str(round(cvr, 2)))
-                        existing.roas = Decimal(str(round(roas, 2)))
-                    else:
-                        # 新規作成
-                        campaign = Campaign(
-                            user_id=user.id,
-                            upload_id=upload.id,
-                            meta_account_id=account_id,
-                            date=campaign_date,
-                            campaign_name=campaign_name,
-                            ad_set_name=ad_set_name,
-                            ad_name=ad_name,
-                            cost=Decimal(str(spend)),
-                            impressions=impressions,
-                            clicks=clicks,
-                            conversions=conversions,
-                            conversion_value=Decimal(str(conversion_value)),
-                            reach=reach,
-                            engagements=engagements,
-                            link_clicks=link_clicks,
-                            landing_page_views=landing_page_views,
-                            ctr=Decimal(str(round(ctr, 2))),
-                            cpc=Decimal(str(round(cpc, 2))),
-                            cpm=Decimal(str(round(cpm, 2))),
-                            cpa=Decimal(str(round(cpa, 2))),
-                            cvr=Decimal(str(round(cvr, 2))),
-                            roas=Decimal(str(round(roas, 2)))
-                        )
-                        db.add(campaign)
-                        saved_count += 1
+                    # 新規作成（既に同じ期間のデータは削除済み）
+                    campaign = Campaign(
+                        user_id=user.id,
+                        upload_id=upload.id,
+                        meta_account_id=account_id,
+                        date=campaign_date,
+                        campaign_name=campaign_name,
+                        ad_set_name=None,  # キャンペーンレベルのみ
+                        ad_name=None,  # キャンペーンレベルのみ
+                        cost=Decimal(str(spend)),
+                        impressions=impressions,
+                        clicks=clicks,
+                        conversions=conversions,
+                        conversion_value=Decimal(str(conversion_value)),
+                        reach=reach,
+                        engagements=engagements,
+                        link_clicks=link_clicks,
+                        landing_page_views=landing_page_views,
+                        ctr=Decimal(str(round(ctr, 2))),
+                        cpc=Decimal(str(round(cpc, 2))),
+                        cpm=Decimal(str(round(cpm, 2))),
+                        cpa=Decimal(str(round(cpa, 2))),
+                        cvr=Decimal(str(round(cvr, 2))),
+                        roas=Decimal(str(round(roas, 2)))
+                    )
+                    db.add(campaign)
+                    saved_count += 1
                 except Exception as e:
                     print(f"[Meta OAuth] Error processing insight: {str(e)}")
                     continue
@@ -1064,8 +1192,7 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                     upload.end_date = max(dates)
             
             db.commit()
-            print(f"[Meta OAuth] Saved {saved_count} campaign records")
-            print(f"[Meta OAuth] Breakdown: {campaign_level_count} campaign-level insights, {adset_level_count} adset-level insights, {ad_level_count} ad-level insights")
+            print(f"[Meta API] Saved {saved_count} campaign-level records")
     except Exception as e:
         db.rollback()
         raise

@@ -13,6 +13,87 @@ import json
 
 router = APIRouter()
 
+@router.get("/data/")
+async def get_campaign_data(
+    campaign_name: str = Query(..., description="キャンペーン名"),
+    start_date: str = Query(..., description="開始日 (YYYY-MM-DD)"),
+    end_date: str = Query(..., description="終了日 (YYYY-MM-DD)"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    シンプルなキャンペーンデータ取得API
+    指定されたキャンペーンと期間のデータを取得し、16項目の指標を返す
+    """
+    # 日付をdateオブジェクトに変換
+    try:
+        start = date.fromisoformat(start_date)
+        end = date.fromisoformat(end_date)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="日付形式が正しくありません。YYYY-MM-DD形式で指定してください。")
+    
+    # シンプルなクエリ: 指定されたキャンペーンと期間のデータを取得（キャンペーンレベルのみ）
+    records = db.query(Campaign).filter(
+        Campaign.user_id == current_user.id,
+        Campaign.campaign_name == campaign_name,
+        Campaign.date >= start,
+        Campaign.date <= end,
+        # キャンペーンレベルのみ（ad_set_nameとad_nameがNULL）
+        or_(
+            Campaign.ad_set_name == '',
+            Campaign.ad_set_name.is_(None)
+        ),
+        or_(
+            Campaign.ad_name == '',
+            Campaign.ad_name.is_(None)
+        )
+    ).all()
+    
+    # 合計を計算
+    total_impressions = sum(r.impressions or 0 for r in records)
+    total_reach = sum(r.reach or 0 for r in records)
+    total_clicks = sum(r.clicks or 0 for r in records)
+    total_spend = sum(float(r.cost or 0) for r in records)
+    total_conversions = sum(r.conversions or 0 for r in records)
+    total_conversion_value = sum(float(r.conversion_value or 0) for r in records)
+    total_engagements = sum(r.engagements or 0 for r in records)
+    total_landing_page_views = sum(r.landing_page_views or 0 for r in records)
+    
+    # 平均フリークエンシー
+    frequencies = [r.frequency or 0 for r in records if r.frequency]
+    avg_frequency = sum(frequencies) / len(frequencies) if frequencies else 0
+    
+    # 計算指標
+    ctr = (total_clicks / total_impressions * 100) if total_impressions > 0 else 0
+    cpc = (total_spend / total_clicks) if total_clicks > 0 else 0
+    cpa = (total_spend / total_conversions) if total_conversions > 0 else 0
+    cpm = (total_spend / total_impressions * 1000) if total_impressions > 0 else 0
+    cvr = (total_conversions / total_clicks * 100) if total_clicks > 0 else 0
+    roas = (total_conversion_value / total_spend) if total_spend > 0 else 0
+    engagement_rate = (total_engagements / total_impressions * 100) if total_impressions > 0 else 0
+    
+    return {
+        "campaign_name": campaign_name,
+        "start_date": start_date,
+        "end_date": end_date,
+        "impressions": total_impressions,
+        "reach": total_reach,
+        "frequency": round(avg_frequency, 2),
+        "clicks": total_clicks,
+        "ctr": round(ctr, 2),
+        "cpc": round(cpc, 2),
+        "spend": round(total_spend, 2),
+        "cpm": round(cpm, 2),
+        "conversions": total_conversions,
+        "cvr": round(cvr, 2),
+        "cpa": round(cpa, 2),
+        "conversion_value": round(total_conversion_value, 2),
+        "roas": round(roas, 2),
+        "engagements": total_engagements,
+        "engagement_rate": round(engagement_rate, 2),
+        "landing_page_views": total_landing_page_views
+    }
+
 @router.get("/debug/ads")
 def debug_ads(
     meta_account_id: Optional[str] = Query(None, description="Meta広告アカウントIDでフィルタリング"),
