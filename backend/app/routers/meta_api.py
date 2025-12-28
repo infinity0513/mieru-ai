@@ -258,6 +258,23 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
             
             print(f"[Meta API] Campaign-level insights retrieved: {len(all_insights)}")
             
+            # 数値の安全なパース関数（Noneや空文字列を0に変換）
+            def safe_float(value, default=0.0):
+                if value is None or value == '':
+                    return default
+                try:
+                    return float(value)
+                except (ValueError, TypeError):
+                    return default
+            
+            def safe_int(value, default=0):
+                if value is None or value == '':
+                    return default
+                try:
+                    return int(float(value))  # float経由で変換（文字列の数値も対応）
+                except (ValueError, TypeError):
+                    return default
+            
             # InsightsデータをCampaignテーブルに保存（キャンペーンレベルのみ）
             # 同じ期間の既存データを削除（重複を防ぐ）
             db.query(Campaign).filter(
@@ -276,6 +293,7 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                     # 日付を取得
                     date_str = insight.get('date_start')
                     if not date_str:
+                        print(f"[Meta API] WARNING: Skipping insight with no date_start: {insight}")
                         continue
                     campaign_date = datetime.strptime(date_str, '%Y-%m-%d').date()
                     
@@ -287,36 +305,43 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                     
                     # デバッグログ（最初の数件のみ）
                     if saved_count < 3:
-                        print(f"[Meta API] Saving campaign-level insight: campaign={campaign_name}, date={campaign_date}, spend={insight.get('spend', 0)}")
+                        print(f"[Meta API] Processing insight: campaign={campaign_name}, date={campaign_date}")
+                        print(f"  Raw data: spend={insight.get('spend')}, impressions={insight.get('impressions')}, clicks={insight.get('clicks')}, inline_link_clicks={insight.get('inline_link_clicks')}")
                     
-                    spend = float(insight.get('spend', 0))
-                    impressions = int(insight.get('impressions', 0))
-                    all_clicks = int(insight.get('clicks', 0))
-                    inline_link_clicks = int(insight.get('inline_link_clicks', 0))
-                    reach = int(insight.get('reach', 0))
+                    spend = safe_float(insight.get('spend'), 0.0)
+                    impressions = safe_int(insight.get('impressions'), 0)
+                    all_clicks = safe_int(insight.get('clicks'), 0)
+                    inline_link_clicks = safe_int(insight.get('inline_link_clicks'), 0)
+                    reach = safe_int(insight.get('reach'), 0)
+                    
+                    # デバッグログ（最初の数件のみ）
+                    if saved_count < 3:
+                        print(f"  Parsed: spend={spend}, impressions={impressions}, clicks={all_clicks}, inline_link_clicks={inline_link_clicks}, reach={reach}")
                     
                     # クリック数はinline_link_clicksを使用
                     clicks = inline_link_clicks if inline_link_clicks > 0 else all_clicks
                     link_clicks = inline_link_clicks if inline_link_clicks > 0 else all_clicks
                     
                     # エンゲージメント関連のデータを取得
-                    engagements = int(insight.get('engagements', 0))
+                    engagements = safe_int(insight.get('engagements'), 0)
                     if engagements == 0:
                         actions = insight.get('actions', [])
-                        for action in actions:
-                            if action.get('action_type') == 'post_engagement':
-                                engagements += int(action.get('value', 0))
+                        if actions:
+                            for action in actions:
+                                if action.get('action_type') == 'post_engagement':
+                                    engagements += safe_int(action.get('value'), 0)
                     
                     # landing_page_viewsはactionsから抽出
                     landing_page_views = 0
                     actions = insight.get('actions', [])
-                    for action in actions:
-                        if action.get('action_type') == 'landing_page_view':
-                            landing_page_views += int(action.get('value', 0))
+                    if actions:
+                        for action in actions:
+                            if action.get('action_type') == 'landing_page_view':
+                                landing_page_views += safe_int(action.get('value'), 0)
                     
-                    frequency = float(insight.get('frequency', 0))
+                    frequency = safe_float(insight.get('frequency'), 0.0)
                     if frequency == 0 and reach > 0:
-                        frequency = (impressions / reach) if reach > 0 else 0
+                        frequency = (impressions / reach) if reach > 0 else 0.0
                     
                     # conversionsとconversion_valueを取得
                     conversions_data = insight.get('conversions', [])
@@ -395,6 +420,10 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                     cvr = (conversions / clicks * 100) if clicks > 0 else 0
                     roas = (conversion_value / spend) if spend > 0 else 0
                     
+                    # デバッグログ（最初の数件のみ）
+                    if saved_count < 3:
+                        print(f"  Final values: spend={spend}, impressions={impressions}, clicks={clicks}, conversions={conversions}, reach={reach}")
+                    
                     # 新規作成（既に同じ期間のデータは削除済み）
                     campaign = Campaign(
                         user_id=user.id,
@@ -422,6 +451,10 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                     )
                     db.add(campaign)
                     saved_count += 1
+                    
+                    # デバッグログ（最初の数件のみ）
+                    if saved_count <= 3:
+                        print(f"  ✓ Saved campaign record #{saved_count}: {campaign_name} on {campaign_date}")
                 except Exception as e:
                     print(f"[Meta API] Error processing insight: {str(e)}")
                     continue
