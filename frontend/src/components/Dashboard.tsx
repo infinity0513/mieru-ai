@@ -1098,13 +1098,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
       // 広告セットレベルのデータ（ad_nameが空）と広告レベルのデータ（ad_nameが存在）の両方を含める
       filtered = filtered.filter(d => d.ad_set_name === selectedAdSet);
     } else if (selectedCampaign) {
-      // 広告セットが「全体」の場合、キャンペーンレベルのデータと広告セットレベルのデータを除外
-      // 広告レベルのデータのみを表示（ad_nameが存在し、ad_set_nameも存在する）
+      // 広告セットが「全体」の場合、キャンペーンレベルのデータを表示
+      // キャンペーンレベルのデータ: ad_set_nameとad_nameがNULLまたは空
       filtered = filtered.filter(d => 
-        d.ad_name && 
-        d.ad_name.trim() !== '' && 
-        d.ad_set_name && 
-        d.ad_set_name.trim() !== ''
+        (!d.ad_set_name || d.ad_set_name.trim() === '') && 
+        (!d.ad_name || d.ad_name.trim() === '')
       );
     }
     
