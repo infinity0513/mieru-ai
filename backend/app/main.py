@@ -123,6 +123,10 @@ app.include_router(notifications.router, prefix="/api/notifications", tags=["not
 # Meta API router
 from .routers import meta_api
 app.include_router(meta_api.router, prefix="/api/meta", tags=["meta"])
+
+# Debug router (for data source analysis)
+from .routers import debug_data_source
+app.include_router(debug_data_source.router, prefix="/api/debug", tags=["debug"])
 # app.include_router(teams.router, prefix="/api/teams", tags=["teams"])  # Temporarily disabled
 
 @app.get("/")
