@@ -7,7 +7,6 @@ from datetime import datetime, timedelta
 from ..models.user import User
 from ..models.campaign import Campaign, Upload
 from ..utils.dependencies import get_current_user
-from ..utils.plan_limits import get_max_adset_limit
 from ..database import get_db
 from ..config import settings
 import httpx
@@ -74,7 +73,6 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
     try:
         async with httpx.AsyncClient() as client:
             all_insights = []
-            all_adsets = []
             all_campaigns = []
             
             # キャンペーン一覧を取得（ページネーション対応）
@@ -507,154 +505,6 @@ async def get_meta_accounts(
         print(f"[Meta Accounts] Error details: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"アカウント取得エラー: {str(e)}")
 
-@router.get("/insights")
-async def get_meta_insights(
-    since: Optional[str] = None,
-    until: Optional[str] = None,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """ユーザーのMetaアカウント情報を使用してInsightsを取得"""
-    
-    # ユーザーのMetaアカウント情報を確認
-    if not current_user.meta_account_id or not current_user.meta_access_token:
-        raise HTTPException(
-            status_code=400,
-            detail="Metaアカウント情報が設定されていません。設定画面でMetaアカウント情報を登録してください。"
-        )
-    
-    # プランに応じた最大取得件数を取得
-    max_limit = get_max_adset_limit(current_user.plan)
-    
-    # デフォルトの日付範囲（最近37ヶ月間、未来の日付を避ける）
-    if not since:
-        until_dt = datetime.utcnow() - timedelta(days=1)
-        since_dt = until_dt - timedelta(days=1095)  # 37ヶ月
-        since = since_dt.strftime('%Y-%m-%d')
-    if not until:
-        until = (datetime.utcnow() - timedelta(days=1)).strftime('%Y-%m-%d')
-    
-    # Meta APIの期間制限を確認
-    # - Reachフィールドを使用しているが、Breakdownは使用していないため、37ヶ月（1,095日）が可能
-    insights_fields = "adset_id,adset_name,ad_id,ad_name,campaign_id,campaign_name,date_start,date_stop,spend,impressions,clicks,conversions,reach,actions"
-    has_reach_insights = "reach" in insights_fields.lower()
-    has_breakdowns_insights = False  # 現在の実装ではbreakdownsパラメータを使用していない
-    
-    if has_reach_insights and has_breakdowns_insights:
-        max_days_insights = 394  # 13ヶ月
-        print(f"[Meta API] /insights endpoint: Reach with breakdowns detected - limiting to 13 months")
-    else:
-        max_days_insights = 1095  # 37ヶ月
-        print(f"[Meta API] /insights endpoint: Standard limit - 37 months")
-        print(f"[Meta API] Fields requested: {insights_fields}")
-        print(f"[Meta API] Has reach: {has_reach_insights}, Has breakdowns: {has_breakdowns_insights}")
-    
-    # 期間を制限（37ヶ月または13ヶ月）
-    try:
-        until_dt = datetime.strptime(until, '%Y-%m-%d')
-        since_dt = datetime.strptime(since, '%Y-%m-%d')
-        
-        if (until_dt - since_dt).days > max_days_insights:
-            since_dt = until_dt - timedelta(days=max_days_insights)
-            since = since_dt.strftime('%Y-%m-%d')
-            print(f"[Meta API] Date range limited to {max_days_insights} days: {since} to {until}")
-    except Exception as e:
-        print(f"[Meta API] Error parsing dates: {e}")
-        # デフォルトで最近37ヶ月間
-        until_dt = datetime.utcnow() - timedelta(days=1)
-        since_dt = until_dt - timedelta(days=1095)  # 37ヶ月
-        since = since_dt.strftime('%Y-%m-%d')
-        until = until_dt.strftime('%Y-%m-%d')
-    
-    # Meta Graph APIを呼び出し
-    account_id = current_user.meta_account_id
-    access_token = current_user.meta_access_token
-    
-    try:
-        async with httpx.AsyncClient() as client:
-            all_insights = []
-            all_adsets = []
-            
-            # 広告セット一覧を取得（ページネーション処理）
-            adsets_url = f"https://graph.facebook.com/v18.0/{account_id}/adsets"
-            adsets_params = {
-                "access_token": access_token,
-                "fields": "id,name,campaign_id",
-                "limit": max_limit
-            }
-            
-            page_count = 0
-            while True:
-                page_count += 1
-                try:
-                    adsets_response = await client.get(adsets_url, params=adsets_params)
-                    adsets_response.raise_for_status()
-                    adsets_data = adsets_response.json()
-                    
-                    page_adsets = adsets_data.get('data', [])
-                    all_adsets.extend(page_adsets)
-                    
-                    paging = adsets_data.get('paging', {})
-                    next_url = paging.get('next')
-                    if not next_url:
-                        break
-                    adsets_url = next_url
-                    adsets_params = {}
-                except httpx.HTTPStatusError as e:
-                    print(f"[Meta API] HTTP Error: {e.response.status_code}")
-                    break
-                except Exception as e:
-                    print(f"[Meta API] Exception: {str(e)}")
-                    break
-            
-            # 広告セットごとにInsightsを取得
-            time_range = json.dumps({"since": since, "until": until}, separators=(',', ':'))
-            
-            for adset in all_adsets:
-                adset_id = adset['id']
-                insights_url = f"https://graph.facebook.com/v18.0/{adset_id}/insights"
-                insights_params = {
-                    "access_token": access_token,
-                    "fields": insights_fields,
-                    "time_range": time_range,
-                    "limit": 100
-                }
-                
-                try:
-                    insights_response = await client.get(insights_url, params=insights_params)
-                    insights_response.raise_for_status()
-                    insights_data = insights_response.json()
-                    page_insights = insights_data.get('data', [])
-                    all_insights.extend(page_insights)
-                    
-                    # ページネーション処理
-                    paging = insights_data.get('paging', {})
-                    while 'next' in paging:
-                        next_url = paging['next']
-                        next_response = await client.get(next_url)
-                        next_response.raise_for_status()
-                        next_data = next_response.json()
-                        next_insights = next_data.get('data', [])
-                        all_insights.extend(next_insights)
-                        paging = next_data.get('paging', {})
-                except Exception as e:
-                    print(f"[Meta API] Error fetching insights for adset {adset_id}: {str(e)}")
-                    continue
-            
-            return {
-                "insights": all_insights,
-                "total": len(all_insights),
-                "period": {
-                    "since": since,
-                    "until": until
-                }
-            }
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Insights取得エラー: {str(e)}"
-        )
-
 @router.get("/accounts/")
 async def get_meta_accounts(
     current_user: User = Depends(get_current_user),
@@ -775,7 +625,7 @@ async def get_meta_insights(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """ユーザーのMetaアカウント情報を使用してInsightsを取得"""
+    """ユーザーのMetaアカウント情報を使用してキャンペーンレベルのInsightsを取得（広告セット・広告レベルは取得しない）"""
     
     # ユーザーのMetaアカウント情報を確認
     if not current_user.meta_account_id or not current_user.meta_access_token:
@@ -783,9 +633,6 @@ async def get_meta_insights(
             status_code=400,
             detail="Metaアカウント情報が設定されていません。設定画面でMetaアカウント情報を登録してください。"
         )
-    
-    # プランに応じた最大取得件数を取得
-    max_limit = get_max_adset_limit(current_user.plan)
     
     # デフォルトの日付範囲（最近37ヶ月間、未来の日付を避ける）
     if not since:
@@ -796,29 +643,26 @@ async def get_meta_insights(
         until = (datetime.utcnow() - timedelta(days=1)).strftime('%Y-%m-%d')
     
     # Meta APIの期間制限を確認
-    # - Reachフィールドを使用しているが、Breakdownは使用していないため、37ヶ月（1,095日）が可能
-    insights_fields = "adset_id,adset_name,ad_id,ad_name,campaign_id,campaign_name,date_start,date_stop,spend,impressions,clicks,conversions,reach,actions"
-    has_reach_insights = "reach" in insights_fields.lower()
-    has_breakdowns_insights = False  # 現在の実装ではbreakdownsパラメータを使用していない
+    campaign_fields = "campaign_id,campaign_name,date_start,spend,impressions,clicks,inline_link_clicks,reach,actions,conversions,action_values,frequency"
+    has_reach = "reach" in campaign_fields.lower()
+    has_breakdowns = False  # 現在の実装ではbreakdownsパラメータを使用していない
     
-    if has_reach_insights and has_breakdowns_insights:
-        max_days_insights = 394  # 13ヶ月
+    if has_reach and has_breakdowns:
+        max_days = 394  # 13ヶ月
         print(f"[Meta API] /insights endpoint: Reach with breakdowns detected - limiting to 13 months")
     else:
-        max_days_insights = 1095  # 37ヶ月
+        max_days = 1095  # 37ヶ月
         print(f"[Meta API] /insights endpoint: Standard limit - 37 months")
-        print(f"[Meta API] Fields requested: {insights_fields}")
-        print(f"[Meta API] Has reach: {has_reach_insights}, Has breakdowns: {has_breakdowns_insights}")
     
     # 期間を制限（37ヶ月または13ヶ月）
     try:
         until_dt = datetime.strptime(until, '%Y-%m-%d')
         since_dt = datetime.strptime(since, '%Y-%m-%d')
         
-        if (until_dt - since_dt).days > max_days_insights:
-            since_dt = until_dt - timedelta(days=max_days_insights)
+        if (until_dt - since_dt).days > max_days:
+            since_dt = until_dt - timedelta(days=max_days)
             since = since_dt.strftime('%Y-%m-%d')
-            print(f"[Meta API] Date range limited to {max_days_insights} days: {since} to {until}")
+            print(f"[Meta API] Date range limited to {max_days} days: {since} to {until}")
     except Exception as e:
         print(f"[Meta API] Error parsing dates: {e}")
         # デフォルトで最近37ヶ月間
@@ -827,57 +671,49 @@ async def get_meta_insights(
         since = since_dt.strftime('%Y-%m-%d')
         until = until_dt.strftime('%Y-%m-%d')
     
-    # Meta Graph APIを呼び出し
+    # Meta Graph APIを呼び出し（キャンペーンレベルのみ）
     account_id = current_user.meta_account_id
     access_token = current_user.meta_access_token
     
     try:
         async with httpx.AsyncClient() as client:
             all_insights = []
-            all_adsets = []
             
-            # 広告セット一覧を取得（ページネーション処理）
-            adsets_url = f"https://graph.facebook.com/v18.0/{account_id}/adsets"
-            adsets_params = {
+            # キャンペーン一覧を取得
+            campaigns_url = f"https://graph.facebook.com/v24.0/{account_id}/campaigns"
+            campaigns_params = {
                 "access_token": access_token,
-                "fields": "id,name,campaign_id",
-                "limit": max_limit
+                "fields": "id,name",
+                "limit": 100
             }
             
-            page_count = 0
+            all_campaigns = []
             while True:
-                page_count += 1
-                try:
-                    adsets_response = await client.get(adsets_url, params=adsets_params)
-                    adsets_response.raise_for_status()
-                    adsets_data = adsets_response.json()
-                    
-                    page_adsets = adsets_data.get('data', [])
-                    all_adsets.extend(page_adsets)
-                    
-                    paging = adsets_data.get('paging', {})
-                    next_url = paging.get('next')
-                    if not next_url:
-                        break
-                    adsets_url = next_url
-                    adsets_params = {}
-                except httpx.HTTPStatusError as e:
-                    print(f"[Meta API] HTTP Error: {e.response.status_code}")
+                campaigns_response = await client.get(campaigns_url, params=campaigns_params)
+                campaigns_response.raise_for_status()
+                campaigns_data = campaigns_response.json()
+                page_campaigns = campaigns_data.get('data', [])
+                all_campaigns.extend(page_campaigns)
+                
+                paging = campaigns_data.get('paging', {})
+                next_url = paging.get('next')
+                if not next_url:
                     break
-                except Exception as e:
-                    print(f"[Meta API] Exception: {str(e)}")
-                    break
+                campaigns_url = next_url
+                campaigns_params = {}
             
-            # 広告セットごとにInsightsを取得
-            time_range = json.dumps({"since": since, "until": until}, separators=(',', ':'))
+            # 各キャンペーンのInsightsを取得（キャンペーンレベルのみ）
+            time_range_dict = {"since": since, "until": until}
+            time_range_json = json.dumps(time_range_dict, separators=(',', ':'))
             
-            for adset in all_adsets:
-                adset_id = adset['id']
-                insights_url = f"https://graph.facebook.com/v18.0/{adset_id}/insights"
+            for campaign in all_campaigns:
+                campaign_id = campaign['id']
+                insights_url = f"https://graph.facebook.com/v24.0/{campaign_id}/insights"
                 insights_params = {
                     "access_token": access_token,
-                    "fields": insights_fields,
-                    "time_range": time_range,
+                    "fields": campaign_fields,
+                    "time_range": time_range_json,
+                    "level": "campaign",
                     "limit": 100
                 }
                 
@@ -899,7 +735,7 @@ async def get_meta_insights(
                         all_insights.extend(next_insights)
                         paging = next_data.get('paging', {})
                 except Exception as e:
-                    print(f"[Meta API] Error fetching insights for adset {adset_id}: {str(e)}")
+                    print(f"[Meta API] Error fetching insights for campaign {campaign_id}: {str(e)}")
                     continue
             
             return {
