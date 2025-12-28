@@ -1081,7 +1081,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     return uniqueAdNames.sort();
   }, [selectedCampaign, selectedAdSet, apiData]);
 
-  // Filter Data - パフォーマンス最適化版（KPIカード用：日付範囲 + キャンペーン + 広告セット + 広告）
+  // Filter Data - シンプル版（重複排除付き）
   const filteredData = useMemo(() => {
     if (dateFilteredData.length === 0) return [];
     
@@ -1095,7 +1095,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     // 広告セットフィルタ
     if (selectedAdSet) {
       // 広告セットが選択されている場合、その広告セットのデータのみを表示
-      // 広告セットレベルのデータ（ad_nameが空）と広告レベルのデータ（ad_nameが存在）の両方を含める
       filtered = filtered.filter(d => d.ad_set_name === selectedAdSet);
     } else if (selectedCampaign) {
       // 広告セットが「全体」の場合、キャンペーンレベルのデータを表示
@@ -1110,24 +1109,45 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     if (selectedAd) {
       // 広告が選択されている場合、その広告のデータのみを表示
       filtered = filtered.filter(d => d.ad_name === selectedAd);
-    } else if (selectedAdSet === null && selectedCampaign) {
-      // 広告が「全体」で、広告セットも「全体」の場合、広告レベルのデータをすべて表示（既にフィルタリング済み）
-      // 追加のフィルタリングは不要
     }
     
+    // 重複排除: 同じcampaign_name, date, meta_account_idの組み合わせで最新の1件のみを使用
+    const deduplicatedMap = new Map<string, CampaignData>();
+    filtered.forEach(d => {
+      // meta_account_idが存在する場合はそれも含める、なければcampaign_nameとdateのみ
+      const key = d.meta_account_id 
+        ? `${d.campaign_name}_${d.date}_${d.meta_account_id}_${d.ad_set_name || ''}_${d.ad_name || ''}`
+        : `${d.campaign_name}_${d.date}_${d.ad_set_name || ''}_${d.ad_name || ''}`;
+      
+      const existing = deduplicatedMap.get(key);
+      if (!existing) {
+        deduplicatedMap.set(key, d);
+      } else {
+        // 既存のレコードがある場合、created_atが新しい方を優先（または単に最初のものを保持）
+        // シンプルに最初のものを保持
+      }
+    });
+    
+    const deduplicated = Array.from(deduplicatedMap.values());
+    
     console.log('[Dashboard] filteredData:', {
-      total: filtered.length,
+      before: filtered.length,
+      after: deduplicated.length,
       selectedCampaign,
       selectedAdSet,
       selectedAd,
-      sample: filtered.slice(0, 3).map(d => ({
+      sample: deduplicated.slice(0, 3).map(d => ({
         campaign: d.campaign_name,
+        date: d.date,
         adset: d.ad_set_name || '(empty)',
-        ad: d.ad_name || '(empty)'
+        ad: d.ad_name || '(empty)',
+        impressions: d.impressions,
+        clicks: d.clicks,
+        cost: d.cost
       }))
     });
     
-    return filtered;
+    return deduplicated;
   }, [dateFilteredData, selectedCampaign, selectedAdSet, selectedAd]);
 
   // Aggregate for KPI Cards - 常にfilteredDataから計算（AnomalyDetectorと整合性を保つため）
@@ -1276,54 +1296,55 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
       date: d.date
     })));
     
+    // キャンペーンレベルのデータのみを集計（シンプルに）
     const stats: { [key: string]: CampaignData } = {};
+    
+    // 重複排除: 同じcampaign_name, date, meta_account_idの組み合わせで1件のみ
+    const seenKeys = new Set<string>();
+    
     filteredData.forEach(d => {
-      // 広告レベルのデータは個別に表示（ad_nameが存在する場合）
-      // 広告セットレベルのデータも個別に表示（ad_set_nameが存在し、ad_nameが存在しない場合）
-      // キャンペーンレベルのデータはキャンペーン名で集計
-      const hasAdName = d.ad_name && d.ad_name.trim() !== '';
-      const hasAdSetName = d.ad_set_name && d.ad_set_name.trim() !== '';
-      
-      let key: string;
-      // 広告が「全体」の場合、広告レベルのデータを集計して表示
-      if (selectedAd === null && hasAdName) {
-        // 広告が「全体」の場合: 広告セットごとに集計（広告セットが選択されている場合）
-        // または、キャンペーン全体で集計（広告セットも「全体」の場合）
-        if (selectedAdSet) {
-          // 広告セットが選択されている場合: その広告セットのすべての広告を集計
-          key = `${d.campaign_name}_${d.ad_set_name || ''}_全体`;
-        } else {
-          // 広告セットも「全体」の場合: キャンペーンのすべての広告を集計
-          key = `${d.campaign_name}_全体_全体`;
+      // キャンペーンレベルのデータのみを処理（ad_set_nameとad_nameがNULLまたは空）
+      if ((!d.ad_set_name || d.ad_set_name.trim() === '') && 
+          (!d.ad_name || d.ad_name.trim() === '')) {
+        const dedupKey = d.meta_account_id 
+          ? `${d.campaign_name}_${d.date}_${d.meta_account_id}`
+          : `${d.campaign_name}_${d.date}`;
+        
+        // 重複チェック
+        if (seenKeys.has(dedupKey)) {
+          return; // 既に処理済みのレコードはスキップ
         }
-      } else if (hasAdName) {
-        // 広告が選択されている場合: キャンペーン+広告セット+広告でグループ化
-        key = `${d.campaign_name}_${d.ad_set_name || ''}_${d.ad_name}`;
-      } else if (hasAdSetName) {
-        // 広告セットレベルのデータ: キャンペーン+広告セットでグループ化
-        key = `${d.campaign_name}_${d.ad_set_name}`;
-      } else {
-        // キャンペーンレベルのデータ: キャンペーン名でグループ化
-        key = d.campaign_name;
+        seenKeys.add(dedupKey);
+        
+        const key = d.campaign_name;
+        
+        if (!stats[key]) {
+          stats[key] = { 
+            ...d, 
+            impressions: 0, 
+            clicks: 0, 
+            cost: 0, 
+            conversions: 0, 
+            conversion_value: 0,
+            reach: 0,
+            engagements: 0,
+            link_clicks: 0,
+            landing_page_views: 0,
+            ad_set_name: '',
+            ad_name: ''
+          };
+        }
+        // 日付ごとに合算（同じキャンペーンの異なる日付のデータを合算）
+        stats[key].impressions += d.impressions || 0;
+        stats[key].clicks += d.clicks || 0;
+        stats[key].cost += d.cost || 0;
+        stats[key].conversions += d.conversions || 0;
+        stats[key].conversion_value += d.conversion_value || 0;
+        stats[key].reach += d.reach || 0;
+        stats[key].engagements += d.engagements || 0;
+        stats[key].link_clicks += d.link_clicks || 0;
+        stats[key].landing_page_views += d.landing_page_views || 0;
       }
-      
-      if (!stats[key]) {
-        stats[key] = { 
-          ...d, 
-          impressions: 0, 
-          clicks: 0, 
-          cost: 0, 
-          conversions: 0, 
-          conversion_value: 0,
-          ad_set_name: d.ad_set_name || '',
-          ad_name: d.ad_name || ''
-        };
-      }
-      stats[key].impressions += d.impressions;
-      stats[key].clicks += d.clicks;
-      stats[key].cost += d.cost;
-      stats[key].conversions += d.conversions;
-      stats[key].conversion_value += d.conversion_value;
     });
 
     const statsArray = Object.values(stats);

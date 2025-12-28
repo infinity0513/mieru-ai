@@ -287,6 +287,8 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
             ).delete()
             
             saved_count = 0
+            # 重複チェック用のセット（campaign_name, date, meta_account_idの組み合わせ）
+            seen_records = set()
             
             for insight in all_insights:
                 try:
@@ -423,6 +425,13 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                     # デバッグログ（最初の数件のみ）
                     if saved_count < 3:
                         print(f"  Final values: spend={spend}, impressions={impressions}, clicks={clicks}, conversions={conversions}, reach={reach}")
+                    
+                    # 重複チェック（同じcampaign_name, date, meta_account_idの組み合わせは1件のみ）
+                    record_key = (campaign_name, campaign_date, account_id)
+                    if record_key in seen_records:
+                        print(f"[Meta API] WARNING: Duplicate record skipped: {campaign_name} on {campaign_date}")
+                        continue
+                    seen_records.add(record_key)
                     
                     # 新規作成（既に同じ期間のデータは削除済み）
                     campaign = Campaign(
