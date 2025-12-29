@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     # Security
     SECRET_KEY: str = "your-secret-key-change-in-production"
     ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 720  # 12時間
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
     
     # OpenAI
@@ -91,5 +91,6 @@ class Settings(BaseSettings):
     
     class Config:
         env_file = ".env"
+        extra = "ignore"  # 未定義の環境変数を無視
 
 settings = Settings()

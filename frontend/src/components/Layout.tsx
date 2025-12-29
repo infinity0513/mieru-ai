@@ -196,20 +196,21 @@ export const Layout: React.FC<LayoutProps> = ({
   }, [user]);
   
   // Load notifications on mount and when user changes
+  // 通知はユーザーのアクション（分析実行、ファイルアップロード）が完了したときに作成されるため、
+  // 頻繁に取得する必要はない。通知ドロップダウンを開いたときだけ取得する
   useEffect(() => {
-    loadNotifications();
+    if (!user) return;
     
-    // Refresh notifications every 30 seconds
-    const interval = setInterval(loadNotifications, 30000);
-    return () => clearInterval(interval);
-  }, [loadNotifications]);
+    // 初回のみ取得
+    loadNotifications();
+  }, [user]);
   
-  // Also reload notifications when notification dropdown is opened
+  // 通知ドロップダウンを開いたときだけ取得
   useEffect(() => {
-    if (showNotifications) {
+    if (showNotifications && user) {
       loadNotifications();
     }
-  }, [showNotifications, loadNotifications]);
+  }, [showNotifications, user]);
 
   // Calculate unread count from notifications
   const unreadCount = notifications.filter(n => !n.isRead).length;

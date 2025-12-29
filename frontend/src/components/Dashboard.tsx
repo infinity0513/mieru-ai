@@ -397,6 +397,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
   const [summaryData, setSummaryData] = useState<any>(null);
   const [trendsData, setTrendsData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  
+  // データ取得のキャッシュキー（同じパラメータの場合は再取得しない）
+  // useRefを使用して、再レンダリングをトリガーせずにキャッシュキーを管理
+  const lastFetchParamsRef = React.useRef<{
+    start: string;
+    end: string;
+    metaAccountId: string | null;
+  } | null>(null);
 
   // Initialize date range - localStorageから復元、なければデータの全期間
   const [dateRange, setDateRange] = useState<{start: string, end: string}>(() => {
@@ -483,9 +491,42 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
   const [selectedCampaignName, setSelectedCampaignName] = useState<string | null>(null);
 
   // Meta Account (Asset) Selection
-  const [metaAccounts, setMetaAccounts] = useState<Array<{ account_id: string; name: string; data_count: number; campaign_count?: number; latest_date: string | null }>>([]);
+  // localStorageからキャッシュを読み込む（再マウント時も再利用）
+  const [metaAccounts, setMetaAccounts] = useState<Array<{ account_id: string; name: string; data_count: number; campaign_count?: number; latest_date: string | null }>>(() => {
+    try {
+      const cached = localStorage.getItem('dashboard_metaAccounts');
+      const cacheTime = localStorage.getItem('dashboard_metaAccounts_time');
+      if (cached && cacheTime) {
+        const age = Date.now() - parseInt(cacheTime);
+        // キャッシュが1時間以内の場合は使用
+        if (age < 3600000) {
+          const parsed = JSON.parse(cached);
+          console.log('[Dashboard] Meta accounts loaded from cache');
+          return parsed;
+        }
+      }
+    } catch (e) {
+      // 無視
+    }
+    return [];
+  });
   const [metaAccountsError, setMetaAccountsError] = useState<string | null>(null);
-  const [metaAccountsLoading, setMetaAccountsLoading] = useState(true);
+  const [metaAccountsLoading, setMetaAccountsLoading] = useState(() => {
+    // キャッシュが有効な場合はローディング不要
+    try {
+      const cached = localStorage.getItem('dashboard_metaAccounts');
+      const cacheTime = localStorage.getItem('dashboard_metaAccounts_time');
+      if (cached && cacheTime) {
+        const age = Date.now() - parseInt(cacheTime);
+        if (age < 3600000) {
+          return false;
+        }
+      }
+    } catch (e) {
+      // 無視
+    }
+    return true;
+  });
   const [selectedMetaAccountId, setSelectedMetaAccountId] = useState<string | null>(() => {
     // localStorageから選択されたアセットIDを復元
     try {
@@ -498,9 +539,24 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     }
     return null; // nullの場合は全アセット表示
   });
-
+  
   // Load Meta Accounts list
   useEffect(() => {
+    // キャッシュが有効な場合は再取得しない
+    try {
+      const cached = localStorage.getItem('dashboard_metaAccounts');
+      const cacheTime = localStorage.getItem('dashboard_metaAccounts_time');
+      if (cached && cacheTime) {
+        const age = Date.now() - parseInt(cacheTime);
+        if (age < 3600000) {
+          console.log('[Dashboard] Meta accounts cache is valid, skipping fetch');
+          return;
+        }
+      }
+    } catch (e) {
+      // 無視して続行
+    }
+    
     console.log('[Dashboard] useEffect for loadMetaAccounts triggered');
     const loadMetaAccounts = async () => {
       setMetaAccountsLoading(true);
@@ -511,10 +567,16 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
         console.log('[Dashboard] Api.getMetaAccounts() completed, accounts count:', result.accounts?.length || 0);
         setMetaAccounts(result.accounts || []);
         setMetaAccountsError(null);
+        // localStorageにキャッシュを保存
+        try {
+          localStorage.setItem('dashboard_metaAccounts', JSON.stringify(result.accounts || []));
+          localStorage.setItem('dashboard_metaAccounts_time', Date.now().toString());
+        } catch (e) {
+          console.error('[Dashboard] Failed to cache meta accounts:', e);
+        }
       } catch (error: any) {
         console.error('[Dashboard] Failed to load Meta accounts:', error);
         setMetaAccountsError(error?.message || 'アセット情報の取得に失敗しました');
-        // エラー時も空配列を設定（アセット選択セクションは表示されるが、エラーメッセージを表示）
         setMetaAccounts([]);
       } finally {
         setMetaAccountsLoading(false);
@@ -522,11 +584,33 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     };
     
     loadMetaAccounts();
+    // 依存配列を空にして、初回マウント時のみ実行
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Load dashboard data from API
   useEffect(() => {
     const loadDashboardData = async () => {
+      const metaAccountParam = selectedMetaAccountId || null;
+      const currentParams = {
+        start: dateRange.start,
+        end: dateRange.end,
+        metaAccountId: metaAccountParam
+      };
+      
+      // キャッシュチェック: 同じパラメータで既にデータが取得されている場合は再取得しない
+      if (lastFetchParamsRef.current && 
+          lastFetchParamsRef.current.start === currentParams.start &&
+          lastFetchParamsRef.current.end === currentParams.end &&
+          lastFetchParamsRef.current.metaAccountId === currentParams.metaAccountId &&
+          apiData.length > 0 && 
+          summaryData !== null && 
+          trendsData !== null) {
+        console.log('[Dashboard] Data already loaded with same params, skipping fetch');
+        setLoading(false);
+        return;
+      }
+      
       setLoading(true);
       console.log('[Dashboard] ===== Loading data =====');
       console.log('[Dashboard] Loading data with params:', {
@@ -535,7 +619,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
         selectedMetaAccountId: selectedMetaAccountId,
         hasPropData: !!(propData && propData.length > 0),
         propDataLength: propData?.length || 0,
-        currentApiDataLength: apiData?.length || 0
+        currentApiDataLength: apiData?.length || 0,
+        lastFetchParams: lastFetchParamsRef.current
       });
       
       try {
@@ -544,14 +629,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
         console.log('[Dashboard] Calling APIs with metaAccountId:', metaAccountParam);
         console.log('[Dashboard] API URLs will be called with meta_account_id:', metaAccountParam);
         
-        // 3つのAPIを並行して呼び出し
-        const [summaryResult, trendsResult, campaignsResult, adSetsResult, adsResult, allCampaignsResult] = await Promise.allSettled([
+        // 必要なAPIのみを並行して呼び出し（パフォーマンス改善）
+        // metaAccountParamがない場合は、adSetsとadsは不要なので呼び出さない
+        const [summaryResult, trendsResult, campaignsResult, allCampaignsResult, adSetsResult, adsResult] = await Promise.allSettled([
           Api.getCampaignSummary(dateRange.start, dateRange.end, metaAccountParam),
           Api.getCampaignTrends(dateRange.start, dateRange.end, 'day', metaAccountParam),
           metaAccountParam ? Api.fetchCampaignData(metaAccountParam, dateRange.start, dateRange.end) : Promise.resolve([]), // Get campaign-level data with date range filter
-          metaAccountParam ? Api.getAdSets({ meta_account_id: metaAccountParam, start_date: dateRange.start, end_date: dateRange.end }) : Promise.resolve([]), // Get ad set-level data
-          metaAccountParam ? Api.getAds({ meta_account_id: metaAccountParam, start_date: dateRange.start, end_date: dateRange.end }) : Promise.resolve([]), // Get ad-level data
-          Api.fetchCampaignData(metaAccountParam) // Get all data without date range filter (for campaign/ad set/ad lists)
+          Api.fetchCampaignData(metaAccountParam), // Get all data without date range filter (for campaign/ad set/ad lists)
+          metaAccountParam ? Api.getAdSets({ meta_account_id: metaAccountParam, start_date: dateRange.start, end_date: dateRange.end }) : Promise.resolve([]), // Get ad set-level data (only if metaAccountParam exists)
+          metaAccountParam ? Api.getAds({ meta_account_id: metaAccountParam, start_date: dateRange.start, end_date: dateRange.end }) : Promise.resolve([]) // Get ad-level data (only if metaAccountParam exists)
         ]);
         
         // Summary data
@@ -761,6 +847,16 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
           console.warn('[Dashboard] Failed to load all campaigns, using combined data as fallback');
           setAllApiData(combinedData); // Fallback to combined data
         }
+        
+        // データ取得成功時にキャッシュキーを更新
+        if (combinedData.length > 0 || summaryData !== null || trendsData !== null) {
+          lastFetchParamsRef.current = {
+            start: dateRange.start,
+            end: dateRange.end,
+            metaAccountId: metaAccountParam
+          };
+          console.log('[Dashboard] Cache key updated after successful fetch:', lastFetchParamsRef.current);
+        }
       } catch (error) {
         console.error('[Dashboard] Error loading dashboard data:', error);
         // エラー時も、アセットが選択されている場合は空配列を設定
@@ -871,11 +967,36 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
 
   // 利用可能なキャンペーン一覧を取得
   const availableCampaigns = useMemo(() => {
-    // dataが既にアセットでフィルタリングされている場合は、そのまま使用
-    // dataが空の場合は、propDataから取得を試みる（アセットが選択されていない場合のみ）
-    let sourceData = data;
-    if ((!data || data.length === 0) && !selectedMetaAccountId && propData && propData.length > 0) {
-      sourceData = propData;
+    // アセットが選択されている場合は、allApiDataを使用（日付範囲でフィルタリングされていない全データ）
+    // アセットが選択されていない場合は、dataまたはpropDataを使用
+    let sourceData: CampaignData[];
+    
+    if (selectedMetaAccountId) {
+      // アセットが選択されている場合: allApiDataを使用（アセットでフィルタリング済み、日付範囲でフィルタリングされていない）
+      if (allApiData && allApiData.length > 0) {
+        sourceData = allApiData;
+        console.log('[Dashboard] Using allApiData for campaigns (asset selected):', allApiData.length, 'records');
+      } else if (apiData && apiData.length > 0) {
+        // allApiDataが空の場合は、apiDataを使用（日付範囲でフィルタリングされているが、キャンペーン一覧は取得可能）
+        sourceData = apiData;
+        console.log('[Dashboard] Using apiData for campaigns (allApiData empty):', apiData.length, 'records');
+      } else {
+        // apiDataも空の場合は、propDataから取得を試みる（CSVデータの場合）
+        sourceData = (propData && propData.length > 0) ? propData : [];
+        console.log('[Dashboard] Using propData for campaigns (apiData empty):', sourceData.length, 'records');
+      }
+    } else {
+      // アセットが選択されていない場合: dataまたはpropDataを使用
+      if (data && data.length > 0) {
+        sourceData = data;
+        console.log('[Dashboard] Using data for campaigns (no asset selected):', data.length, 'records');
+      } else if (propData && propData.length > 0) {
+        sourceData = propData;
+        console.log('[Dashboard] Using propData for campaigns (data empty):', propData.length, 'records');
+      } else {
+        sourceData = [];
+        console.log('[Dashboard] No data available for campaigns');
+      }
     }
     
     if (!sourceData || sourceData.length === 0) {
@@ -883,7 +1004,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
       return [];
     }
     
-    // dataは既にアセットでフィルタリングされているので、そのまま使用
     // campaign_nameが空でないもののみを取得
     const campaignNames = sourceData
       .map(d => d.campaign_name)
@@ -897,7 +1017,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
       sourceData.slice(0, 10).map(d => ({
         campaign_name: d.campaign_name,
         date: d.date,
-        id: d.id
+        id: d.id,
+        meta_account_id: d.meta_account_id
       }))
     );
     console.log('[Dashboard] All campaign names in source data:', campaignNames);
@@ -905,6 +1026,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     console.log('[Dashboard] Available campaigns summary:', {
       selectedMetaAccountId,
       dataCount: data.length,
+      allApiDataCount: allApiData?.length || 0,
+      apiDataCount: apiData?.length || 0,
+      propDataCount: propData?.length || 0,
       sourceDataCount: sourceData.length,
       campaignNamesCount: campaignNames.length,
       uniqueCampaignsCount: campaigns.length,
@@ -913,7 +1037,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     console.log('[Dashboard] ===== End available campaigns calculation =====');
     
     return campaigns;
-  }, [data, propData, selectedMetaAccountId]);
+  }, [data, propData, selectedMetaAccountId, allApiData, apiData]);
 
   // selectedCampaign の自動選択
   useEffect(() => {
@@ -1018,10 +1142,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
       return [];
     }
 
-    // apiData から広告セットのみを抽出
+    // アセットが選択されている場合はallApiDataを使用、そうでない場合はapiDataを使用
+    const sourceData = selectedMetaAccountId && allApiData && allApiData.length > 0 
+      ? allApiData 
+      : (apiData && apiData.length > 0 ? apiData : []);
+
+    // 広告セットのみを抽出
     // 新API構造: { ad_set_name, campaign_name, ... }
     // 広告セットレベルのデータ: ad_set_nameが存在し、ad_nameが空
-    const adSetsData = apiData.filter(item => 
+    const adSetsData = sourceData.filter(item => 
       item.campaign_name === selectedCampaign && 
       item.ad_set_name && 
       item.ad_set_name !== '' &&
@@ -1047,6 +1176,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     console.log('[Dashboard] ===== availableAds calculation =====');
     console.log('[Dashboard] selectedCampaign:', selectedCampaign);
     console.log('[Dashboard] selectedAdSet:', selectedAdSet);
+    console.log('[Dashboard] selectedMetaAccountId:', selectedMetaAccountId);
+    console.log('[Dashboard] allApiData length:', allApiData?.length || 0);
     console.log('[Dashboard] apiData length:', apiData?.length || 0);
 
     if (!selectedCampaign) {
@@ -1054,10 +1185,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
       return [];
     }
 
-    // apiData から広告のみを抽出
+    // アセットが選択されている場合はallApiDataを使用、そうでない場合はapiDataを使用
+    const sourceData = selectedMetaAccountId && allApiData && allApiData.length > 0 
+      ? allApiData 
+      : (apiData && apiData.length > 0 ? apiData : []);
+
+    // 広告のみを抽出
     // 新API構造: { ad_name, ad_set_name, campaign_name, ... }
     // 広告レベルのデータ: ad_nameが存在し、ad_set_nameも存在
-    const adsData = apiData.filter(item => 
+    const adsData = sourceData.filter(item => 
       item.campaign_name === selectedCampaign &&
       item.ad_name &&
       item.ad_name !== '' &&
@@ -1079,7 +1215,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     console.log('[Dashboard] ===== End availableAds calculation =====');
 
     return uniqueAdNames.sort();
-  }, [selectedCampaign, selectedAdSet, apiData]);
+  }, [selectedCampaign, selectedAdSet, selectedMetaAccountId, apiData, allApiData]);
 
   // Filter Data - シンプル版（重複排除付き）
   const filteredData = useMemo(() => {
@@ -1123,12 +1259,42 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
       if (!existing) {
         deduplicatedMap.set(key, d);
       } else {
-        // 既存のレコードがある場合、created_atが新しい方を優先（または単に最初のものを保持）
-        // シンプルに最初のものを保持
+        // 既存のレコードがある場合、IDが新しい方を優先（または単に最初のものを保持）
+        // IDが存在する場合は新しい方を優先、なければ最初のものを保持
+        if (d.id && existing.id && d.id > existing.id) {
+          deduplicatedMap.set(key, d);
+        }
+        // それ以外は既存のものを保持（変更しない）
       }
     });
     
     const deduplicated = Array.from(deduplicatedMap.values());
+    
+    // 重複チェック: 同じキーのデータが複数あるか確認
+    const duplicateKeys = new Map<string, CampaignData[]>();
+    filtered.forEach(d => {
+      const key = d.meta_account_id 
+        ? `${d.campaign_name}_${d.date}_${d.meta_account_id}_${d.ad_set_name || ''}_${d.ad_name || ''}`
+        : `${d.campaign_name}_${d.date}_${d.ad_set_name || ''}_${d.ad_name || ''}`;
+      if (!duplicateKeys.has(key)) {
+        duplicateKeys.set(key, []);
+      }
+      duplicateKeys.get(key)!.push(d);
+    });
+    
+    const duplicates = Array.from(duplicateKeys.entries()).filter(([_, records]) => records.length > 1);
+    if (duplicates.length > 0) {
+      console.warn('[Dashboard] ⚠️ filteredDataで重複検出:', duplicates.length, '件');
+      duplicates.slice(0, 3).forEach(([key, records]) => {
+        console.warn(`[Dashboard] 重複キー: ${key}`, records.map(r => ({
+          id: r.id,
+          impressions: r.impressions,
+          reach: r.reach,
+          cost: r.cost,
+          date: r.date
+        })));
+      });
+    }
     
     console.log('[Dashboard] filteredData:', {
       before: filtered.length,
@@ -1136,14 +1302,17 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
       selectedCampaign,
       selectedAdSet,
       selectedAd,
-      sample: deduplicated.slice(0, 3).map(d => ({
+      duplicatesFound: duplicates.length,
+      sample: deduplicated.slice(0, 5).map(d => ({
         campaign: d.campaign_name,
         date: d.date,
         adset: d.ad_set_name || '(empty)',
         ad: d.ad_name || '(empty)',
         impressions: d.impressions,
+        reach: d.reach,
         clicks: d.clicks,
-        cost: d.cost
+        cost: d.cost,
+        meta_account_id: d.meta_account_id
       }))
     });
     
@@ -1271,90 +1440,185 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
       selectedAd
     });
     
-    // データレベルの統計
-    const levelStats = {
-      campaign: 0,
-      adset: 0,
-      ad: 0
-    };
-    filteredData.forEach(d => {
-      const hasAdName = d.ad_name && d.ad_name.trim() !== '';
-      const hasAdSetName = d.ad_set_name && d.ad_set_name.trim() !== '';
-      if (hasAdName) {
-        levelStats.ad++;
-      } else if (hasAdSetName) {
-        levelStats.adset++;
-      } else {
-        levelStats.campaign++;
+    // キャンペーンレベルのデータのみを抽出
+    const campaignLevelData = filteredData.filter(d => 
+      (!d.ad_set_name || d.ad_set_name.trim() === '') && 
+      (!d.ad_name || d.ad_name.trim() === '')
+    );
+    
+    console.log('[Dashboard] Campaign level data count:', campaignLevelData.length);
+    
+    // 重複チェック: 同じcampaign_name, date, meta_account_idの組み合わせを確認
+    const duplicateCheck = new Map<string, number>();
+    campaignLevelData.forEach(d => {
+      const key = d.meta_account_id 
+        ? `${d.campaign_name}_${d.date}_${d.meta_account_id}`
+        : `${d.campaign_name}_${d.date}`;
+      duplicateCheck.set(key, (duplicateCheck.get(key) || 0) + 1);
+    });
+    
+    const duplicates = Array.from(duplicateCheck.entries()).filter(([_, count]) => count > 1);
+    if (duplicates.length > 0) {
+      console.warn('[Dashboard] ⚠️ 重複データ検出:', duplicates.slice(0, 5));
+      duplicates.slice(0, 5).forEach(([key, count]) => {
+        const matching = campaignLevelData.filter(d => {
+          const k = d.meta_account_id 
+            ? `${d.campaign_name}_${d.date}_${d.meta_account_id}`
+            : `${d.campaign_name}_${d.date}`;
+          return k === key;
+        });
+        console.warn(`[Dashboard] 重複キー: ${key}, 件数: ${count}`, matching.map(m => ({
+          id: m.id,
+          impressions: m.impressions,
+          reach: m.reach,
+          cost: m.cost
+        })));
+      });
+    }
+    
+    // 日付ごとの重複排除: 同じcampaign_name, date, meta_account_idの組み合わせで最新の1件のみを使用
+    const seenDateKeys = new Map<string, CampaignData>();
+    campaignLevelData.forEach(d => {
+      const dateKey = d.meta_account_id 
+        ? `${d.campaign_name}_${d.date}_${d.meta_account_id}`
+        : `${d.campaign_name}_${d.date}`;
+      
+      // 既存のレコードがない場合、または既存のレコードより新しい場合に更新
+      const existing = seenDateKeys.get(dateKey);
+      if (!existing || (d.id && existing.id && d.id > existing.id)) {
+        seenDateKeys.set(dateKey, d);
       }
     });
-    console.log('[Dashboard] Data level breakdown:', levelStats);
-    console.log('[Dashboard] Sample data (first 5):', filteredData.slice(0, 5).map(d => ({
-      campaign_name: d.campaign_name,
-      ad_set_name: d.ad_set_name || '(empty)',
-      ad_name: d.ad_name || '(empty)',
-      date: d.date
-    })));
     
-    // キャンペーンレベルのデータのみを集計（シンプルに）
+    const deduplicatedData = Array.from(seenDateKeys.values());
+    console.log('[Dashboard] Deduplicated campaign level data count:', deduplicatedData.length);
+    
+    // キャンペーン名でグループ化して合算
     const stats: { [key: string]: CampaignData } = {};
     
-    // 重複排除: 同じcampaign_name, date, meta_account_idの組み合わせで1件のみ
-    const seenKeys = new Set<string>();
+    // キャンペーンごとの日付データを追跡
+    const campaignDateMap = new Map<string, string[]>();
     
-    filteredData.forEach(d => {
-      // キャンペーンレベルのデータのみを処理（ad_set_nameとad_nameがNULLまたは空）
-      if ((!d.ad_set_name || d.ad_set_name.trim() === '') && 
-          (!d.ad_name || d.ad_name.trim() === '')) {
-        const dedupKey = d.meta_account_id 
-          ? `${d.campaign_name}_${d.date}_${d.meta_account_id}`
-          : `${d.campaign_name}_${d.date}`;
-        
-        // 重複チェック
-        if (seenKeys.has(dedupKey)) {
-          return; // 既に処理済みのレコードはスキップ
-        }
-        seenKeys.add(dedupKey);
-        
-        const key = d.campaign_name;
-        
-        if (!stats[key]) {
-          stats[key] = { 
-            ...d, 
-            impressions: 0, 
-            clicks: 0, 
-            cost: 0, 
-            conversions: 0, 
-            conversion_value: 0,
-            reach: 0,
-            engagements: 0,
-            link_clicks: 0,
-            landing_page_views: 0,
-            ad_set_name: '',
-            ad_name: ''
-          };
-        }
-        // 日付ごとに合算（同じキャンペーンの異なる日付のデータを合算）
-        stats[key].impressions += d.impressions || 0;
-        stats[key].clicks += d.clicks || 0;
-        stats[key].cost += d.cost || 0;
-        stats[key].conversions += d.conversions || 0;
-        stats[key].conversion_value += d.conversion_value || 0;
-        stats[key].reach += d.reach || 0;
-        stats[key].engagements += d.engagements || 0;
-        stats[key].link_clicks += d.link_clicks || 0;
-        stats[key].landing_page_views += d.landing_page_views || 0;
+    deduplicatedData.forEach(d => {
+      const key = d.campaign_name;
+      
+      if (!stats[key]) {
+        stats[key] = { 
+          ...d, 
+          impressions: 0, 
+          clicks: 0, 
+          cost: 0, 
+          conversions: 0, 
+          conversion_value: 0,
+          reach: 0,
+          engagements: 0,
+          link_clicks: 0,
+          landing_page_views: 0,
+          ad_set_name: '',
+          ad_name: ''
+        };
+        campaignDateMap.set(key, []);
       }
+      
+      // 日付を記録
+      const dates = campaignDateMap.get(key) || [];
+      if (!dates.includes(d.date)) {
+        dates.push(d.date);
+        campaignDateMap.set(key, dates);
+      }
+      
+      // 日付ごとに合算（同じキャンペーンの異なる日付のデータを合算）
+      const beforeImpressions = stats[key].impressions;
+      const beforeReach = stats[key].reach;
+      const beforeCost = stats[key].cost;
+      
+      stats[key].impressions += d.impressions || 0;
+      stats[key].clicks += d.clicks || 0;
+      stats[key].cost += d.cost || 0;
+      stats[key].conversions += d.conversions || 0;
+      stats[key].conversion_value += d.conversion_value || 0;
+      stats[key].reach += d.reach || 0;
+      stats[key].engagements += d.engagements || 0;
+      stats[key].link_clicks += d.link_clicks || 0;
+      stats[key].landing_page_views += d.landing_page_views || 0;
+      
+      // デバッグログ: 各レコードの追加を記録
+      console.log(`[Dashboard] キャンペーン "${key}" に日付 ${d.date} のデータを追加:`, {
+        date: d.date,
+        impressions: d.impressions || 0,
+        reach: d.reach || 0,
+        cost: d.cost || 0,
+        clicks: d.clicks || 0,
+        conversions: d.conversions || 0,
+        before: { 
+          impressions: beforeImpressions, 
+          reach: beforeReach, 
+          cost: beforeCost 
+        },
+        after: { 
+          impressions: stats[key].impressions, 
+          reach: stats[key].reach, 
+          cost: stats[key].cost 
+        },
+        added: {
+          impressions: (d.impressions || 0),
+          reach: (d.reach || 0),
+          cost: (d.cost || 0)
+        }
+      });
     });
 
     const statsArray = Object.values(stats);
     console.log('[Dashboard] campaignStats count:', statsArray.length);
-    console.log('[Dashboard] campaignStats sample (first 5):', statsArray.slice(0, 5).map(s => ({
-      campaign_name: s.campaign_name,
-      ad_set_name: s.ad_set_name || '(empty)',
-      ad_name: s.ad_name || '(empty)',
-      impressions: s.impressions
-    })));
+    console.log('[Dashboard] ===== キャンペーン別集計結果 =====');
+    statsArray.forEach(s => {
+      const dates = campaignDateMap.get(s.campaign_name) || [];
+      // 16項目すべてを計算
+      const ctr = s.impressions > 0 ? (s.clicks / s.impressions * 100) : 0;
+      const cpc = s.clicks > 0 ? s.cost / s.clicks : 0;
+      const cpa = s.conversions > 0 ? s.cost / s.conversions : 0;
+      const cpm = s.impressions > 0 ? (s.cost / s.impressions * 1000) : 0;
+      const cvr = s.clicks > 0 ? (s.conversions / s.clicks * 100) : 0;
+      const roas = s.cost > 0 ? (s.conversion_value / s.cost * 100) : 0;
+      const frequency = s.reach > 0 ? (s.impressions / s.reach) : 0;
+      const engagement_rate = s.impressions > 0 ? ((s.engagements || 0) / s.impressions * 100) : 0;
+      
+      console.log(`[Dashboard] キャンペーン: ${s.campaign_name} - 16項目の全期間データ`, {
+        dates: dates.sort(),
+        dateCount: dates.length,
+        // 基本指標
+        '1. インプレッション': s.impressions,
+        '2. リーチ': s.reach,
+        '3. フリークエンシー': frequency.toFixed(2),
+        '4. クリック数': s.clicks,
+        '5. 費用': s.cost,
+        '6. コンバージョン数': s.conversions,
+        '7. コンバージョン価値': s.conversion_value,
+        '8. エンゲージメント数': s.engagements || 0,
+        '9. LPビュー数': s.landing_page_views || 0,
+        // 計算指標
+        '10. CTR (クリック率)': `${ctr.toFixed(2)}%`,
+        '11. CPC (クリック単価)': `¥${cpc.toFixed(2)}`,
+        '12. CPM (インプレッション単価)': `¥${cpm.toFixed(2)}`,
+        '13. CVR (コンバージョン率)': `${cvr.toFixed(2)}%`,
+        '14. CPA (獲得単価)': `¥${cpa.toFixed(2)}`,
+        '15. ROAS (費用対効果)': `${roas.toFixed(2)}%`,
+        '16. エンゲージメント率': `${engagement_rate.toFixed(2)}%`
+      });
+      
+      // 各日付のデータも表示
+      const dateData = deduplicatedData.filter(d => d.campaign_name === s.campaign_name);
+      console.log(`[Dashboard] キャンペーン "${s.campaign_name}" の日付別データ:`, dateData.map(d => ({
+        date: d.date,
+        impressions: d.impressions || 0,
+        reach: d.reach || 0,
+        cost: d.cost || 0,
+        clicks: d.clicks || 0,
+        conversions: d.conversions || 0,
+        meta_account_id: d.meta_account_id
+      })));
+    });
+    console.log('[Dashboard] ===== 集計結果終了 =====');
     console.log('[Dashboard] ===== End campaignStats calculation =====');
 
     return statsArray.map(s => ({
@@ -1605,6 +1869,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
                           const result = await Api.getMetaAccounts();
                           setMetaAccounts(result.accounts || []);
                           setMetaAccountsError(null);
+                          // localStorageにキャッシュを保存
+                          try {
+                            localStorage.setItem('dashboard_metaAccounts', JSON.stringify(result.accounts || []));
+                            localStorage.setItem('dashboard_metaAccounts_time', Date.now().toString());
+                          } catch (e) {
+                            console.error('[Dashboard] Failed to cache meta accounts:', e);
+                          }
                         } catch (error: any) {
                           setMetaAccountsError(error?.message || 'アセット情報の取得に失敗しました');
                           setMetaAccounts([]);
