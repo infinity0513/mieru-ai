@@ -588,6 +588,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // propDataの前回の値を保持（変更検知用）
+  const prevPropDataLengthRef = React.useRef<number>(propData?.length || 0);
+  
   // Load dashboard data from API
   useEffect(() => {
     const loadDashboardData = async () => {
@@ -598,28 +601,30 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
         metaAccountId: metaAccountParam
       };
       
+      // propDataが更新された場合は、キャッシュをリセットして強制的に再取得
+      const currentPropDataLength = propData?.length || 0;
+      const propDataChanged = currentPropDataLength !== prevPropDataLengthRef.current;
+      
+      if (propDataChanged) {
+        console.log('[Dashboard] propData changed, resetting cache and forcing refresh');
+        lastFetchParamsRef.current = null; // キャッシュをリセット
+        prevPropDataLengthRef.current = currentPropDataLength;
+      }
+      
       // キャッシュチェック: 同じパラメータで既にデータが取得されている場合は再取得しない
-      // ただし、propDataが更新された場合は再取得する（新規データ取得時）
       const shouldSkipFetch = lastFetchParamsRef.current && 
           lastFetchParamsRef.current.start === currentParams.start &&
           lastFetchParamsRef.current.end === currentParams.end &&
           lastFetchParamsRef.current.metaAccountId === currentParams.metaAccountId &&
           apiData.length > 0 && 
           summaryData !== null && 
-          trendsData !== null;
+          trendsData !== null &&
+          !propDataChanged; // propDataが変更された場合はスキップしない
       
-      // propDataが更新された場合は再取得（新規データ取得の可能性）
-      const propDataChanged = propData && propData.length > 0 && 
-          (propData.length !== (apiData.length || 0));
-      
-      if (shouldSkipFetch && !propDataChanged) {
+      if (shouldSkipFetch) {
         console.log('[Dashboard] Data already loaded with same params, skipping fetch');
         setLoading(false);
         return;
-      }
-      
-      if (propDataChanged) {
-        console.log('[Dashboard] propData changed, forcing data refresh');
       }
       
       setLoading(true);
