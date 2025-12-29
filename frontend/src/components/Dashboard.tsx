@@ -898,8 +898,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     
     loadDashboardData();
     // propDataを依存配列に追加して、新規データ取得時に再読み込み
+    // propDataの参照が変わった場合（新しいデータが取得された場合）に再実行
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dateRange.start, dateRange.end, selectedMetaAccountId, propData?.length]);
+  }, [dateRange.start, dateRange.end, selectedMetaAccountId, propData]);
 
   // Use propData if available (from App.tsx), otherwise fallback to apiData
   // Filter by asset and date range
