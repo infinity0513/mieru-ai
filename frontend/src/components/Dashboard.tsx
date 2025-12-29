@@ -588,8 +588,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // propDataの前回の値を保持（変更検知用）
-  const prevPropDataLengthRef = React.useRef<number>(propData?.length || 0);
+  // propDataの前回の参照を保持（変更検知用）
+  const prevPropDataRef = React.useRef<CampaignData[] | undefined>(propData);
   
   // Load dashboard data from API
   useEffect(() => {
@@ -601,17 +601,20 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
         metaAccountId: metaAccountParam
       };
       
-      // propDataが更新された場合は、キャッシュをリセットして強制的に再取得
-      const currentPropDataLength = propData?.length || 0;
-      const propDataChanged = currentPropDataLength !== prevPropDataLengthRef.current;
+      // propDataの参照が変わった場合は、キャッシュをリセットして強制的に再取得
+      // 参照が変わった = 新しいデータが取得された
+      const propDataChanged = prevPropDataRef.current !== propData;
       
       if (propDataChanged) {
-        console.log('[Dashboard] propData changed, resetting cache and forcing refresh');
+        console.log('[Dashboard] propData reference changed, resetting cache and forcing refresh');
+        console.log('[Dashboard] Previous propData length:', prevPropDataRef.current?.length || 0);
+        console.log('[Dashboard] Current propData length:', propData?.length || 0);
         lastFetchParamsRef.current = null; // キャッシュをリセット
-        prevPropDataLengthRef.current = currentPropDataLength;
+        prevPropDataRef.current = propData; // 新しい参照を保存
       }
       
       // キャッシュチェック: 同じパラメータで既にデータが取得されている場合は再取得しない
+      // ただし、propDataが変更された場合は必ず再取得
       const shouldSkipFetch = lastFetchParamsRef.current && 
           lastFetchParamsRef.current.start === currentParams.start &&
           lastFetchParamsRef.current.end === currentParams.end &&
@@ -846,8 +849,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
           setApiData([]);
         } else if (propData && propData.length > 0) {
           console.log('[Dashboard] Using propData as fallback:', propData.length);
-          setApiData(propData);
-        }
+            setApiData(propData);
+          }
         
         // 全データも取得（キャンペーン/広告セット/広告一覧用）
         if (allCampaignsResult.status === 'fulfilled') {
