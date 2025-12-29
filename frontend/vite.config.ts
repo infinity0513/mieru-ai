@@ -10,7 +10,16 @@ export default defineConfig(({ mode }) => {
         const envPath = path.resolve(process.cwd(), '.env');
         // ファイルが存在するか確認してから読み込む
         if (fs.existsSync(envPath)) {
-            env = loadEnv(mode, process.cwd(), '');
+            try {
+                env = loadEnv(mode, process.cwd(), '');
+            } catch (loadError: any) {
+                // loadEnvでエラーが発生した場合（権限エラーなど）は無視
+                if (loadError.code === 'EPERM' || loadError.code === 'ENOENT') {
+                    console.warn('Warning: Could not load .env file (permission denied or not found), using default values');
+                } else {
+                    console.warn('Warning: Could not load .env file:', loadError.message || loadError);
+                }
+            }
         } else {
             console.warn('Warning: .env file not found, using default values');
         }
