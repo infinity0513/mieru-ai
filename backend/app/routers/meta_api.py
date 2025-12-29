@@ -124,9 +124,18 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
             
             # 各キャンペーンのInsightsを取得（キャンペーンレベルのみ）
             print(f"[Meta API] Processing {len(all_campaigns)} campaigns for campaign-level insights...")
-            # 昨日までのデータを取得（UTCを使用して未来の日付を避ける）
-            current_until = datetime.utcnow() - timedelta(days=1)
-            current_since = datetime.strptime(since, '%Y-%m-%d')
+            
+            # 日付範囲の決定: days=Noneの場合は既に設定されたsince/untilを使用
+            # daysが指定されている場合のみ、current_untilを再計算
+            if days is None:
+                # 全期間取得: 既に設定されたsince/untilを使用
+                current_since = datetime.strptime(since, '%Y-%m-%d')
+                current_until = datetime.strptime(until, '%Y-%m-%d')
+                print(f"[Meta API] Full period sync: Using pre-calculated date range (days=None)")
+            else:
+                # 部分取得: 昨日までのデータを取得（UTCを使用して未来の日付を避ける）
+                current_until = datetime.utcnow() - timedelta(days=1)
+                current_since = datetime.strptime(since, '%Y-%m-%d')
             
             # Meta APIの期間制限を確認
             # - Reachフィールドを使用しているが、Breakdownは使用していないため、37ヶ月（1,095日）が可能
@@ -152,12 +161,14 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                 current_since = current_until - timedelta(days=max_days_total)
                 print(f"[Meta API] Date range limited to {max_days_total} days: {current_since.strftime('%Y-%m-%d')} to {current_until.strftime('%Y-%m-%d')}")
             elif days is None:
-                print(f"[Meta API] Full period sync: Using full {max_days_total} days range (days=None)")
+                actual_days = (current_until - current_since).days
+                print(f"[Meta API] Full period sync: Using full {actual_days} days range (days=None, since={since}, until={until})")
             
             # 日付範囲を文字列に変換
             start_date_str = current_since.strftime('%Y-%m-%d')
             end_date_str = current_until.strftime('%Y-%m-%d')
-            print(f"[Meta API] Date range: {start_date_str} to {end_date_str} ({(current_until - current_since).days} days)")
+            actual_days = (current_until - current_since).days
+            print(f"[Meta API] Final date range: {start_date_str} to {end_date_str} ({actual_days} days)")
             
             # バッチリクエストでキャンペーンレベルInsightsを取得（最大50件/バッチ）
             campaign_fields = "campaign_id,campaign_name,date_start,spend,impressions,clicks,inline_link_clicks,reach,actions,conversions,action_values,frequency"
