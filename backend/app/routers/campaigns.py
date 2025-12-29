@@ -437,6 +437,104 @@ def debug_campaign_hierarchy(
         }
     }
 
+@router.get("/debug/data-source")
+def debug_data_source(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    詳細パフォーマンス分析に表示されているデータのソースを特定
+    """
+    # キャンペーンレベルのデータのみを取得（詳細パフォーマンス分析で使用されるデータ）
+    campaign_level_query = db.query(Campaign).filter(
+        Campaign.user_id == current_user.id,
+        or_(
+            Campaign.ad_set_name == '',
+            Campaign.ad_set_name.is_(None)
+        ),
+        or_(
+            Campaign.ad_name == '',
+            Campaign.ad_name.is_(None)
+        )
+    )
+    
+    # Meta APIデータ（meta_account_idが設定されている）
+    meta_api_data = campaign_level_query.filter(
+        Campaign.meta_account_id.isnot(None),
+        Campaign.meta_account_id != ''
+    ).all()
+    
+    # CSVアップロードデータ（meta_account_idがNULLまたは空）
+    csv_data = campaign_level_query.filter(
+        or_(
+            Campaign.meta_account_id.is_(None),
+            Campaign.meta_account_id == ''
+        )
+    ).all()
+    
+    # Uploadレコードを取得してfile_nameを確認
+    upload_ids = list(set([c.upload_id for c in meta_api_data + csv_data if c.upload_id]))
+    uploads_map = {}
+    if upload_ids:
+        uploads = db.query(Upload).filter(Upload.id.in_(upload_ids)).all()
+        uploads_map = {str(u.id): u.file_name for u in uploads}
+    
+    # Meta APIデータの統計
+    meta_api_stats = {
+        "count": len(meta_api_data),
+        "meta_account_ids": list(set([c.meta_account_id for c in meta_api_data if c.meta_account_id])),
+        "upload_file_names": list(set([uploads_map.get(str(c.upload_id), None) for c in meta_api_data if c.upload_id])),
+        "sample": [
+            {
+                "id": str(c.id),
+                "campaign_name": c.campaign_name,
+                "date": str(c.date),
+                "meta_account_id": c.meta_account_id,
+                "upload_file_name": uploads_map.get(str(c.upload_id), None),
+                "impressions": c.impressions,
+                "clicks": c.clicks,
+                "cost": float(c.cost) if c.cost else 0
+            }
+            for c in meta_api_data[:5]
+        ]
+    }
+    
+    # CSVデータの統計
+    csv_stats = {
+        "count": len(csv_data),
+        "upload_file_names": list(set([uploads_map.get(str(c.upload_id), None) for c in csv_data if c.upload_id])),
+        "sample": [
+            {
+                "id": str(c.id),
+                "campaign_name": c.campaign_name,
+                "date": str(c.date),
+                "meta_account_id": c.meta_account_id,
+                "upload_file_name": uploads_map.get(str(c.upload_id), None),
+                "impressions": c.impressions,
+                "clicks": c.clicks,
+                "cost": float(c.cost) if c.cost else 0
+            }
+            for c in csv_data[:5]
+        ]
+    }
+    
+    # 結論
+    if meta_api_stats["count"] > 0 and csv_stats["count"] > 0:
+        data_source = "混在（Meta APIデータとCSVアップロードデータの両方）"
+    elif meta_api_stats["count"] > 0:
+        data_source = "Meta APIから取得したデータ"
+    elif csv_stats["count"] > 0:
+        data_source = "CSVアップロードしたデータ"
+    else:
+        data_source = "データなし"
+    
+    return {
+        "data_source": data_source,
+        "total_campaign_level_records": len(meta_api_data) + len(csv_data),
+        "meta_api_data": meta_api_stats,
+        "csv_data": csv_stats
+    }
+
 @router.get("/debug/clicks")
 def debug_clicks(
     campaign_name: str = Query(..., description="キャンペーン名（部分一致可）"),
@@ -600,13 +698,139 @@ def get_campaigns(
     # Get total count
     total = query.count()
     
+    # ユニークな日付数を取得
+    unique_dates_count = db.query(func.count(func.distinct(Campaign.date))).filter(
+        Campaign.user_id == current_user.id
+    ).scalar() or 0
+    
     # Apply pagination
     campaigns = query.order_by(desc(Campaign.date)).limit(limit).offset(offset).all()
     
     return {
         "total": total,
+        "unique_dates_count": unique_dates_count,
         "data": campaigns
     }
+
+@router.get("/date-range/")
+def get_date_range(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """データベースに保存されているデータの日付範囲を確認"""
+    try:
+        from datetime import datetime, timedelta
+        
+        # 全データの日付範囲
+        min_date = db.query(func.min(Campaign.date)).filter(
+            Campaign.user_id == current_user.id
+        ).scalar()
+        max_date = db.query(func.max(Campaign.date)).filter(
+            Campaign.user_id == current_user.id
+        ).scalar()
+        total_count = db.query(Campaign).filter(
+            Campaign.user_id == current_user.id
+        ).count()
+        
+        result = {
+            "all_data": {
+                "min_date": str(min_date) if min_date else None,
+                "max_date": str(max_date) if max_date else None,
+                "total_count": total_count,
+                "days": (max_date - min_date).days + 1 if min_date and max_date else 0
+            }
+        }
+        
+        # Meta APIデータの日付範囲
+        meta_data = db.query(
+            func.min(Campaign.date).label('min_date'),
+            func.max(Campaign.date).label('max_date'),
+            func.count(Campaign.id).label('count')
+        ).filter(
+            Campaign.user_id == current_user.id,
+            Campaign.meta_account_id.isnot(None),
+            Campaign.meta_account_id != ''
+        ).first()
+        
+        if meta_data and meta_data.count > 0:
+            result["meta_api_data"] = {
+                "min_date": str(meta_data.min_date),
+                "max_date": str(meta_data.max_date),
+                "count": meta_data.count,
+                "days": (meta_data.max_date - meta_data.min_date).days + 1
+            }
+        
+        # CSVデータの日付範囲
+        csv_data = db.query(
+            func.min(Campaign.date).label('min_date'),
+            func.max(Campaign.date).label('max_date'),
+            func.count(Campaign.id).label('count')
+        ).filter(
+            Campaign.user_id == current_user.id,
+            or_(
+                Campaign.meta_account_id.is_(None),
+                Campaign.meta_account_id == ''
+            )
+        ).first()
+        
+        if csv_data and csv_data.count > 0:
+            result["csv_data"] = {
+                "min_date": str(csv_data.min_date),
+                "max_date": str(csv_data.max_date),
+                "count": csv_data.count,
+                "days": (csv_data.max_date - csv_data.min_date).days + 1
+            }
+        
+        # アカウント別の日付範囲
+        accounts = db.query(
+            Campaign.meta_account_id,
+            func.min(Campaign.date).label('min_date'),
+            func.max(Campaign.date).label('max_date'),
+            func.count(Campaign.id).label('count')
+        ).filter(
+            Campaign.user_id == current_user.id,
+            Campaign.meta_account_id.isnot(None),
+            Campaign.meta_account_id != ''
+        ).group_by(Campaign.meta_account_id).all()
+        
+        if accounts:
+            result["accounts"] = []
+            for account in accounts:
+                result["accounts"].append({
+                    "meta_account_id": account.meta_account_id,
+                    "min_date": str(account.min_date),
+                    "max_date": str(account.max_date),
+                    "count": account.count,
+                    "days": (account.max_date - account.min_date).days + 1
+                })
+        
+        # 今日から何日前までのデータがあるか
+        today = datetime.now().date()
+        if max_date:
+            days_from_today = (today - max_date).days
+            result["days_from_today"] = days_from_today
+        
+        # 37ヶ月（1095日）前の日付との比較
+        days_37_months = 1095
+        date_37_months_ago = today - timedelta(days=days_37_months)
+        result["date_37_months_ago"] = str(date_37_months_ago)
+        if min_date:
+            days_from_37_months = (min_date - date_37_months_ago).days
+            result["days_from_37_months"] = days_from_37_months
+            result["is_full_period"] = days_from_37_months <= 0
+        
+        # ユニークな日付数を確認
+        unique_dates_count = db.query(func.count(func.distinct(Campaign.date))).filter(
+            Campaign.user_id == current_user.id
+        ).scalar()
+        result["unique_dates_count"] = unique_dates_count
+        
+        return result
+    except Exception as e:
+        import traceback
+        print(f"[Date Range] Error: {str(e)}")
+        print(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"日付範囲取得エラー: {str(e)}")
 
 @router.get("/summary/")
 def get_summary(

@@ -1597,38 +1597,10 @@ async def meta_oauth_callback(
             
             print(f"[Meta OAuth] User meta_account_id updated to: {user.meta_account_id}")
             
-            # 段階的データ取得: まず90日分を同期的に取得（完了まで待つ）、その後バックグラウンドで全期間を取得
-            account_count = len(accounts)
-            
+            # 全期間（37ヶ月）のデータをバックグラウンドで取得
             print(f"[Meta OAuth] Starting data sync for user {user.id}")
             print(f"[Meta OAuth] Found {len(accounts)} ad account(s)")
-            
-            # フェーズ1: 直近90日分のデータを同期的に取得（完了まで待つ）
-            print(f"[Meta OAuth] Phase 1: Fetching last 90 days of data synchronously...")
-            try:
-                for idx, account in enumerate(accounts):
-                    account_id_to_sync = account.get("id")
-                    account_name = account.get("name", "Unknown")
-                    print(f"[Meta OAuth] Syncing account {idx + 1}/{len(accounts)} (90 days): {account_name} ({account_id_to_sync})")
-                    try:
-                        await sync_meta_data_to_campaigns(user, long_lived_token, account_id_to_sync, db, days=90)
-                        print(f"[Meta OAuth] Successfully synced 90 days of data for {account_name}")
-                    except Exception as account_error:
-                        import traceback
-                        print(f"[Meta OAuth] Error syncing 90 days data for {account_name}: {str(account_error)}")
-                        print(f"[Meta OAuth] Error details: {traceback.format_exc()}")
-                        # 1つのアカウントでエラーが発生しても、他のアカウントの同期は続行
-                        continue
-                
-                print(f"[Meta OAuth] Phase 1 completed: 90 days of data synced for user {user.id}")
-            except Exception as sync_error:
-                import traceback
-                print(f"[Meta OAuth] Error syncing 90 days data: {str(sync_error)}")
-                print(f"[Meta OAuth] Error details: {traceback.format_exc()}")
-                # データ同期エラーは無視して、OAuth認証は成功として扱う
-            
-            # フェーズ2: 全期間（37ヶ月）のデータをバックグラウンドで取得
-            print(f"[Meta OAuth] Phase 2: Starting background sync for full period (37 months)...")
+            print(f"[Meta OAuth] Starting background sync for full period (37 months)...")
             
             # アカウント情報をバックグラウンドタスクに渡すためにコピー
             accounts_for_background = [{"id": acc.get("id"), "name": acc.get("name", "Unknown")} for acc in accounts]

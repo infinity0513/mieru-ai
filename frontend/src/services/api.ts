@@ -82,12 +82,10 @@ class ApiClient {
   private static normalizeURL(url: string): string {
     // localhostまたは127.0.0.1の場合、https://をhttp://に強制変換
     if (url.includes('localhost') || url.includes('127.0.0.1')) {
-      // より強力な正規化：すべてのhttps://をhttp://に変換
+      // より強力な正規化：すべてのhttps://をhttp://に変換（大文字小文字を区別しない）
       url = url.replace(/^https:\/\//i, 'http://');
-      // 念のため、URL全体をチェック
-      if (url.includes('https://')) {
-        url = url.replace(/https:\/\//g, 'http://');
-      }
+      // 念のため、URL全体をチェック（複数回実行）
+      url = url.replace(/https:\/\//gi, 'http://');
       // localhostを127.0.0.1に変換（HSTS回避のため）
       url = url.replace(/localhost/g, '127.0.0.1');
     }
@@ -302,9 +300,27 @@ class ApiClient {
       console.log('[Api] requestLoginCode: Starting fetch...');
       console.log('[Api] requestLoginCode: Request body:', { email, password: '***' });
       
-      // URLを正規化して確実にhttp://を使用
-      const requestURL = ApiClient.normalizeURL(`${this.baseURL}/auth/login/request-code/`);
+      // URLを正規化して確実にhttp://を使用（末尾スラッシュを削除してリダイレクトを回避）
+      let requestURL = ApiClient.normalizeURL(`${this.baseURL}/auth/login/request-code`);
+      // 127.0.0.1の場合は強制的にhttp://を使用
+      if (requestURL.includes('127.0.0.1') && requestURL.startsWith('https://')) {
+        requestURL = requestURL.replace('https://', 'http://');
+      }
       console.log('[Api] requestLoginCode: Normalized URL:', requestURL);
+      
+      // URLオブジェクトを使用してプロトコルを強制的にhttp://に設定
+      const urlObj = new URL(requestURL);
+      if (urlObj.hostname === '127.0.0.1' || urlObj.hostname === 'localhost') {
+        urlObj.protocol = 'http:';
+        requestURL = urlObj.toString();
+        console.log('[Api] requestLoginCode: Using URL object with forced HTTP:', requestURL);
+      }
+      
+      // 念のため、文字列としてもhttp://であることを確認
+      if (requestURL.startsWith('https://')) {
+        requestURL = requestURL.replace('https://', 'http://');
+        console.log('[Api] requestLoginCode: Force replaced https to http:', requestURL);
+      }
       
       const response = await fetch(requestURL, {
         method: 'POST',
@@ -313,6 +329,8 @@ class ApiClient {
         },
         body: JSON.stringify({ email, password }),
         signal: controller.signal,
+        // キャッシュを無効化してHSTSの影響を回避
+        cache: 'no-store',
       });
 
       clearTimeout(timeoutId);
@@ -359,7 +377,7 @@ class ApiClient {
       
       // タイムアウトエラーの場合
       if (error.name === 'AbortError') {
-        throw new Error('リクエストがタイムアウトしました。サーバーが応答していない可能性があります。');
+        throw new Error('リクエストがタイムアウトしました。バックエンドサーバー（http://127.0.0.1:8000）が起動しているか確認してください。');
       }
       
       // ネットワークエラーの場合
@@ -1030,6 +1048,40 @@ class ApiClient {
         errorMessage: error.message,
         errorStack: error.stack
       });
+      throw error;
+    }
+  }
+
+  async getDateRange(): Promise<{
+    all_data: {min_date: string | null, max_date: string | null, total_count: number, days: number},
+    meta_api_data?: {min_date: string, max_date: string, count: number, days: number},
+    csv_data?: {min_date: string, max_date: string, count: number, days: number},
+    accounts?: Array<{meta_account_id: string, min_date: string, max_date: string, count: number, days: number}>,
+    days_from_today?: number,
+    date_37_months_ago: string,
+    days_from_37_months?: number,
+    is_full_period?: boolean
+  }> {
+    const token = this.getToken();
+    if (!token) {
+      console.warn("[ApiClient] No token available for getDateRange");
+      throw new Error("認証が必要です");
+    }
+    
+    try {
+      const response = await this.request<{
+        all_data: {min_date: string | null, max_date: string | null, total_count: number, days: number},
+        meta_api_data?: {min_date: string, max_date: string, count: number, days: number},
+        csv_data?: {min_date: string, max_date: string, count: number, days: number},
+        accounts?: Array<{meta_account_id: string, min_date: string, max_date: string, count: number, days: number}>,
+        days_from_today?: number,
+        date_37_months_ago: string,
+        days_from_37_months?: number,
+        is_full_period?: boolean
+      }>("/campaigns/date-range/");
+      return response;
+    } catch (error: any) {
+      console.error("[ApiClient] Error getting date range:", error);
       throw error;
     }
   }

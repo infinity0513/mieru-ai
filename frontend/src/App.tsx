@@ -264,6 +264,20 @@ const AppContent: React.FC = () => {
       console.log('[App] Fetching campaign data from API...');
       const fetchedData = await Api.fetchCampaignData();
       console.log('[App] Fetched data count:', fetchedData.length);
+      
+      // 日付範囲を確認
+      if (fetchedData.length > 0) {
+        const uniqueDates = Array.from(new Set(fetchedData.map(d => d.date))).sort();
+        const minDate = uniqueDates[0];
+        const maxDate = uniqueDates[uniqueDates.length - 1];
+        const daysCount = uniqueDates.length;
+        console.log('[App] ===== データベースに保存されているデータの日付範囲 =====');
+        console.log('[App] 最小日付:', minDate);
+        console.log('[App] 最大日付:', maxDate);
+        console.log('[App] ユニークな日付数:', daysCount, '日分');
+        console.log('[App] ============================================================');
+      }
+      
       setData(fetchedData);
       setHasUploadedData(fetchedData.length > 0);
       if (fetchedData.length > 0) {
