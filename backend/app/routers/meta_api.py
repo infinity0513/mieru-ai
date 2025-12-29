@@ -146,9 +146,13 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                 print(f"[Meta API] Has reach: {has_reach}, Has breakdowns: {has_breakdowns}")
             
             # 総期間を制限（37ヶ月または13ヶ月）
-            if (current_until - current_since).days > max_days_total:
+            # days=None（全期間取得）の場合は、既に正しく設定されているため制限不要
+            # daysが指定されている場合のみ制限を適用
+            if days is not None and (current_until - current_since).days > max_days_total:
                 current_since = current_until - timedelta(days=max_days_total)
                 print(f"[Meta API] Date range limited to {max_days_total} days: {current_since.strftime('%Y-%m-%d')} to {current_until.strftime('%Y-%m-%d')}")
+            elif days is None:
+                print(f"[Meta API] Full period sync: Using full {max_days_total} days range (days=None)")
             
             # 日付範囲を文字列に変換
             start_date_str = current_since.strftime('%Y-%m-%d')
@@ -360,71 +364,172 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                         frequency = (impressions / reach) if reach > 0 else 0.0
                     
                     # conversionsとconversion_valueを取得
+                    # キャンペーンごとに主要なコンバージョンタイプのみをカウント（すべてを合計しない）
+                    # いずれか1つのコンバージョンタイプのみを使用
                     conversions_data = insight.get('conversions', [])
                     conversions = 0
+                    conversion_value = 0.0
+                    selected_conversion_type = "none"
+                    
+                    # デバッグログ（最初の数件のみ）
+                    if saved_count < 3:
+                        print(f"[Meta API] Conversions data for {campaign_name}: {conversions_data}")
+                    
                     if conversions_data:
+                        # 優先順位に基づいて、最初に見つかった主要なコンバージョンタイプのみをカウント
+                        # 優先順位: 購入関連 > 登録関連 > リード関連 > その他
+                        found_conversion = False
+                        
+                        # 1. 購入関連を優先（purchase, omni_purchase, offsite_conversion.fb_pixel_purchase, onsite_conversion.meta_purchase）
                         for conv in conversions_data:
                             if isinstance(conv, dict):
                                 action_type = conv.get('action_type', '')
-                                if (action_type.startswith('offsite_conversion') or 
-                                    action_type.startswith('onsite_conversion') or 
-                                    action_type in ['omni_purchase', 'purchase'] or
-                                    'complete_registration' in action_type or
-                                    'lead' in action_type or
-                                    'purchase' in action_type):
+                                if (action_type in ['purchase', 'omni_purchase'] or
+                                    action_type == 'offsite_conversion.fb_pixel_purchase' or
+                                    action_type == 'onsite_conversion.meta_purchase' or
+                                    action_type.startswith('offsite_conversion.fb_pixel_purchase') or
+                                    action_type.startswith('onsite_conversion.meta_purchase')):
                                     value = conv.get('value', 0)
                                     try:
-                                        conversions += int(value) if isinstance(value, (int, str)) else 0
+                                        conversions = int(value) if isinstance(value, (int, str)) else 0
+                                        selected_conversion_type = action_type
+                                        found_conversion = True
+                                        if saved_count < 3:
+                                            print(f"[Meta API] Selected conversion type (purchase): {action_type} = {conversions}")
+                                        break
                                     except (ValueError, TypeError):
                                         pass
+                        
+                        # 2. 購入関連が見つからなかった場合、登録関連をチェック
+                        if not found_conversion:
+                            for conv in conversions_data:
+                                if isinstance(conv, dict):
+                                    action_type = conv.get('action_type', '')
+                                    if (action_type == 'complete_registration' or
+                                        action_type == 'offsite_conversion.fb_pixel_complete_registration' or
+                                        action_type.startswith('offsite_conversion.fb_pixel_complete_registration')):
+                                        value = conv.get('value', 0)
+                                        try:
+                                            conversions = int(value) if isinstance(value, (int, str)) else 0
+                                            selected_conversion_type = action_type
+                                            found_conversion = True
+                                            if saved_count < 3:
+                                                print(f"[Meta API] Selected conversion type (registration): {action_type} = {conversions}")
+                                            break
+                                        except (ValueError, TypeError):
+                                            pass
+                        
+                        # 3. 登録関連も見つからなかった場合、リード関連をチェック
+                        if not found_conversion:
+                            for conv in conversions_data:
+                                if isinstance(conv, dict):
+                                    action_type = conv.get('action_type', '')
+                                    if (action_type == 'lead' or
+                                        action_type == 'offsite_conversion.fb_pixel_lead' or
+                                        action_type.startswith('offsite_conversion.fb_pixel_lead')):
+                                        value = conv.get('value', 0)
+                                        try:
+                                            conversions = int(value) if isinstance(value, (int, str)) else 0
+                                            selected_conversion_type = action_type
+                                            found_conversion = True
+                                            if saved_count < 3:
+                                                print(f"[Meta API] Selected conversion type (lead): {action_type} = {conversions}")
+                                            break
+                                        except (ValueError, TypeError):
+                                            pass
+                        
+                        # 4. 上記のいずれも見つからなかった場合、最初のコンバージョンタイプを使用
+                        if not found_conversion and conversions_data:
+                            conv = conversions_data[0]
+                            if isinstance(conv, dict):
+                                action_type = conv.get('action_type', '')
+                                value = conv.get('value', 0)
+                                try:
+                                    conversions = int(value) if isinstance(value, (int, str)) else 0
+                                    selected_conversion_type = action_type
+                                    if saved_count < 3:
+                                        print(f"[Meta API] Selected conversion type (first available): {action_type} = {conversions}")
+                                except (ValueError, TypeError):
+                                    conversions = 0
                             else:
-                                conversions += int(conv)
+                                try:
+                                    conversions = int(conv) if isinstance(conv, (int, str)) else 0
+                                    selected_conversion_type = "unknown"
+                                    if saved_count < 3:
+                                        print(f"[Meta API] Selected conversion type (unknown format): {conversions}")
+                                except (ValueError, TypeError):
+                                    conversions = 0
                     
-                    # フォールバック: actionsから取得
+                    # フォールバック: actionsから取得（conversionsが0の場合のみ）
                     if conversions == 0:
                         actions = insight.get('actions', [])
+                        # 同じ優先順位で検索
                         for action in actions:
-                            action_type = action.get('action_type', '')
-                            if (action_type.startswith('offsite_conversion') or 
-                                action_type.startswith('onsite_conversion') or 
-                                action_type in ['omni_purchase', 'purchase'] or
-                                'complete_registration' in action_type or
-                                'lead' in action_type or
-                                'purchase' in action_type):
-                                value = action.get('value', 0)
-                                try:
-                                    conversions += int(value) if isinstance(value, (int, str)) else 0
-                                except (ValueError, TypeError):
-                                    pass
+                            if isinstance(action, dict):
+                                action_type = action.get('action_type', '')
+                                if (action_type in ['purchase', 'omni_purchase'] or
+                                    action_type == 'offsite_conversion.fb_pixel_purchase' or
+                                    action_type == 'onsite_conversion.meta_purchase'):
+                                    value = action.get('value', 0)
+                                    try:
+                                        conversions = int(value) if isinstance(value, (int, str)) else 0
+                                        selected_conversion_type = action_type
+                                        break
+                                    except (ValueError, TypeError):
+                                        pass
+                                elif (action_type == 'complete_registration' or
+                                      action_type == 'offsite_conversion.fb_pixel_complete_registration'):
+                                    value = action.get('value', 0)
+                                    try:
+                                        conversions = int(value) if isinstance(value, (int, str)) else 0
+                                        selected_conversion_type = action_type
+                                        break
+                                    except (ValueError, TypeError):
+                                        pass
+                                elif (action_type == 'lead' or
+                                      action_type == 'offsite_conversion.fb_pixel_lead'):
+                                    value = action.get('value', 0)
+                                    try:
+                                        conversions = int(value) if isinstance(value, (int, str)) else 0
+                                        selected_conversion_type = action_type
+                                        break
+                                    except (ValueError, TypeError):
+                                        pass
                     
                     # conversion_valueを取得（action_valuesから）
+                    # 購入関連のコンバージョンタイプのみを取得（合計しない）
                     action_values = insight.get('action_values', [])
                     conversion_value = 0.0
                     
                     if action_values:
+                        # 購入関連のコンバージョン価値のみを取得（最初に見つかったもの）
                         for av in action_values:
                             if isinstance(av, dict):
                                 av_type = av.get('action_type', '')
-                                if (av_type.startswith('offsite_conversion') or 
-                                    av_type.startswith('onsite_conversion') or 
-                                    av_type in ['omni_purchase', 'purchase'] or
-                                    'purchase' in av_type):
+                                if (av_type in ['purchase', 'omni_purchase'] or
+                                    av_type == 'offsite_conversion.fb_pixel_purchase' or
+                                    av_type == 'onsite_conversion.meta_purchase' or
+                                    av_type.startswith('offsite_conversion.fb_pixel_purchase') or
+                                    av_type.startswith('onsite_conversion.meta_purchase')):
                                     value = av.get('value', 0)
                                     try:
-                                        conversion_value += float(value) if isinstance(value, (int, float, str)) else 0.0
+                                        conversion_value = float(value) if isinstance(value, (int, float, str)) else 0.0
+                                        break
                                     except (ValueError, TypeError):
                                         pass
                     
-                    # フォールバック: actionsから取得
+                    # フォールバック: actionsから取得（conversion_valueが0の場合のみ）
                     if conversion_value == 0:
                         actions = insight.get('actions', [])
                         for action in actions:
                             action_type = action.get('action_type', '')
                             if (action_type in ['purchase', 'omni_purchase'] or
-                                'purchase' in action_type):
+                                action_type == 'offsite_conversion.fb_pixel_purchase' or
+                                action_type == 'onsite_conversion.meta_purchase'):
                                 value = action.get('value', 0)
                                 try:
-                                    conversion_value += float(value) if isinstance(value, (int, float, str)) else 0.0
+                                    conversion_value = float(value) if isinstance(value, (int, float, str)) else 0.0
+                                    break
                                 except (ValueError, TypeError):
                                     pass
                     
@@ -439,6 +544,12 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                     # デバッグログ（最初の数件のみ）
                     if saved_count < 3:
                         print(f"  Final values: spend={spend}, impressions={impressions}, clicks={clicks}, conversions={conversions}, reach={reach}")
+                        print(f"  Selected conversion type: {selected_conversion_type}")
+                        if clicks > 0:
+                            cvr = (conversions / clicks * 100)
+                            print(f"  Conversion check: conversions={conversions}, clicks={clicks}, CVR={cvr:.2f}%")
+                        else:
+                            print(f"  Conversion check: conversions={conversions}, clicks={clicks} (no clicks)")
                     
                     # 重複チェック（同じcampaign_name, date, meta_account_idの組み合わせは1件のみ）
                     record_key = (campaign_name, campaign_date, account_id)
