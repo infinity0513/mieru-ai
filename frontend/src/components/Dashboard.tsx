@@ -599,16 +599,27 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
       };
       
       // キャッシュチェック: 同じパラメータで既にデータが取得されている場合は再取得しない
-      if (lastFetchParamsRef.current && 
+      // ただし、propDataが更新された場合は再取得する（新規データ取得時）
+      const shouldSkipFetch = lastFetchParamsRef.current && 
           lastFetchParamsRef.current.start === currentParams.start &&
           lastFetchParamsRef.current.end === currentParams.end &&
           lastFetchParamsRef.current.metaAccountId === currentParams.metaAccountId &&
           apiData.length > 0 && 
           summaryData !== null && 
-          trendsData !== null) {
+          trendsData !== null;
+      
+      // propDataが更新された場合は再取得（新規データ取得の可能性）
+      const propDataChanged = propData && propData.length > 0 && 
+          (propData.length !== (apiData.length || 0));
+      
+      if (shouldSkipFetch && !propDataChanged) {
         console.log('[Dashboard] Data already loaded with same params, skipping fetch');
         setLoading(false);
         return;
+      }
+      
+      if (propDataChanged) {
+        console.log('[Dashboard] propData changed, forcing data refresh');
       }
       
       setLoading(true);
@@ -878,9 +889,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     };
     
     loadDashboardData();
-    // propDataを依存配列から削除して、不要な再レンダリングを防ぐ
+    // propDataを依存配列に追加して、新規データ取得時に再読み込み
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dateRange.start, dateRange.end, selectedMetaAccountId]);
+  }, [dateRange.start, dateRange.end, selectedMetaAccountId, propData?.length]);
 
   // Use propData if available (from App.tsx), otherwise fallback to apiData
   // Filter by asset and date range
