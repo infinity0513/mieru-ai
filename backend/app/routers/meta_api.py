@@ -1674,6 +1674,7 @@ async def meta_oauth_callback(
             else:
                 print(f"[Meta OAuth] No conversion needed")
             
+            account_count = len(accounts)
             if account_count > 1:
                 success_url = f"{final_frontend_url}/settings?meta_oauth=success&account_id={account_id}&account_count={account_count}"
             else:
