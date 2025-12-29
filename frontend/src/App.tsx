@@ -302,6 +302,20 @@ const AppContent: React.FC = () => {
     }
   }, [user, loadInitialData]);
 
+  // データ取得完了イベントをリッスン（Meta API同期後など）
+  useEffect(() => {
+    const handleDataSyncComplete = () => {
+      console.log('[App] Data sync complete event received, reloading data...');
+      loadInitialData();
+    };
+
+    window.addEventListener('dataSyncComplete', handleDataSyncComplete);
+    
+    return () => {
+      window.removeEventListener('dataSyncComplete', handleDataSyncComplete);
+    };
+  }, [loadInitialData]);
+
   // Check for tour completion on login
   useEffect(() => {
     if (user) {

@@ -611,18 +611,23 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
         console.log('[Dashboard] Current propData length:', propData?.length || 0);
         lastFetchParamsRef.current = null; // キャッシュをリセット
         prevPropDataRef.current = propData; // 新しい参照を保存
+        // propDataが変更された場合は、既存のapiDataもクリアして強制的に再取得
+        setApiData([]);
+        setAllApiData([]);
+        setSummaryData(null);
+        setTrendsData(null);
       }
       
       // キャッシュチェック: 同じパラメータで既にデータが取得されている場合は再取得しない
-      // ただし、propDataが変更された場合は必ず再取得
-      const shouldSkipFetch = lastFetchParamsRef.current && 
+      // ただし、propDataが変更された場合は必ず再取得（上記でクリアしているので、この条件は満たさない）
+      const shouldSkipFetch = !propDataChanged && // propDataが変更された場合は必ず再取得
+          lastFetchParamsRef.current && 
           lastFetchParamsRef.current.start === currentParams.start &&
           lastFetchParamsRef.current.end === currentParams.end &&
           lastFetchParamsRef.current.metaAccountId === currentParams.metaAccountId &&
           apiData.length > 0 && 
           summaryData !== null && 
-          trendsData !== null &&
-          !propDataChanged; // propDataが変更された場合はスキップしない
+          trendsData !== null;
       
       if (shouldSkipFetch) {
         console.log('[Dashboard] Data already loaded with same params, skipping fetch');
