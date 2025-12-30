@@ -1,3 +1,4 @@
+// Netlifyデプロイ用の変更検知
 import React, { useState, useMemo, useEffect, useContext } from 'react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer,
