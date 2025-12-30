@@ -542,17 +542,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
   
   // Load Meta Accounts list
   useEffect(() => {
-    // キャッシュが有効な場合は再取得しない
+    // キャッシュを削除（アセット名が表示されない問題を解決するため）
     try {
-      const cached = localStorage.getItem('dashboard_metaAccounts');
-      const cacheTime = localStorage.getItem('dashboard_metaAccounts_time');
-      if (cached && cacheTime) {
-        const age = Date.now() - parseInt(cacheTime);
-        if (age < 3600000) {
-          console.log('[Dashboard] Meta accounts cache is valid, skipping fetch');
-          return;
-        }
-      }
+      localStorage.removeItem('dashboard_metaAccounts');
+      localStorage.removeItem('dashboard_metaAccounts_time');
+      console.log('[Dashboard] Meta accounts cache cleared');
     } catch (e) {
       // 無視して続行
     }
@@ -565,6 +559,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
         console.log('[Dashboard] Calling Api.getMetaAccounts()');
         const result = await Api.getMetaAccounts();
         console.log('[Dashboard] Api.getMetaAccounts() completed, accounts count:', result.accounts?.length || 0);
+        console.log('[Dashboard] API response accounts:', JSON.stringify(result.accounts, null, 2));
         setMetaAccounts(result.accounts || []);
         setMetaAccountsError(null);
         // localStorageにキャッシュを保存
@@ -590,7 +585,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
 
   // propDataの前回の参照を保持（変更検知用）
   const prevPropDataRef = React.useRef<CampaignData[] | undefined>(propData);
-  
+
   // Load dashboard data from API
   useEffect(() => {
     const loadDashboardData = async () => {
@@ -770,7 +765,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
               if (combinedData.length > 0) {
                 setApiData(combinedData);
                 console.log('[Dashboard] apiData from combinedData (asset selected):', combinedData.length, 'records');
-              } else {
+        } else {
                 // combinedDataが空の場合、allCampaignsResponseから該当アセットと日付範囲でフィルタリング
                 const filtered = allCampaignsResponse.filter((d: CampaignData) => {
                   if (!d.date) return false;
@@ -788,9 +783,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
           } else {
             console.warn('[Dashboard] Invalid all campaigns response format or empty:', allCampaignsResponse);
             // Fallback: propDataまたはcombinedDataを使用
-            if (propData && propData.length > 0) {
+          if (propData && propData.length > 0) {
               setAllApiData(propData);
-              setApiData(propData);
+            setApiData(propData);
               console.log('[Dashboard] Using propData as fallback:', propData.length, 'records');
             } else if (combinedData.length > 0) {
               setAllApiData(combinedData);
@@ -798,14 +793,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
             } else {
               setAllApiData([]);
               setApiData([]);
-            }
           }
+        }
         } else {
           console.warn('[Dashboard] Failed to load all campaigns:', allCampaignsResult.reason);
           // Fallback: propDataまたはcombinedDataを使用
-          if (propData && propData.length > 0) {
+        if (propData && propData.length > 0) {
             setAllApiData(propData);
-            setApiData(propData);
+          setApiData(propData);
             console.log('[Dashboard] Using propData as fallback after error:', propData.length, 'records');
           } else if (combinedData.length > 0) {
             setAllApiData(combinedData);
@@ -1893,7 +1888,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
                     <option value="">全アセットを表示</option>
                     {metaAccounts.map((account) => (
                       <option key={account.account_id} value={account.account_id}>
-                        {account.name || account.account_id} (キャンペーン: {account.campaign_count || 0}件 / データ: {account.data_count || 0}件)
+                        {account.name} (キャンペーン: {account.campaign_count || 0}件 / データ: {account.data_count || 0}件)
                       </option>
                     ))}
                   </select>
