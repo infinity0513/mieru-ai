@@ -875,10 +875,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     
     // propDataを最優先（App.tsxから渡される最新データを確実に表示）
     if (propData && propData.length > 0) {
-      // アセットが選択されている場合、propDataからフィルタリング
+      // アセットが選択されている場合、propDataからmeta_account_idでフィルタリング
       if (selectedMetaAccountId) {
-        const filteredByAsset = propData.filter((d: CampaignData) => d.meta_account_id === selectedMetaAccountId || !d.meta_account_id);
-        sourceData = filteredByAsset.length > 0 ? filteredByAsset : propData;
+        console.log('[Dashboard] propData before filtering:', propData.length, 'records');
+        // selectedMetaAccountIdと完全に一致するデータのみを使用（CSVデータなどmeta_account_idがないデータは除外）
+        const filteredByAsset = propData.filter((d: CampaignData) => d.meta_account_id === selectedMetaAccountId);
+        console.log('[Dashboard] propData after filtering by', selectedMetaAccountId + ':', filteredByAsset.length, 'records');
+        sourceData = filteredByAsset;
         console.log('[Dashboard] Using propData (filtered by asset):', sourceData.length, 'records from', propData.length, 'total propData');
       } else {
         sourceData = propData;
