@@ -363,6 +363,152 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
             
             print(f"[Meta API] Campaign-level insights retrieved: {len(all_insights)}")
             
+            # ===== 広告セットレベルのinsights取得 =====
+            print(f"[Meta API] Fetching adset-level insights for account {account_id}...")
+            adset_fields = "campaign_id,campaign_name,adset_name,date_start,spend,impressions,clicks,inline_link_clicks,reach,actions,conversions,action_values,frequency"
+            all_adset_insights = []
+            
+            for batch_start in range(0, len(all_campaigns), batch_size):
+                batch_end = min(batch_start + batch_size, len(all_campaigns))
+                batch_campaigns = all_campaigns[batch_start:batch_end]
+                batch_num = (batch_start // batch_size) + 1
+                total_batches = (len(all_campaigns) + batch_size - 1) // batch_size
+                
+                print(f"[Meta API] Processing adset-level batch {batch_num}/{total_batches} ({len(batch_campaigns)} campaigns)")
+                
+                batch_requests = []
+                for campaign in batch_campaigns:
+                    campaign_id = campaign.get('id')
+                    # 広告セットレベルのinsightsを取得
+                    relative_url = f"{campaign_id}/insights?level=adset&fields={adset_fields}&time_range={time_range_encoded}&time_increment={time_increment}&limit=100"
+                    batch_requests.append({
+                        "method": "GET",
+                        "relative_url": relative_url
+                    })
+                
+                try:
+                    batch_response = await client.post(batch_url, params=batch_params)
+                    batch_response.raise_for_status()
+                    batch_data = batch_response.json()
+                    
+                    for idx, batch_item in enumerate(batch_data):
+                        campaign = batch_campaigns[idx]
+                        campaign_name = campaign.get('name', 'Unknown')
+                        campaign_id = campaign.get('id')
+                        
+                        if batch_item.get('code') == 200:
+                            try:
+                                item_body = json.loads(batch_item.get('body', '{}'))
+                                page_insights = item_body.get('data', [])
+                                
+                                if len(page_insights) > 0:
+                                    all_adset_insights.extend(page_insights)
+                                    
+                                    # ページネーション処理
+                                    paging = item_body.get('paging', {})
+                                    page_count = 1
+                                    while 'next' in paging:
+                                        page_count += 1
+                                        next_url = paging['next']
+                                        next_response = await client.get(next_url)
+                                        next_response.raise_for_status()
+                                        next_data = next_response.json()
+                                        next_insights = next_data.get('data', [])
+                                        all_adset_insights.extend(next_insights)
+                                        paging = next_data.get('paging', {})
+                                        print(f"[Meta API] Retrieved {len(next_insights)} more adset insights for {campaign_name} (page {page_count}, total: {len(all_adset_insights)})")
+                            except json.JSONDecodeError as e:
+                                print(f"[Meta API] Error parsing adset batch response for {campaign_name}: {str(e)}")
+                        else:
+                            error_body = batch_item.get('body', '{}')
+                            try:
+                                error_data = json.loads(error_body) if isinstance(error_body, str) else error_body
+                                error_msg = error_data.get('error', {}).get('message', str(error_body))
+                                print(f"[Meta API] Error fetching adset insights for {campaign_name} ({campaign_id}): {error_msg}")
+                            except:
+                                print(f"[Meta API] Error fetching adset insights for {campaign_name} ({campaign_id}): {error_body}")
+                
+                except Exception as e:
+                    print(f"[Meta API] Error processing adset batch {batch_num}: {str(e)}")
+                    continue
+            
+            print(f"[Meta API] Adset-level insights retrieved: {len(all_adset_insights)}")
+            
+            # ===== 広告レベルのinsights取得 =====
+            print(f"[Meta API] Fetching ad-level insights for account {account_id}...")
+            ad_fields = "campaign_id,campaign_name,adset_name,ad_name,date_start,spend,impressions,clicks,inline_link_clicks,reach,actions,conversions,action_values,frequency"
+            all_ad_insights = []
+            
+            for batch_start in range(0, len(all_campaigns), batch_size):
+                batch_end = min(batch_start + batch_size, len(all_campaigns))
+                batch_campaigns = all_campaigns[batch_start:batch_end]
+                batch_num = (batch_start // batch_size) + 1
+                total_batches = (len(all_campaigns) + batch_size - 1) // batch_size
+                
+                print(f"[Meta API] Processing ad-level batch {batch_num}/{total_batches} ({len(batch_campaigns)} campaigns)")
+                
+                batch_requests = []
+                for campaign in batch_campaigns:
+                    campaign_id = campaign.get('id')
+                    # 広告レベルのinsightsを取得
+                    relative_url = f"{campaign_id}/insights?level=ad&fields={ad_fields}&time_range={time_range_encoded}&time_increment={time_increment}&limit=100"
+                    batch_requests.append({
+                        "method": "GET",
+                        "relative_url": relative_url
+                    })
+                
+                try:
+                    batch_response = await client.post(batch_url, params=batch_params)
+                    batch_response.raise_for_status()
+                    batch_data = batch_response.json()
+                    
+                    for idx, batch_item in enumerate(batch_data):
+                        campaign = batch_campaigns[idx]
+                        campaign_name = campaign.get('name', 'Unknown')
+                        campaign_id = campaign.get('id')
+                        
+                        if batch_item.get('code') == 200:
+                            try:
+                                item_body = json.loads(batch_item.get('body', '{}'))
+                                page_insights = item_body.get('data', [])
+                                
+                                if len(page_insights) > 0:
+                                    all_ad_insights.extend(page_insights)
+                                    
+                                    # ページネーション処理
+                                    paging = item_body.get('paging', {})
+                                    page_count = 1
+                                    while 'next' in paging:
+                                        page_count += 1
+                                        next_url = paging['next']
+                                        next_response = await client.get(next_url)
+                                        next_response.raise_for_status()
+                                        next_data = next_response.json()
+                                        next_insights = next_data.get('data', [])
+                                        all_ad_insights.extend(next_insights)
+                                        paging = next_data.get('paging', {})
+                                        print(f"[Meta API] Retrieved {len(next_insights)} more ad insights for {campaign_name} (page {page_count}, total: {len(all_ad_insights)})")
+                            except json.JSONDecodeError as e:
+                                print(f"[Meta API] Error parsing ad batch response for {campaign_name}: {str(e)}")
+                        else:
+                            error_body = batch_item.get('body', '{}')
+                            try:
+                                error_data = json.loads(error_body) if isinstance(error_body, str) else error_body
+                                error_msg = error_data.get('error', {}).get('message', str(error_body))
+                                print(f"[Meta API] Error fetching ad insights for {campaign_name} ({campaign_id}): {error_msg}")
+                            except:
+                                print(f"[Meta API] Error fetching ad insights for {campaign_name} ({campaign_id}): {error_body}")
+                
+                except Exception as e:
+                    print(f"[Meta API] Error processing ad batch {batch_num}: {str(e)}")
+                    continue
+            
+            print(f"[Meta API] Ad-level insights retrieved: {len(all_ad_insights)}")
+            
+            # すべてのレベルのinsightsを統合
+            all_insights = all_insights + all_adset_insights + all_ad_insights
+            print(f"[Meta API] Total insights (all levels): {len(all_insights)} (campaign: {len(all_insights) - len(all_adset_insights) - len(all_ad_insights)}, adset: {len(all_adset_insights)}, ad: {len(all_ad_insights)})")
+            
             # 数値の安全なパース関数（Noneや空文字列を0に変換）
             def safe_float(value, default=0.0):
                 if value is None or value == '':
@@ -380,14 +526,14 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                 except (ValueError, TypeError):
                     return default
             
-            # InsightsデータをCampaignテーブルに保存（キャンペーンレベルのみ）
+            # InsightsデータをCampaignテーブルに保存（キャンペーン/広告セット/広告レベル）
             # 同じ期間の既存データを削除（重複を防ぐ、CSVデータも含む）
             # days=None（全期間取得）の場合は期間制限なしで削除、それ以外は期間内のみ削除
             # Meta APIデータとCSVデータの両方を削除（最新データを優先）
+            # キャンペーンレベル、広告セットレベル、広告レベルのすべてのデータを削除
             delete_query = db.query(Campaign).filter(
                 Campaign.user_id == user.id,
-                Campaign.ad_set_name.is_(None),
-                Campaign.ad_name.is_(None)
+                Campaign.meta_account_id == account_id
             )
             # days=Noneの場合は期間制限なしで削除（全期間のデータを削除）
             if days is not None:
@@ -442,11 +588,11 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                         continue
                     campaign_date = datetime.strptime(date_str, '%Y-%m-%d').date()
                     
-                    # データを取得（キャンペーンレベルのみ）
+                    # データを取得（キャンペーン/広告セット/広告レベル）
                     campaign_name = insight.get('campaign_name', 'Unknown')
-                    # キャンペーンレベルのみなので、ad_set_nameとad_nameは常にNULL
-                    ad_set_name = None
-                    ad_name = None
+                    # ad_set_name と ad_name を Meta API のレスポンスから取得
+                    ad_set_name = insight.get('adset_name')  # 広告セット名（あれば）
+                    ad_name = insight.get('ad_name')          # 広告名（あれば）
                     
                     # デバッグログ（最初の数件のみ）
                     if saved_count < 3:
@@ -676,10 +822,10 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                         else:
                             print(f"  Conversion check: conversions={conversions}, clicks={clicks} (no clicks)")
                     
-                    # 重複チェック（同じcampaign_name, date, meta_account_idの組み合わせは1件のみ）
-                    record_key = (campaign_name, campaign_date, account_id)
+                    # 重複チェック（同じcampaign_name, ad_set_name, ad_name, date, meta_account_idの組み合わせは1件のみ）
+                    record_key = (campaign_name, ad_set_name, ad_name, campaign_date, account_id)
                     if record_key in seen_records:
-                        print(f"[Meta API] WARNING: Duplicate record skipped: {campaign_name} on {campaign_date}")
+                        print(f"[Meta API] WARNING: Duplicate record skipped: {campaign_name} / {ad_set_name} / {ad_name} on {campaign_date}")
                         continue
                     seen_records.add(record_key)
                     
