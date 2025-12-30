@@ -1,4 +1,4 @@
-// Netlifyデプロイ用の変更検知
+// Netlifyデプロイ用の変更検知 - 2025-12-30
 import React, { useState, useMemo, useEffect, useContext } from 'react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer,
