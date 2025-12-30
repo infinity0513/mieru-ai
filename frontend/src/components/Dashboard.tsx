@@ -879,40 +879,34 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     
     let sourceData: CampaignData[] = [];
     
-    // propDataを最優先（App.tsxから渡される最新データを確実に表示）
-    if (propData && propData.length > 0) {
-      // アセットが選択されている場合、propDataからmeta_account_idでフィルタリング
-      if (selectedMetaAccountId) {
-        console.log('[Dashboard] propData before filtering:', propData.length, 'records');
-        // selectedMetaAccountIdと完全に一致するデータのみを使用（CSVデータなどmeta_account_idがないデータは除外）
-        const filteredByAsset = propData.filter((d: CampaignData) => d.meta_account_id === selectedMetaAccountId);
-        console.log('[Dashboard] propData after filtering by', selectedMetaAccountId + ':', filteredByAsset.length, 'records');
-        sourceData = filteredByAsset;
-        console.log('[Dashboard] Using propData (filtered by asset):', sourceData.length, 'records from', propData.length, 'total propData');
-      } else {
-        sourceData = propData;
-        console.log('[Dashboard] Using propData (no asset selected):', sourceData.length, 'records');
-      }
-    } else if (selectedMetaAccountId) {
-      // propDataがない場合、apiDataを使用
-      if (apiData && apiData.length > 0) {
-        sourceData = apiData;
-        console.log('[Dashboard] Using apiData (asset selected, no propData):', sourceData.length, 'records');
-      } else if (allApiData && allApiData.length > 0) {
-        const filteredByAsset = allApiData.filter((d: CampaignData) => d.meta_account_id === selectedMetaAccountId);
-        sourceData = filteredByAsset;
-        console.log('[Dashboard] Using allApiData filtered by asset (no propData):', sourceData.length, 'records');
-      }
+    // apiData を優先的に使用するロジック
+    // propData は全アカウントのデータなので、フィルタリングせずそのまま使用
+    console.log('[Dashboard] selectedMetaAccountId:', selectedMetaAccountId);
+    console.log('[Dashboard] propData length:', propData?.length || 0);
+    console.log('[Dashboard] apiData length:', apiData?.length || 0);
+    console.log('[Dashboard] allApiData length:', allApiData?.length || 0);
+    
+    if (selectedMetaAccountId === 'all' || !selectedMetaAccountId) {
+      // 「すべてのアカウント」が選択されている場合、またはアカウントが選択されていない場合
+      sourceData = (propData && propData.length > 0) ? propData : (allApiData && allApiData.length > 0 ? allApiData : apiData);
+      console.log('[Dashboard] Using propData/allApiData (all accounts or no selection):', sourceData.length, 'records');
     } else {
-      // propDataもアセット選択もない場合
+      // 特定のアカウントが選択されている場合
+      // apiData/allApiData が存在すればそちらを優先 (正しくフィルタリング済み)
       if (allApiData && allApiData.length > 0) {
         sourceData = allApiData;
-        console.log('[Dashboard] Using allApiData (no propData, no asset selected):', sourceData.length, 'records');
+        console.log('[Dashboard] Using allApiData (asset selected):', sourceData.length, 'records');
       } else if (apiData && apiData.length > 0) {
         sourceData = apiData;
-        console.log('[Dashboard] Using apiData (no propData, no allApiData, no asset selected):', sourceData.length, 'records');
+        console.log('[Dashboard] Using apiData (asset selected):', sourceData.length, 'records');
+      } else {
+        // apiData がない場合のみ propData を使用（フィルタリングはしない）
+        sourceData = propData && propData.length > 0 ? propData : [];
+        console.log('[Dashboard] Using propData as fallback (no apiData/allApiData):', sourceData.length, 'records');
       }
     }
+    
+    console.log('[Dashboard] sourceData length:', sourceData.length);
     
     // 日付範囲でフィルタリング（全期間データは日付範囲でフィルタリングが必要）
     if (!sourceData || sourceData.length === 0) {
