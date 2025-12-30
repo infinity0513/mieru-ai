@@ -627,20 +627,9 @@ async def get_meta_accounts(
     try:
         print(f"[Meta Accounts] Getting accounts for user: {current_user.id}")
         
-        # Campaignテーブルからユニークなmeta_account_idを取得
-        accounts = db.query(Campaign.meta_account_id).filter(
-            Campaign.user_id == current_user.id,
-            Campaign.meta_account_id.isnot(None)
-        ).distinct().all()
-        
-        print(f"[Meta Accounts] Found {len(accounts)} unique account IDs")
-        
-        # アカウントIDのリストを作成
-        account_ids = [acc[0] for acc in accounts if acc[0]]
-        print(f"[Meta Accounts] Account IDs: {account_ids}")
-        
-        # Meta APIからアカウント名を取得（アクセストークンがある場合）
+        # Meta APIから全ての広告アカウント情報を取得（アクセストークンがある場合）
         account_names = {}
+        all_account_ids_from_api = []
         if current_user.meta_access_token:
             try:
                 print(f"[Meta Accounts] Fetching account names from Meta API...")
@@ -664,13 +653,28 @@ async def get_meta_accounts(
                                 account_name = account_id
                             print(f"[Meta Accounts] Account ID: {account_id}, Name: {account_name}")
                             account_names[account_id] = account_name
+                            all_account_ids_from_api.append(account_id)
                     print(f"[Meta Accounts] Fetched {len(account_names)} account names from Meta API")
                     print(f"[Meta Accounts] Account names dict: {account_names}")
+                    print(f"[Meta Accounts] All account IDs from API: {all_account_ids_from_api}")
             except Exception as e:
                 import traceback
                 print(f"[Meta Accounts] Error fetching account names: {str(e)}")
                 print(f"[Meta Accounts] Error details: {traceback.format_exc()}")
-                # エラーが発生しても続行（アカウントIDをそのまま使用）
+                # エラーが発生した場合、データベースから取得したアカウントIDを使用
+        
+        # Meta APIから取得したアカウントIDを使用（なければデータベースから取得）
+        if all_account_ids_from_api:
+            account_ids = all_account_ids_from_api
+            print(f"[Meta Accounts] Using {len(account_ids)} account IDs from Meta API")
+        else:
+            # Meta APIから取得できなかった場合、データベースから取得
+            accounts = db.query(Campaign.meta_account_id).filter(
+                Campaign.user_id == current_user.id,
+                Campaign.meta_account_id.isnot(None)
+            ).distinct().all()
+            account_ids = [acc[0] for acc in accounts if acc[0]]
+            print(f"[Meta Accounts] Using {len(account_ids)} account IDs from database (fallback)")
         
         # 各アカウントの統計情報を取得
         result = []
