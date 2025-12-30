@@ -308,19 +308,14 @@ class ApiClient {
       }
       console.log('[Api] requestLoginCode: Normalized URL:', requestURL);
       
-      // URLオブジェクトを使用してプロトコルを強制的にhttp://に設定
+      // URLオブジェクトを使用してプロトコルを強制的にhttp://に設定（localhost/127.0.0.1の場合のみ）
       const urlObj = new URL(requestURL);
       if (urlObj.hostname === '127.0.0.1' || urlObj.hostname === 'localhost') {
         urlObj.protocol = 'http:';
         requestURL = urlObj.toString();
         console.log('[Api] requestLoginCode: Using URL object with forced HTTP:', requestURL);
       }
-      
-      // 念のため、文字列としてもhttp://であることを確認
-      if (requestURL.startsWith('https://')) {
-        requestURL = requestURL.replace('https://', 'http://');
-        console.log('[Api] requestLoginCode: Force replaced https to http:', requestURL);
-      }
+      // 本番環境（Railwayなど）のHTTPS URLはそのまま使用（Mixed Contentエラーを防ぐため）
       
       const response = await fetch(requestURL, {
         method: 'POST',
@@ -699,13 +694,13 @@ class ApiClient {
     return response;
   }
 
-  async getMetaAccounts(): Promise<{ accounts: Array<{ account_id: string; name: string; data_count: number; latest_date: string | null }>; total: number }> {
+  async getMetaAccounts(): Promise<{ accounts: Array<{ account_id: string; name: string; data_count: number; campaign_count?: number; latest_date: string | null }>; total: number }> {
     console.log('[API] getMetaAccounts called');
     console.trace('[API] Call stack');  // どこから呼ばれているか確認
     const response = await this.request<{ accounts: Array<{ account_id: string; name: string; data_count: number; latest_date: string | null }>; total: number }>('/meta/accounts/', {
       method: 'GET',
     });
-    console.log('[API] getMetaAccounts response received');
+    console.log('[API] getMetaAccounts response received:', JSON.stringify(response, null, 2));
     return response;
   }
 
