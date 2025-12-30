@@ -659,74 +659,13 @@ async def get_meta_accounts(
                     if "data" in accounts_data:
                         for account in accounts_data["data"]:
                             account_id = account.get("id")
-                            account_name = account.get("name", account_id)
+                            account_name = account.get("name")
+                            if not account_name or account_name.strip() == "":
+                                account_name = account_id
+                            print(f"[Meta Accounts] Account ID: {account_id}, Name: {account_name}")
                             account_names[account_id] = account_name
                     print(f"[Meta Accounts] Fetched {len(account_names)} account names from Meta API")
-            except Exception as e:
-                import traceback
-                print(f"[Meta Accounts] Error fetching account names: {str(e)}")
-                print(f"[Meta Accounts] Error details: {traceback.format_exc()}")
-                # エラーが発生しても続行（アカウントIDをそのまま使用）
-        
-        # レスポンスを作成
-        result = []
-        for account_id in account_ids:
-            result.append({
-                "id": account_id,
-                "name": account_names.get(account_id, account_id)
-            })
-        
-        return {"accounts": result}
-    except Exception as e:
-        import traceback
-        print(f"[Meta Accounts] Error: {str(e)}")
-        print(f"[Meta Accounts] Error details: {traceback.format_exc()}")
-        raise HTTPException(status_code=500, detail=f"アカウント取得エラー: {str(e)}")
-
-@router.get("/accounts/")
-async def get_meta_accounts(
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """ユーザーが連携しているMeta広告アカウント（アセット）一覧を取得"""
-    try:
-        print(f"[Meta Accounts] Getting accounts for user: {current_user.id}")
-        
-        # Campaignテーブルからユニークなmeta_account_idを取得
-        accounts = db.query(Campaign.meta_account_id).filter(
-            Campaign.user_id == current_user.id,
-            Campaign.meta_account_id.isnot(None)
-        ).distinct().all()
-        
-        print(f"[Meta Accounts] Found {len(accounts)} unique account IDs")
-        
-        # アカウントIDのリストを作成
-        account_ids = [acc[0] for acc in accounts if acc[0]]
-        print(f"[Meta Accounts] Account IDs: {account_ids}")
-        
-        # Meta APIからアカウント名を取得（アクセストークンがある場合）
-        account_names = {}
-        if current_user.meta_access_token:
-            try:
-                print(f"[Meta Accounts] Fetching account names from Meta API...")
-                async with httpx.AsyncClient() as client:
-                    # すべての広告アカウント情報を取得
-                    accounts_url = "https://graph.facebook.com/v24.0/me/adaccounts"
-                    accounts_params = {
-                        "access_token": current_user.meta_access_token,
-                        "fields": "account_id,id,name"
-                    }
-                    
-                    accounts_response = await client.get(accounts_url, params=accounts_params)
-                    accounts_response.raise_for_status()
-                    accounts_data = accounts_response.json()
-                    
-                    if "data" in accounts_data:
-                        for account in accounts_data["data"]:
-                            account_id = account.get("id")
-                            account_name = account.get("name", account_id)
-                            account_names[account_id] = account_name
-                    print(f"[Meta Accounts] Fetched {len(account_names)} account names from Meta API")
+                    print(f"[Meta Accounts] Account names dict: {account_names}")
             except Exception as e:
                 import traceback
                 print(f"[Meta Accounts] Error fetching account names: {str(e)}")
@@ -765,6 +704,10 @@ async def get_meta_accounts(
                 
                 # アカウント名を取得（Meta APIから取得できた場合はそれを使用、なければアカウントID）
                 account_name = account_names.get(account_id, account_id)
+                print(f"[Meta Accounts] For account_id {account_id}, got name: {account_name}")
+                if not account_name or account_name.strip() == "":
+                    account_name = account_id
+                    print(f"[Meta Accounts] Name was empty, using account_id: {account_name}")
                 
                 result.append({
                     "account_id": account_id,
