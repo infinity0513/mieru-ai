@@ -871,6 +871,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     console.log('[Dashboard] allApiData length:', allApiData?.length || 0);
     console.log('[Dashboard] selectedMetaAccountId:', selectedMetaAccountId);
     
+    // propData の最初のデータのフィールド名を確認
+    if (propData && propData.length > 0) {
+      console.log('[Dashboard] propData[0] sample:', propData[0]);
+      console.log('[Dashboard] propData[0] keys:', Object.keys(propData[0]));
+    }
+    
     let sourceData: CampaignData[] = [];
     
     // propDataを最優先（App.tsxから渡される最新データを確実に表示）
