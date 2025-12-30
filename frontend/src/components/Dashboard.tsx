@@ -606,9 +606,20 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
         console.log('[Dashboard] Current propData length:', propData?.length || 0);
         lastFetchParamsRef.current = null; // キャッシュをリセット
         prevPropDataRef.current = propData; // 新しい参照を保存
-        // propDataが変更された場合は、既存のapiDataもクリアして強制的に再取得
-        setApiData([]);
-        setAllApiData([]);
+        // propDataが変更された場合は、propDataからapiDataとallApiDataを即座に更新
+        if (propData && propData.length > 0) {
+          setAllApiData(propData);
+          if (selectedMetaAccountId) {
+            const filteredByAsset = propData.filter((d: CampaignData) => d.meta_account_id === selectedMetaAccountId || !d.meta_account_id);
+            setApiData(filteredByAsset);
+          } else {
+            setApiData(propData);
+          }
+        } else {
+          // propDataが空の場合はクリア
+          setApiData([]);
+          setAllApiData([]);
+        }
         setSummaryData(null);
         setTrendsData(null);
       }
@@ -625,10 +636,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
           trendsData !== null;
       
       // propDataが変更された場合は、propDataを優先的に使用して即座に反映（API呼び出しをスキップ）
+      // 注意: この処理は上記のpropDataChangedチェックで既にapiDataとallApiDataを更新しているため、
+      // ここでは重複して更新しない（ただし、念のため再度更新）
       if (propDataChanged && propData && propData.length > 0) {
-        console.log('[Dashboard] propData changed, updating apiData and allApiData immediately (skipping API call)');
+        console.log('[Dashboard] propData changed, ensuring apiData and allApiData are updated (skipping API call)');
         console.log('[Dashboard] propData sample:', propData[0]);
         console.log('[Dashboard] propData meta_account_id values:', propData.map(d => d.meta_account_id));
+        // 既に上記で更新されているが、念のため再度更新
         setAllApiData(propData);
         if (selectedMetaAccountId) {
           const filteredByAsset = propData.filter((d: CampaignData) => {
@@ -850,37 +864,38 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
   // Filter by asset and date range
   // propData contains all data (may not have meta_account_id), apiData is filtered by asset and date range
   const data = useMemo(() => {
+    console.log('[Dashboard] ===== data useMemo execution =====');
+    console.log('[Dashboard] propData length:', propData?.length || 0);
+    console.log('[Dashboard] apiData length:', apiData?.length || 0);
+    console.log('[Dashboard] allApiData length:', allApiData?.length || 0);
+    console.log('[Dashboard] selectedMetaAccountId:', selectedMetaAccountId);
+    
     let sourceData: CampaignData[] = [];
     
-    // アセットが選択されている場合
-    if (selectedMetaAccountId) {
-      // apiDataを最優先（アセットでフィルタリング済み）
-      if (apiData && apiData.length > 0) {
-        sourceData = apiData;
-        console.log('[Dashboard] Using apiData (asset selected):', sourceData.length, 'records');
-      } else if (allApiData && allApiData.length > 0) {
-        // allApiDataから該当アセットのデータをフィルタリング
-        const filteredByAsset = allApiData.filter((d: CampaignData) => d.meta_account_id === selectedMetaAccountId);
-        sourceData = filteredByAsset;
-        console.log('[Dashboard] Using allApiData filtered by asset:', sourceData.length, 'records');
-        // フィルタリング結果が0件の場合、propDataをフォールバックとして使用
-        if (sourceData.length === 0 && propData && propData.length > 0) {
-          sourceData = propData;
-          console.log('[Dashboard] allApiData filtered result is empty, using propData as fallback:', sourceData.length, 'records');
-        }
-      } else if (propData && propData.length > 0) {
-        // propDataから該当アセットのデータをフィルタリング（フォールバック）
-        const filteredByAsset = propData.filter((d: CampaignData) => d.meta_account_id === selectedMetaAccountId);
-        // フィルタリング結果が0件の場合、propDataをそのまま使用（meta_account_idが一致しない場合）
+    // propDataを最優先（App.tsxから渡される最新データを確実に表示）
+    if (propData && propData.length > 0) {
+      // アセットが選択されている場合、propDataからフィルタリング
+      if (selectedMetaAccountId) {
+        const filteredByAsset = propData.filter((d: CampaignData) => d.meta_account_id === selectedMetaAccountId || !d.meta_account_id);
         sourceData = filteredByAsset.length > 0 ? filteredByAsset : propData;
-        console.log('[Dashboard] Using propData (filtered by asset or fallback):', sourceData.length, 'records');
-      }
-    } else {
-      // アセットが選択されていない場合、propDataを最優先
-      if (propData && propData.length > 0) {
+        console.log('[Dashboard] Using propData (filtered by asset):', sourceData.length, 'records from', propData.length, 'total propData');
+      } else {
         sourceData = propData;
         console.log('[Dashboard] Using propData (no asset selected):', sourceData.length, 'records');
+      }
+    } else if (selectedMetaAccountId) {
+      // propDataがない場合、apiDataを使用
+      if (apiData && apiData.length > 0) {
+        sourceData = apiData;
+        console.log('[Dashboard] Using apiData (asset selected, no propData):', sourceData.length, 'records');
       } else if (allApiData && allApiData.length > 0) {
+        const filteredByAsset = allApiData.filter((d: CampaignData) => d.meta_account_id === selectedMetaAccountId);
+        sourceData = filteredByAsset;
+        console.log('[Dashboard] Using allApiData filtered by asset (no propData):', sourceData.length, 'records');
+      }
+    } else {
+      // propDataもアセット選択もない場合
+      if (allApiData && allApiData.length > 0) {
         sourceData = allApiData;
         console.log('[Dashboard] Using allApiData (no propData, no asset selected):', sourceData.length, 'records');
       } else if (apiData && apiData.length > 0) {
@@ -889,7 +904,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
       }
     }
     
-    // Filter by date range (全期間データは日付範囲でフィルタリングが必要)
+    // 日付範囲でフィルタリング（全期間データは日付範囲でフィルタリングが必要）
     if (!sourceData || sourceData.length === 0) {
       console.log('[Dashboard] No source data available');
       return [];
@@ -898,9 +913,26 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     const startDateStr = dateRange.start;
     const endDateStr = dateRange.end;
     
+    // デバッグ: フィルタリング前のデータの日付範囲を確認
+    if (sourceData.length > 0) {
+      const sourceDates = sourceData.map(d => d.date).filter(Boolean).sort();
+      const sourceMinDate = sourceDates[0];
+      const sourceMaxDate = sourceDates[sourceDates.length - 1];
+      console.log('[Dashboard] ===== Before date range filtering =====');
+      console.log('[Dashboard] sourceData日付範囲:', { min: sourceMinDate, max: sourceMaxDate, count: sourceData.length });
+      console.log('[Dashboard] フィルタリング日付範囲:', { start: startDateStr, end: endDateStr });
+    }
+    
     const filtered = sourceData.filter((d: CampaignData) => {
-      if (!d.date) return false;
-      return d.date >= startDateStr && d.date <= endDateStr;
+      if (!d.date) {
+        console.log('[Dashboard] WARNING: Data without date:', d);
+        return false;
+      }
+      const inRange = d.date >= startDateStr && d.date <= endDateStr;
+      if (!inRange && sourceData.length <= 10) {
+        console.log('[Dashboard] Filtered out (date out of range):', { date: d.date, campaign: d.campaign_name, range: { start: startDateStr, end: endDateStr } });
+      }
+      return inRange;
     });
     
     // 日付範囲を計算
@@ -925,6 +957,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     } else {
       console.log('[Dashboard] ===== Data filtered by date range =====');
       console.log('[Dashboard] 表示されているデータ: 0件（0日分）');
+      console.log('[Dashboard] 原因調査: sourceDataの日付範囲とフィルタリング日付範囲が一致していない可能性があります');
+      if (sourceData.length > 0) {
+        const sourceDates = sourceData.map(d => d.date).filter(Boolean).sort();
+        console.log('[Dashboard] sourceDataの実際の日付:', sourceDates);
+        console.log('[Dashboard] フィルタリング範囲:', { start: startDateStr, end: endDateStr });
+      }
     }
     
     return filtered;

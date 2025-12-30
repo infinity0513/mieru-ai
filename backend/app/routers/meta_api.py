@@ -177,6 +177,8 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                 "until": end_date_str
             }
             time_range_json = json.dumps(time_range_dict, separators=(',', ':'))  # スペースなしJSON
+            # time_increment=1を追加して日次データを取得（重要：これがないと期間全体の集計データが1件だけ返される）
+            time_increment = "1"
             
             # キャンペーンを50件ずつのバッチに分割
             batch_size = 50  # Meta APIのバッチリクエスト最大数
@@ -193,7 +195,22 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                 for campaign in batch_campaigns:
                     campaign_id = campaign.get('id')
                     # 相対URLを作成（access_tokenとtime_rangeを含む）
-                    relative_url = f"{campaign_id}/insights?fields={campaign_fields}&time_range={time_range_json}&limit=100"
+                    # time_increment=1を追加して日次データを取得（重要：これがないと期間全体の集計データが1件だけ返される）
+                    # Meta APIのバッチリクエストでは、time_rangeはJSON文字列として渡す必要がある
+                    # URLエンコードが必要だが、{}や:などの文字もエンコードする必要がある
+                    # time_rangeは{"since":"2022-11-26","until":"2025-12-22"}の形式
+                    time_range_encoded = urllib.parse.quote(time_range_json, safe='')
+                    # time_incrementパラメータを追加（日次データを取得するために必須）
+                    relative_url = f"{campaign_id}/insights?fields={campaign_fields}&time_range={time_range_encoded}&time_increment={time_increment}&limit=100"
+                    
+                    # デバッグログ（最初のバッチの最初のキャンペーンのみ）
+                    if batch_start == 0 and len(batch_requests) == 0:
+                        print(f"[Meta API] Sample relative_url for batch request: {relative_url}")
+                        print(f"[Meta API] time_range_json: {time_range_json}")
+                        print(f"[Meta API] time_range_encoded: {time_range_encoded}")
+                        print(f"[Meta API] time_increment: {time_increment}")
+                        print(f"[Meta API] Full URL would be: https://graph.facebook.com/v24.0/{relative_url}")
+                    
                     batch_requests.append({
                         "method": "GET",
                         "relative_url": relative_url
@@ -207,9 +224,65 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                         "batch": json.dumps(batch_requests, separators=(',', ':'))
                     }
                     
+                    # デバッグ: バッチリクエストの内容を確認（最初のバッチのみ）
+                    if batch_start == 0:
+                        print(f"[Meta API] ===== Batch Request Debug (First Batch) =====")
+                        print(f"[Meta API] Batch URL: {batch_url}")
+                        print(f"[Meta API] Number of requests in batch: {len(batch_requests)}")
+                        print(f"[Meta API] First request relative_url: {batch_requests[0].get('relative_url')}")
+                        print(f"[Meta API] First request method: {batch_requests[0].get('method')}")
+                        # リクエストURLを解析してパラメータを確認
+                        first_relative_url = batch_requests[0].get('relative_url', '')
+                        print(f"[Meta API] Parsed relative_url: {first_relative_url}")
+                        # time_rangeとtime_incrementが含まれているか確認
+                        if 'time_range=' in first_relative_url:
+                            print(f"[Meta API] ✓ time_range parameter found in URL")
+                        else:
+                            print(f"[Meta API] ✗ ERROR: time_range parameter NOT found in URL!")
+                        if 'time_increment=' in first_relative_url:
+                            print(f"[Meta API] ✓ time_increment parameter found in URL")
+                        else:
+                            print(f"[Meta API] ✗ ERROR: time_increment parameter NOT found in URL!")
+                        print(f"[Meta API] ==============================================")
+                    
                     batch_response = await client.post(batch_url, params=batch_params)
                     batch_response.raise_for_status()
                     batch_data = batch_response.json()
+                    
+                    # デバッグ: バッチレスポンスの内容を確認（最初のバッチの最初のレスポンスのみ）
+                    if batch_start == 0 and len(batch_data) > 0:
+                        first_response = batch_data[0]
+                        print(f"[Meta API] ===== Batch Response Debug (First Response) =====")
+                        print(f"[Meta API] Response code: {first_response.get('code')}")
+                        if first_response.get('code') == 200:
+                            try:
+                                first_body = json.loads(first_response.get('body', '{}'))
+                                first_data = first_body.get('data', [])
+                                print(f"[Meta API] Total insights in first response: {len(first_data)}")
+                                if len(first_data) > 0:
+                                    print(f"[Meta API] First insight date_start: {first_data[0].get('date_start')}")
+                                    print(f"[Meta API] First insight campaign_name: {first_data[0].get('campaign_name')}")
+                                    if len(first_data) > 1:
+                                        print(f"[Meta API] Second insight date_start: {first_data[1].get('date_start')}")
+                                        dates_in_first_batch = [d.get('date_start') for d in first_data[:10] if d.get('date_start')]
+                                        unique_dates_in_batch = sorted(list(set(dates_in_first_batch)))
+                                        print(f"[Meta API] First 10 dates in batch: {dates_in_first_batch}")
+                                        print(f"[Meta API] Unique dates in first 10 insights: {unique_dates_in_batch}")
+                                        print(f"[Meta API] Number of unique dates: {len(unique_dates_in_batch)}")
+                                        if len(unique_dates_in_batch) == 1:
+                                            print(f"[Meta API] ⚠️ WARNING: Only 1 unique date in first 10 insights!")
+                                    else:
+                                        print(f"[Meta API] ⚠️ WARNING: Only 1 insight returned!")
+                                else:
+                                    print(f"[Meta API] ⚠️ WARNING: No insights in response!")
+                                    print(f"[Meta API] Response body: {first_response.get('body', '')[:500]}")
+                            except Exception as e:
+                                print(f"[Meta API] Error parsing first response: {str(e)}")
+                                print(f"[Meta API] Response body: {first_response.get('body', '')[:500]}")
+                        else:
+                            print(f"[Meta API] ✗ ERROR: Response code is not 200!")
+                            print(f"[Meta API] Response body: {first_response.get('body', '')[:500]}")
+                        print(f"[Meta API] ================================================")
                     
                     # バッチレスポンスを処理
                     for idx, batch_item in enumerate(batch_data):
@@ -229,25 +302,42 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                                     if batch_start == 0 and idx == 0:
                                         sample = page_insights[0]
                                         print(f"[Meta API] Sample insight data for campaign {campaign_name}:")
+                                        print(f"  date_start: {sample.get('date_start')}")
                                         print(f"  impressions: {sample.get('impressions')}")
                                         print(f"  clicks: {sample.get('clicks')}")
                                         print(f"  inline_link_clicks: {sample.get('inline_link_clicks')}")
                                         print(f"  spend: {sample.get('spend')}")
                                         print(f"  reach: {sample.get('reach')}")
                                         print(f"  frequency: {sample.get('frequency')}")
+                                        print(f"  Total insights retrieved: {len(page_insights)}")
+                                        # 日付のバリエーションを確認
+                                        if len(page_insights) > 1:
+                                            dates = [insight.get('date_start') for insight in page_insights[:10] if insight.get('date_start')]
+                                            unique_dates = list(set(dates))
+                                            print(f"  Sample dates (first 10 insights): {unique_dates}")
+                                            print(f"  Unique dates count: {len(unique_dates)}")
                                     
                                     # ページネーション処理（pagingがある場合）
                                     paging = item_body.get('paging', {})
+                                    page_count = 1
                                     while 'next' in paging:
+                                        page_count += 1
                                         next_url = paging['next']
                                         # next_urlには既にaccess_tokenが含まれている可能性があるため、そのまま使用
+                                        print(f"[Meta API] Fetching page {page_count} for {campaign_name}...")
                                         next_response = await client.get(next_url)
                                         next_response.raise_for_status()
                                         next_data = next_response.json()
                                         next_insights = next_data.get('data', [])
                                         all_insights.extend(next_insights)
                                         paging = next_data.get('paging', {})
-                                        print(f"[Meta API] Retrieved {len(next_insights)} more insights for {campaign_name} (total: {len(all_insights)})")
+                                        print(f"[Meta API] Retrieved {len(next_insights)} more insights for {campaign_name} (page {page_count}, total: {len(all_insights)})")
+                                        # ページネーションのデバッグ（最初のキャンペーンのみ）
+                                        if batch_start == 0 and idx == 0 and len(next_insights) > 0:
+                                            next_dates = [d.get('date_start') for d in next_insights[:5] if d.get('date_start')]
+                                            print(f"[Meta API] Sample dates from page {page_count}: {next_dates}")
+                                    if page_count > 1:
+                                        print(f"[Meta API] Completed pagination for {campaign_name}: {page_count} pages, {len([i for i in all_insights if i.get('campaign_name') == campaign_name])} total insights")
                                     
                                     if idx < 3 or (batch_start == 0 and idx == 0):
                                         print(f"  ✓ Success: Retrieved {len(page_insights)} insights for {campaign_name}")
@@ -318,6 +408,30 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
             saved_count = 0
             # 重複チェック用のセット（campaign_name, date, meta_account_idの組み合わせ）
             seen_records = set()
+            
+            # デバッグ: 取得したInsightsデータの日付バリエーションを確認
+            if all_insights:
+                all_dates = [insight.get('date_start') for insight in all_insights if insight.get('date_start')]
+                unique_dates = sorted(list(set(all_dates)))
+                print(f"[Meta API] ===== Insights Data Analysis ======")
+                print(f"[Meta API] Total insights retrieved: {len(all_insights)}")
+                print(f"[Meta API] Total unique dates: {len(unique_dates)}")
+                if len(unique_dates) > 0:
+                    print(f"[Meta API] Date range: {unique_dates[0]} to {unique_dates[-1]}")
+                    print(f"[Meta API] First 10 unique dates: {unique_dates[:10]}")
+                    print(f"[Meta API] Last 10 unique dates: {unique_dates[-10:]}")
+                    # 各日付の件数を確認
+                    date_counts = {}
+                    for date in all_dates:
+                        date_counts[date] = date_counts.get(date, 0) + 1
+                    print(f"[Meta API] Date distribution (first 10 dates):")
+                    for date in unique_dates[:10]:
+                        print(f"  {date}: {date_counts.get(date, 0)} insights")
+                if len(unique_dates) == 1:
+                    print(f"[Meta API] ⚠️ WARNING: All insights have the same date! This indicates time_increment may not be working.")
+                    print(f"[Meta API] Requested date range: {start_date_str} to {end_date_str}")
+                    print(f"[Meta API] Actual date received: {unique_dates[0]}")
+                print(f"[Meta API] =====================================")
             
             for insight in all_insights:
                 try:
@@ -1517,24 +1631,48 @@ async def meta_oauth_callback(
             
             long_lived_token = exchange_data.get("access_token", access_token)
             
-            # 広告アカウントIDを取得
+            # 広告アカウントIDを取得（ページネーション対応）
             accounts_url = "https://graph.facebook.com/v24.0/me/adaccounts"
             accounts_params = {
                 "access_token": long_lived_token,
-                "fields": "account_id,id,name"
+                "fields": "account_id,id,name",
+                "limit": 100  # Meta APIの最大取得件数
             }
             
-            accounts_response = await client.get(accounts_url, params=accounts_params)
-            accounts_response.raise_for_status()
-            accounts_data = accounts_response.json()
+            # ページネーション処理（すべてのアカウントを取得）
+            accounts = []
+            accounts_page_count = 0
+            while True:
+                accounts_page_count += 1
+                print(f"[Meta OAuth] Fetching accounts page {accounts_page_count}...")
+                accounts_response = await client.get(accounts_url, params=accounts_params)
+                accounts_response.raise_for_status()
+                accounts_data = accounts_response.json()
+                
+                if "error" in accounts_data:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"広告アカウント取得エラー: {accounts_data.get('error', {}).get('message', 'Unknown error')}"
+                    )
+                
+                # 取得したアカウントを追加
+                page_accounts = accounts_data.get("data", [])
+                accounts.extend(page_accounts)
+                print(f"[Meta OAuth] Retrieved {len(page_accounts)} accounts (total: {len(accounts)})")
+                
+                # 次のページがあるかチェック
+                paging = accounts_data.get('paging', {})
+                next_url = paging.get('next')
+                
+                if not next_url:
+                    # 次のページがない場合は終了
+                    print(f"[Meta OAuth] No more account pages. Total accounts retrieved: {len(accounts)}")
+                    break
+                
+                # 次のページのURLを設定（パラメータをクリア）
+                accounts_url = next_url
+                accounts_params = {}  # URLにパラメータが含まれているためクリア
             
-            if "error" in accounts_data:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"広告アカウント取得エラー: {accounts_data.get('error', {}).get('message', 'Unknown error')}"
-                )
-            
-            accounts = accounts_data.get("data", [])
             if not accounts:
                 raise HTTPException(
                     status_code=400,
@@ -1574,11 +1712,12 @@ async def meta_oauth_callback(
             # アカウント情報をバックグラウンドタスクに渡すためにコピー
             accounts_for_background = [{"id": acc.get("id"), "name": acc.get("name", "Unknown")} for acc in accounts]
             user_id_for_background = user.id
+            access_token_for_background = long_lived_token  # トークンも保存
             
-            async def sync_full_period_background_async():
-                """バックグラウンドで全期間のデータを取得（非同期関数）"""
-                from ..database import SessionLocal
+            def sync_full_period_background_sync():
+                """バックグラウンドで全期間のデータを取得（同期関数ラッパー）"""
                 import asyncio
+                from ..database import SessionLocal
                 
                 print(f"[Meta OAuth] Background sync: Task started")
                 print(f"[Meta OAuth] Background sync: Accounts to sync: {len(accounts_for_background)}")
@@ -1590,47 +1729,71 @@ async def meta_oauth_callback(
                     loop = asyncio.new_event_loop()
                     asyncio.set_event_loop(loop)
                 
-                background_db = SessionLocal()
+                async def sync_all_accounts_async():
+                    """非同期で全アカウントのデータを取得"""
+                    background_db = SessionLocal()
+                    try:
+                        # ユーザー情報を再取得
+                        background_user = background_db.query(User).filter(User.id == user_id_for_background).first()
+                        if not background_user:
+                            print(f"[Meta OAuth] Background sync: ERROR - User not found (user_id: {user_id_for_background})")
+                            return
+                        
+                        print(f"[Meta OAuth] Background sync: User found: {background_user.id}")
+                        print(f"[Meta OAuth] Background sync: User meta_account_id: {background_user.meta_account_id}")
+                        print(f"[Meta OAuth] Background sync: Starting full period sync for user {background_user.id}")
+                        
+                        # トークンを使用（保存されたトークンを使用）
+                        access_token = access_token_for_background
+                        if not access_token:
+                            print(f"[Meta OAuth] Background sync: ERROR - No access token found")
+                            return
+                        
+                        for idx, account in enumerate(accounts_for_background):
+                            account_id_to_sync = account.get("id")
+                            account_name = account.get("name", "Unknown")
+                            print(f"[Meta OAuth] Background sync: Syncing account {idx + 1}/{len(accounts_for_background)} (full period): {account_name} ({account_id_to_sync})")
+                            try:
+                                await sync_meta_data_to_campaigns(background_user, access_token, account_id_to_sync, background_db, days=None)
+                                print(f"[Meta OAuth] Background sync: Successfully synced full period for {account_name}")
+                            except Exception as account_error:
+                                import traceback
+                                print(f"[Meta OAuth] Background sync: ERROR syncing full period for {account_name}: {str(account_error)}")
+                                print(f"[Meta OAuth] Background sync: Error details: {traceback.format_exc()}")
+                                continue
+                        
+                        print(f"[Meta OAuth] Background sync: Full period sync completed for user {background_user.id}")
+                    except Exception as sync_error:
+                        import traceback
+                        print(f"[Meta OAuth] Background sync: CRITICAL ERROR: {str(sync_error)}")
+                        print(f"[Meta OAuth] Background sync: Error details: {traceback.format_exc()}")
+                    finally:
+                        background_db.close()
+                        print(f"[Meta OAuth] Background sync: Database connection closed")
+                
+                # 非同期関数を実行
                 try:
-                    # ユーザー情報を再取得
-                    background_user = background_db.query(User).filter(User.id == user_id_for_background).first()
-                    if not background_user:
-                        print(f"[Meta OAuth] Background sync: ERROR - User not found (user_id: {user_id_for_background})")
-                        return
-                    
-                    print(f"[Meta OAuth] Background sync: User found: {background_user.id}")
-                    print(f"[Meta OAuth] Background sync: User meta_account_id: {background_user.meta_account_id}")
-                    print(f"[Meta OAuth] Background sync: Starting full period sync for user {background_user.id}")
-                    
-                    # トークンを再取得（バックグラウンドタスクでは新しいセッションを使用）
-                    if not background_user.meta_access_token:
-                        print(f"[Meta OAuth] Background sync: ERROR - No access token found")
-                        return
-                    
-                    for idx, account in enumerate(accounts_for_background):
-                        account_id_to_sync = account.get("id")
-                        account_name = account.get("name", "Unknown")
-                        print(f"[Meta OAuth] Background sync: Syncing account {idx + 1}/{len(accounts_for_background)} (full period): {account_name} ({account_id_to_sync})")
-                        try:
-                            await sync_meta_data_to_campaigns(background_user, background_user.meta_access_token, account_id_to_sync, background_db, days=None)
-                            print(f"[Meta OAuth] Background sync: Successfully synced full period for {account_name}")
-                        except Exception as account_error:
-                            import traceback
-                            print(f"[Meta OAuth] Background sync: ERROR syncing full period for {account_name}: {str(account_error)}")
-                            print(f"[Meta OAuth] Background sync: Error details: {traceback.format_exc()}")
-                            continue
-                    
-                    print(f"[Meta OAuth] Background sync: Full period sync completed for user {background_user.id}")
-                except Exception as sync_error:
+                    # 新しいイベントループを作成して実行
+                    new_loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(new_loop)
+                    try:
+                        new_loop.run_until_complete(sync_all_accounts_async())
+                    finally:
+                        new_loop.close()
+                except Exception as e:
                     import traceback
-                    print(f"[Meta OAuth] Background sync: CRITICAL ERROR: {str(sync_error)}")
+                    print(f"[Meta OAuth] Background sync: ERROR executing async function: {str(e)}")
                     print(f"[Meta OAuth] Background sync: Error details: {traceback.format_exc()}")
-                finally:
-                    background_db.close()
-                    print(f"[Meta OAuth] Background sync: Database connection closed")
+                    # フォールバック: asyncio.runを使用（新しいイベントループを作成）
+                    try:
+                        asyncio.run(sync_all_accounts_async())
+                    except Exception as e2:
+                        import traceback
+                        print(f"[Meta OAuth] Background sync: ERROR with asyncio.run: {str(e2)}")
+                        print(f"[Meta OAuth] Background sync: Error details: {traceback.format_exc()}")
             
-            # バックグラウンドタスクとして追加
-            background_tasks.add_task(sync_full_period_background_async)
+            # バックグラウンドタスクとして追加（同期関数として）
+            background_tasks.add_task(sync_full_period_background_sync)
             print(f"[Meta OAuth] Background task added for full period sync")
             
             # localhostの場合、https://をhttp://に強制的に変換（normalize_localhost_url関数を使用）
