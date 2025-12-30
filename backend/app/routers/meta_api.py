@@ -634,26 +634,48 @@ async def get_meta_accounts(
             try:
                 print(f"[Meta Accounts] Fetching account names from Meta API...")
                 async with httpx.AsyncClient() as client:
-                    # すべての広告アカウント情報を取得
+                    # すべての広告アカウント情報を取得（ページネーション対応）
                     accounts_url = "https://graph.facebook.com/v24.0/me/adaccounts"
                     accounts_params = {
                         "access_token": current_user.meta_access_token,
-                        "fields": "account_id,id,name"
+                        "fields": "account_id,id,name",
+                        "limit": 100  # Meta APIの最大取得件数
                     }
                     
-                    accounts_response = await client.get(accounts_url, params=accounts_params)
-                    accounts_response.raise_for_status()
-                    accounts_data = accounts_response.json()
+                    # ページネーション処理（すべてのアカウントを取得）
+                    accounts_page_count = 0
+                    while True:
+                        accounts_page_count += 1
+                        print(f"[Meta Accounts] Fetching accounts page {accounts_page_count}...")
+                        accounts_response = await client.get(accounts_url, params=accounts_params)
+                        accounts_response.raise_for_status()
+                        accounts_data = accounts_response.json()
+                        
+                        if "data" in accounts_data:
+                            for account in accounts_data["data"]:
+                                account_id = account.get("id")
+                                account_name = account.get("name")
+                                if not account_name or account_name.strip() == "":
+                                    account_name = account_id
+                                print(f"[Meta Accounts] Account ID: {account_id}, Name: {account_name}")
+                                account_names[account_id] = account_name
+                                all_account_ids_from_api.append(account_id)
+                        
+                        print(f"[Meta Accounts] Retrieved {len(accounts_data.get('data', []))} accounts (total: {len(all_account_ids_from_api)})")
+                        
+                        # 次のページがあるかチェック
+                        paging = accounts_data.get('paging', {})
+                        next_url = paging.get('next')
+                        
+                        if not next_url:
+                            # 次のページがない場合は終了
+                            print(f"[Meta Accounts] No more account pages. Total accounts retrieved: {len(all_account_ids_from_api)}")
+                            break
+                        
+                        # 次のページのURLを設定（パラメータをクリア）
+                        accounts_url = next_url
+                        accounts_params = {}
                     
-                    if "data" in accounts_data:
-                        for account in accounts_data["data"]:
-                            account_id = account.get("id")
-                            account_name = account.get("name")
-                            if not account_name or account_name.strip() == "":
-                                account_name = account_id
-                            print(f"[Meta Accounts] Account ID: {account_id}, Name: {account_name}")
-                            account_names[account_id] = account_name
-                            all_account_ids_from_api.append(account_id)
                     print(f"[Meta Accounts] Fetched {len(account_names)} account names from Meta API")
                     print(f"[Meta Accounts] Account names dict: {account_names}")
                     print(f"[Meta Accounts] All account IDs from API: {all_account_ids_from_api}")
