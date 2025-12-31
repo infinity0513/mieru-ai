@@ -431,6 +431,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
   const prevStartDateRef = React.useRef<string | null>(null);
   const prevEndDateRef = React.useRef<string | null>(null);
   const prevSelectedMetaAccountIdRef = React.useRef<string | null>(null);
+  // summaryDataが取得された時のキャンペーン名を保存（不一致チェック用）
+  const summaryDataCampaignRef = React.useRef<string | null>(null);
 
   // Initialize date range - localStorageから復元、なければデータの全期間
   const [dateRange, setDateRange] = useState<{start: string, end: string}>(() => {
@@ -677,6 +679,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
       );
       
       setSummaryData(summary);
+      summaryDataCampaignRef.current = targetCampaign; // キャンペーン名を保存
       console.log('[Dashboard] loadSummaryOnly: Summary updated successfully');
       console.log('[Dashboard] loadSummaryOnly: summary.totals.reach:', summary?.totals?.reach);
       console.log('[Dashboard] loadSummaryOnly: Full summary data:', summary);
@@ -714,6 +717,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     if (previousCampaign && previousCampaign !== campaignName) {
       console.log('[Dashboard] Clearing previous summaryData for campaign switch');
       setSummaryData(null);
+      summaryDataCampaignRef.current = null; // キャンペーン名もクリア
     }
     
     // summaryのみ取得（全データは再取得しない）
@@ -879,6 +883,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
         if (summaryResult.status === 'fulfilled') {
           console.log('[Dashboard] Summary loaded:', summaryResult.value);
           setSummaryData(summaryResult.value);
+          summaryDataCampaignRef.current = campaignNameParam || null; // キャンペーン名を保存
           // デバッグ用: windowオブジェクトにsummaryDataを公開（コンソールで確認用）
           if (typeof window !== 'undefined') {
             (window as any).summaryData = summaryResult.value;
@@ -1274,8 +1279,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     console.log('[Dashboard] selectedCampaign:', selectedCampaign);
     console.log('[Dashboard] availableCampaigns:', availableCampaigns);
     
+    // 「全体」（null）または「all」が選択されている場合は自動選択をスキップ
+    if (selectedCampaign === null || selectedCampaign === 'all') {
+      console.log('[Dashboard] "全体" is selected, skipping auto-selection');
+      return;
+    }
+    
     if (availableCampaigns.length > 0) {
-      if (!selectedCampaign || !availableCampaigns.includes(selectedCampaign)) {
+      // selectedCampaignがnullでなく、かつavailableCampaignsに含まれていない場合のみ自動選択
+      if (selectedCampaign && !availableCampaigns.includes(selectedCampaign)) {
         const defaultCampaign = availableCampaigns[0];
         console.log('[Dashboard] Auto-selecting campaign:', defaultCampaign);
         setSelectedCampaign(defaultCampaign);
@@ -1286,7 +1298,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
         }
       }
     }
-  }, [availableCampaigns]);
+  }, [availableCampaigns, selectedCampaign]);
 
   // デバッグ用: apiDataをwindowオブジェクトに公開（apiDataが更新されるたびに更新）
   useEffect(() => {
@@ -1567,24 +1579,34 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     
     // 追加指標を計算
     // リーチ数は summary API から取得 (ユニークユーザー数として正しい)
-    // summaryDataが存在する場合は必ずそれを使用（日別合算は使わない）
-    let totalReach = 0;
-    if (summaryData?.totals?.reach !== undefined && summaryData?.totals?.reach !== null) {
-      totalReach = summaryData.totals.reach;
-    } else {
-      // summaryDataが取得されていない場合は0を表示（ローディング中）
-      console.warn('[Dashboard] ⚠️ summaryData not available, reach will be 0 until summary is loaded');
-      totalReach = 0;
+    // summaryDataが有効な場合は必ず使用（ユニークリーチ）
+    const filteredDataSum = current.reduce((acc, curr) => acc + (curr.reach || 0), 0);
+    const isSummaryDataValid = 
+      summaryData?.totals?.reach !== undefined && 
+      summaryData?.totals?.reach !== null &&
+      (selectedCampaign === null || summaryDataCampaignRef.current === selectedCampaign);
+
+    const totalReach = isSummaryDataValid 
+      ? summaryData.totals.reach 
+      : filteredDataSum;
+
+    // ⚠️ 警告ログを追加
+    if (!isSummaryDataValid && filteredDataSum > 0) {
+      console.warn('[Dashboard] ⚠️ Using filteredDataSum (simple sum) instead of unique reach from API');
+      console.warn('[Dashboard] ⚠️ This may include duplicates');
+      console.warn('[Dashboard] ⚠️ summaryData?.totals?.reach:', summaryData?.totals?.reach);
+      console.warn('[Dashboard] ⚠️ summaryDataCampaignRef.current:', summaryDataCampaignRef.current);
+      console.warn('[Dashboard] ⚠️ selectedCampaign:', selectedCampaign);
     }
-    
-    // デバッグログを追加
+
+    // デバッグログ
     console.log('[Dashboard] ===== Reach Calculation =====');
     console.log('[Dashboard] summaryData?.totals?.reach:', summaryData?.totals?.reach);
-    console.log('[Dashboard] filteredData sum:', current.reduce((acc, curr) => acc + (curr.reach || 0), 0));
-    console.log('[Dashboard] Using totalReach:', totalReach);
+    console.log('[Dashboard] summaryDataCampaignRef.current:', summaryDataCampaignRef.current);
     console.log('[Dashboard] selectedCampaign:', selectedCampaign);
-    console.log('[Dashboard] selectedAdSet:', selectedAdSet);
-    console.log('[Dashboard] selectedAd:', selectedAd);
+    console.log('[Dashboard] filteredData sum:', filteredDataSum);
+    console.log('[Dashboard] isSummaryDataValid:', isSummaryDataValid);
+    console.log('[Dashboard] Using totalReach:', totalReach);
     
     // デバッグ: リーチ数の詳細ログ
     console.log('[Dashboard] ===== Reach Data Analysis =====');

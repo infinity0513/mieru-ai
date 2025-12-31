@@ -928,139 +928,160 @@ async def get_summary(
     total_link_clicks = int(result.total_link_clicks or 0)
     
     # リーチ数はMeta APIから期間全体のユニーク数を取得（重複を避けるため）
-    total_reach = total_reach_from_db  # デフォルトはDBの合算値
-    if current_user.meta_access_token and meta_account_id:
-        print(f"[Summary] Fetching unique reach for campaign: {campaign_name or 'All Campaigns'}")
-        print(f"[Summary] Date range: {start_date} to {end_date}")
-        print(f"[Summary] Meta Account ID: {meta_account_id}")
+    # campaign_nameが指定されている場合はMeta APIから取得、それ以外はDBの合計値
+    total_reach = total_reach_from_db  # デフォルトはDBの合計値
+    
+    # meta_account_idが指定されていない場合、DBから取得またはユーザーのデフォルトアカウントを使用
+    if not meta_account_id:
+        # DBから該当キャンペーンのmeta_account_idを取得
+        if campaign_name:
+            campaign_account = db.query(Campaign.meta_account_id).filter(
+                Campaign.user_id == current_user.id,
+                Campaign.campaign_name == campaign_name,
+                Campaign.meta_account_id.isnot(None)
+            ).first()
+            if campaign_account:
+                meta_account_id = campaign_account[0]
+                print(f"[Summary] Using meta_account_id from DB: {meta_account_id}")
+        
+        # それでも取得できない場合、ユーザーのデフォルトアカウントを使用
+        if not meta_account_id and current_user.meta_account_id:
+            meta_account_id = current_user.meta_account_id
+            print(f"[Summary] Using user's default meta_account_id: {meta_account_id}")
+    
+    # campaign_nameが指定されている場合、必ずMeta APIからユニークリーチを取得
+    if campaign_name and current_user.meta_access_token and meta_account_id:
+        print(f"[Summary] ===== Fetching unique reach for campaign: {campaign_name} =====")
+        print(f"[Summary] meta_account_id: {meta_account_id}")
+        print(f"[Summary] start_date: {start_date}, end_date: {end_date}")
+        
+        campaign_ids = []
+        
+        # Meta APIから直接campaign_idを取得（DBのcampaign_idカラムは信頼できないため）
         try:
-            # Meta APIから期間全体のユニークリーチ数を取得
-            async with httpx.AsyncClient() as client:
-                # キャンペーンIDを取得（campaign_nameから）
-                campaign_id = None
-                if campaign_name:
-                    # まずDBから取得を試みる
-                    campaign_query = db.query(Campaign).filter(
-                        Campaign.user_id == current_user.id,
-                        Campaign.meta_account_id == meta_account_id,
-                        Campaign.campaign_name == campaign_name
-                    ).first()
-                    if campaign_query:
-                        # DBにcampaign_idが保存されている場合はそれを使用
-                        if hasattr(campaign_query, 'campaign_id') and campaign_query.campaign_id:
-                            campaign_id = campaign_query.campaign_id
-                            print(f"[Summary] Found campaign_id from DB: {campaign_id} for {campaign_name}")
-                    else:
-                        print(f"[Summary] Campaign not found in DB: {campaign_name}")
-                    
-                    # DBにない場合、またはcampaign_idが取得できない場合はMeta APIから直接取得
-                    if not campaign_id:
-                        # キャンペーンIDを取得するためにMeta APIを呼び出す
-                        campaigns_url = f"https://graph.facebook.com/v24.0/{meta_account_id}/campaigns"
-                        campaigns_params = {
-                            "access_token": current_user.meta_access_token,
-                            "fields": "id,name",
-                            "limit": 100
-                        }
-                        campaigns_response = await client.get(campaigns_url, params=campaigns_params)
-                        campaigns_response.raise_for_status()
-                        campaigns_data = campaigns_response.json()
-                        
-                        # ページネーション処理（すべてのキャンペーンを取得）
-                        all_campaigns_list = campaigns_data.get('data', [])
-                        paging = campaigns_data.get('paging', {})
-                        while 'next' in paging:
-                            next_url = paging.get('next')
-                            next_response = await client.get(next_url)
-                            next_response.raise_for_status()
-                            next_data = next_response.json()
-                            all_campaigns_list.extend(next_data.get('data', []))
-                            paging = next_data.get('paging', {})
-                        
-                        for campaign in all_campaigns_list:
-                            if campaign.get('name') == campaign_name:
-                                campaign_id = campaign.get('id')
-                                print(f"[Summary] Found campaign_id from Meta API: {campaign_id} for {campaign_name}")
-                                break
-                        
-                        if not campaign_id:
-                            print(f"[Summary] Campaign ID not found in Meta API for: {campaign_name}")
-                
-                # リーチ数を取得するためのlevelを決定
-                level = "campaign"
-                if ad_name:
-                    level = "ad"
-                elif ad_set_name:
-                    level = "adset"
-                
-                # 期間全体のユニークリーチ数を取得（time_incrementなし = 期間全体の集計）
-                time_range_dict = {
-                    "since": start_date.strftime('%Y-%m-%d'),
-                    "until": end_date.strftime('%Y-%m-%d')
+            print(f"[Summary] Step 1: Fetching campaign_id from Meta API for campaign: {campaign_name}")
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                campaigns_url = f"https://graph.facebook.com/v24.0/{meta_account_id}/campaigns"
+                campaigns_params = {
+                    "access_token": current_user.meta_access_token,
+                    "fields": "id,name",
+                    "limit": 100
                 }
-                time_range_json = json.dumps(time_range_dict, separators=(',', ':'))
-                time_range_encoded = urllib.parse.quote(time_range_json, safe='')
+                print(f"[Summary] Meta API campaigns URL: {campaigns_url}")
+                campaigns_response = await client.get(campaigns_url, params=campaigns_params)
+                campaigns_response.raise_for_status()
+                campaigns_data = campaigns_response.json()
                 
-                if campaign_id:
-                    # 特定のキャンペーンのリーチ数を取得
-                    insights_url = f"https://graph.facebook.com/v24.0/{campaign_id}/insights"
-                    insights_params = {
-                        "access_token": current_user.meta_access_token,
-                        "fields": "reach",
-                        "time_range": time_range_json,
-                        "level": level,
-                        "limit": 1
-                    }
-                    
-                    # 広告セット/広告フィルタがある場合は、すべてのinsightsを取得してフィルタリング
-                    if ad_set_name or ad_name:
-                        insights_params["limit"] = 100
-                    
-                    insights_response = await client.get(insights_url, params=insights_params)
-                    insights_response.raise_for_status()
-                    insights_data = insights_response.json()
-                    insights = insights_data.get('data', [])
-                    
-                    # ページネーション処理（広告セット/広告フィルタがある場合）
-                    if ad_set_name or ad_name:
-                        paging = insights_data.get('paging', {})
-                        while 'next' in paging:
-                            next_url = paging.get('next')
-                            next_response = await client.get(next_url)
-                            next_response.raise_for_status()
-                            next_data = next_response.json()
-                            insights.extend(next_data.get('data', []))
-                            paging = next_data.get('paging', {})
-                    
-                    if insights:
-                        # 広告セット/広告フィルタがある場合はフィルタリング
-                        if ad_set_name or ad_name:
-                            filtered_insights = []
-                            for insight in insights:
-                                if ad_name and insight.get('ad_name') != ad_name:
-                                    continue
-                                if ad_set_name and insight.get('adset_name') != ad_set_name:
-                                    continue
-                                filtered_insights.append(insight)
-                            insights = filtered_insights
-                        
-                        # 期間全体のリーチ数を合算（time_incrementなしなので1件のみ、またはフィルタ後の合計）
-                        if insights:
-                            # 広告セット/広告フィルタがある場合は合算、ない場合は1件のみ
-                            if ad_set_name or ad_name:
-                                total_reach = sum(int(insight.get('reach', 0)) for insight in insights)
-                            else:
-                                total_reach = int(insights[0].get('reach', 0))
-                            print(f"[Summary] Total reach from Meta API: {total_reach}")
-                            print(f"[Summary] Unique reach from Meta API: {total_reach} (period: {start_date} to {end_date}, level: {level})")
-                else:
-                    # キャンペーンIDが取得できない場合は、アカウント全体から取得
-                    # ただし、これは複雑なので、DBの合算値を使用
-                    print(f"[Summary] Campaign ID not found, using DB sum as fallback")
+                all_campaigns_list = campaigns_data.get('data', [])
+                print(f"[Summary] Found {len(all_campaigns_list)} campaigns in first page")
+                
+                # ページネーション処理
+                paging = campaigns_data.get('paging', {})
+                page_count = 1
+                while 'next' in paging:
+                    page_count += 1
+                    next_url = paging.get('next')
+                    print(f"[Summary] Fetching page {page_count}...")
+                    next_response = await client.get(next_url, timeout=30.0)
+                    next_response.raise_for_status()
+                    next_data = next_response.json()
+                    all_campaigns_list.extend(next_data.get('data', []))
+                    paging = next_data.get('paging', {})
+                
+                print(f"[Summary] Total campaigns fetched: {len(all_campaigns_list)}")
+                
+                # キャンペーン名で検索（完全一致）
+                for campaign in all_campaigns_list:
+                    if campaign.get('name') == campaign_name:
+                        campaign_id = campaign.get('id')
+                        campaign_ids.append(campaign_id)
+                        print(f"[Summary] ✅ Found campaign_id from Meta API: {campaign_id} for '{campaign_name}'")
+                        break
+                
+                if not campaign_ids:
+                    print(f"[Summary] ⚠️ Campaign '{campaign_name}' not found in Meta API")
+                    print(f"[Summary] ⚠️ Available campaigns (first 10): {[c.get('name') for c in all_campaigns_list[:10]]}")
+        except httpx.TimeoutException as e:
+            print(f"[Summary] ❌ Meta API timeout: {e}")
+        except httpx.HTTPStatusError as e:
+            print(f"[Summary] ❌ Meta API HTTP error: {e.response.status_code} - {e.response.text}")
         except Exception as e:
-            print(f"[Summary] Error fetching unique reach from Meta API: {str(e)}")
-            print(f"[Summary] Using DB sum as fallback: {total_reach_from_db}")
+            import traceback
+            print(f"[Summary] ❌ Failed to get campaign_id from Meta API: {e}")
+            print(f"[Summary] ❌ Traceback: {traceback.format_exc()}")
+        
+        # Meta APIからユニークリーチを取得
+        if campaign_ids:
+            try:
+                print(f"[Summary] Step 2: Fetching unique reach from Meta API for campaign_ids: {campaign_ids}")
+                unique_reach = 0
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    for campaign_id in campaign_ids:
+                        url = f"https://graph.facebook.com/v24.0/{campaign_id}/insights"
+                        params = {
+                            "access_token": current_user.meta_access_token,
+                            "fields": "reach",
+                            "time_range": json.dumps({
+                                "since": start_date.strftime("%Y-%m-%d"),
+                                "until": end_date.strftime("%Y-%m-%d")
+                            })
+                        }
+                        print(f"[Summary] Calling Meta API Insights: {url}")
+                        print(f"[Summary] Time range: {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}")
+                        
+                        response = await client.get(url, params=params)
+                        response.raise_for_status()
+                        data = response.json()
+                        
+                        print(f"[Summary] Meta API Insights response status: {response.status_code}")
+                        print(f"[Summary] Meta API Insights response keys: {list(data.keys()) if isinstance(data, dict) else 'Not a dict'}")
+                        
+                        if "data" in data and len(data["data"]) > 0:
+                            campaign_reach = int(data["data"][0].get("reach", 0))
+                            unique_reach += campaign_reach
+                            print(f"[Summary] ✅ Campaign {campaign_id} unique reach: {campaign_reach:,}")
+                        else:
+                            print(f"[Summary] ⚠️ No data in Meta API response for campaign {campaign_id}")
+                            if isinstance(data, dict):
+                                if "error" in data:
+                                    print(f"[Summary] ⚠️ Meta API error: {data['error']}")
+                                print(f"[Summary] ⚠️ Full response: {data}")
+                
+                if unique_reach > 0:
+                    total_reach = unique_reach
+                    print(f"[Summary] ✅ Using Meta API unique reach: {total_reach:,}")
+                    print(f"[Summary] ✅ DB sum (for comparison): {total_reach_from_db:,}")
+                    if total_reach != total_reach_from_db:
+                        diff = total_reach_from_db - total_reach
+                        print(f"[Summary] ✅ Difference (duplicates): {diff:,} users")
+                else:
+                    print(f"[Summary] ⚠️ Meta API returned 0, using DB sum: {total_reach_from_db:,}")
+                    total_reach = total_reach_from_db
+            except httpx.TimeoutException as e:
+                print(f"[Summary] ❌ Meta API Insights timeout: {e}")
+                total_reach = total_reach_from_db
+                print(f"[Summary] ⚠️ Using DB sum as fallback: {total_reach:,}")
+            except httpx.HTTPStatusError as e:
+                print(f"[Summary] ❌ Meta API Insights HTTP error: {e.response.status_code} - {e.response.text}")
+                total_reach = total_reach_from_db
+                print(f"[Summary] ⚠️ Using DB sum as fallback: {total_reach:,}")
+            except Exception as e:
+                import traceback
+                print(f"[Summary] ❌ Meta API Insights error: {e}")
+                print(f"[Summary] ❌ Traceback: {traceback.format_exc()}")
+                total_reach = total_reach_from_db
+                print(f"[Summary] ⚠️ Using DB sum as fallback: {total_reach:,}")
+        else:
+            print(f"[Summary] ⚠️ No campaign_id found, using DB sum: {total_reach_from_db:,}")
             total_reach = total_reach_from_db
+    else:
+        total_reach = total_reach_from_db
+        if not campaign_name:
+            print(f"[Summary] No campaign_name specified, using DB sum: {total_reach:,}")
+        elif not current_user.meta_access_token:
+            print(f"[Summary] No meta_access_token, using DB sum: {total_reach:,}")
+        elif not meta_account_id:
+            print(f"[Summary] No meta_account_id, using DB sum: {total_reach:,}")
     
     # デバッグログ: 集計結果を検証
     print(f"[Summary] Aggregated metrics for period {start_date} to {end_date}:")
@@ -1069,7 +1090,7 @@ async def get_summary(
     print(f"  Total cost: {total_cost}")
     print(f"  Total conversions: {total_conversions}")
     print(f"  Total conversion_value: {total_conversion_value}")
-    print(f"  Total reach (unique): {total_reach} (DB sum: {total_reach_from_db})")
+    print(f"  Total reach (unique): {total_reach:,} (DB sum: {total_reach_from_db:,})")
     print(f"  Total engagements: {total_engagements}")
     print(f"  Total landing_page_views: {total_landing_page_views}")
     print(f"  Total link_clicks: {total_link_clicks}")
