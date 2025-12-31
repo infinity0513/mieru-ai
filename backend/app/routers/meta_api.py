@@ -1376,7 +1376,7 @@ async def get_meta_insights(
                 "insights": all_insights,
                 "total": len(all_insights),
                 "period": {
-                    "since": since,
+                "since": since,
                     "until": until
                 }
             }

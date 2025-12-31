@@ -10,6 +10,7 @@ from ..models.user import User
 from ..schemas.campaign import CampaignResponse
 import httpx
 import json
+import urllib.parse
 
 router = APIRouter()
 
@@ -189,7 +190,7 @@ def debug_ads(
                 "impressions": adset.impressions,
                 "clicks": adset.clicks,
                 "cost": float(adset.cost)
-            }
+        }
             for adset in adsets
         ]
     }
@@ -389,7 +390,7 @@ def debug_campaign_hierarchy(
     # サンプルデータ（最初の5件）
     sample_campaign = [{
         "id": str(c.id),
-        "campaign_name": c.campaign_name,
+            "campaign_name": c.campaign_name,
         "ad_set_name": c.ad_set_name or "",
         "ad_name": c.ad_name or "",
         "date": str(c.date),
@@ -487,7 +488,7 @@ def debug_data_source(
         "sample": [
             {
                 "id": str(c.id),
-                "campaign_name": c.campaign_name,
+            "campaign_name": c.campaign_name,
                 "date": str(c.date),
                 "meta_account_id": c.meta_account_id,
                 "upload_file_name": uploads_map.get(str(c.upload_id), None),
@@ -666,6 +667,7 @@ def get_campaigns(
         query = query.filter(Campaign.meta_account_id == meta_account_id)
     
     # Filter by level (ad_set_nameとad_nameの有無で判定)
+    # フロントエンドに合わせて、levelが指定されていない場合はキャンペーンレベルのみを返す
     if level:
         if level == 'campaign':
             query = query.filter(
@@ -694,6 +696,19 @@ def get_campaigns(
                 Campaign.ad_name != '',
                 Campaign.ad_name.isnot(None)
             )
+    else:
+        # levelが指定されていない場合、デフォルトでキャンペーンレベルのみを返す（フロントエンドに合わせる）
+        query = query.filter(
+            or_(
+                Campaign.ad_set_name == '',
+                Campaign.ad_set_name.is_(None)
+            )
+        ).filter(
+            or_(
+                Campaign.ad_name == '',
+                Campaign.ad_name.is_(None)
+            )
+        )
     
     # Get total count
     total = query.count()
@@ -833,10 +848,13 @@ def get_date_range(
         raise HTTPException(status_code=500, detail=f"日付範囲取得エラー: {str(e)}")
 
 @router.get("/summary/")
-def get_summary(
+async def get_summary(
     start_date: Optional[date] = Query(None),
     end_date: Optional[date] = Query(None),
     meta_account_id: Optional[str] = Query(None, description="Meta広告アカウントIDでフィルタリング"),
+    campaign_name: Optional[str] = Query(None, description="キャンペーン名でフィルタリング"),
+    ad_set_name: Optional[str] = Query(None, description="広告セット名でフィルタリング"),
+    ad_name: Optional[str] = Query(None, description="広告名でフィルタリング"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -858,6 +876,34 @@ def get_summary(
         Campaign.date <= end_date
     )
     
+    # キャンペーンフィルタ
+    if campaign_name:
+        query = query.filter(Campaign.campaign_name == campaign_name)
+
+    # 広告セットフィルタ
+    if ad_set_name:
+        query = query.filter(Campaign.ad_set_name == ad_set_name)
+    elif ad_set_name is None:
+        # ad_set_name が指定されていない場合はキャンペーンレベルのみ
+        query = query.filter(
+            or_(
+                Campaign.ad_set_name == '',
+                Campaign.ad_set_name.is_(None)
+            )
+        )
+
+    # 広告フィルタ
+    if ad_name:
+        query = query.filter(Campaign.ad_name == ad_name)
+    elif ad_name is None:
+        # ad_name が指定されていない場合はキャンペーンレベルのみ
+        query = query.filter(
+            or_(
+                Campaign.ad_name == '',
+                Campaign.ad_name.is_(None)
+            )
+        )
+    
     # Aggregate metrics（16項目すべてを取得）
     result = query.with_entities(
         func.sum(Campaign.impressions).label('total_impressions'),
@@ -876,10 +922,127 @@ def get_summary(
     total_cost = float(result.total_cost or 0)
     total_conversions = int(result.total_conversions or 0)
     total_conversion_value = float(result.total_conversion_value or 0)
-    total_reach = int(result.total_reach or 0)
+    total_reach_from_db = int(result.total_reach or 0)  # DBからの合算値（フォールバック用）
     total_engagements = int(result.total_engagements or 0)
     total_landing_page_views = int(result.total_landing_page_views or 0)
     total_link_clicks = int(result.total_link_clicks or 0)
+    
+    # リーチ数はMeta APIから期間全体のユニーク数を取得（重複を避けるため）
+    total_reach = total_reach_from_db  # デフォルトはDBの合算値
+    if current_user.meta_access_token and meta_account_id:
+        try:
+            # Meta APIから期間全体のユニークリーチ数を取得
+            async with httpx.AsyncClient() as client:
+                # キャンペーンIDを取得（campaign_nameから）
+                campaign_id = None
+                if campaign_name:
+                    campaign_query = db.query(Campaign).filter(
+                        Campaign.user_id == current_user.id,
+                        Campaign.meta_account_id == meta_account_id,
+                        Campaign.campaign_name == campaign_name
+                    ).first()
+                    if campaign_query:
+                        # キャンペーンIDを取得するためにMeta APIを呼び出す
+                        campaigns_url = f"https://graph.facebook.com/v24.0/{meta_account_id}/campaigns"
+                        campaigns_params = {
+                            "access_token": current_user.meta_access_token,
+                            "fields": "id,name",
+                            "limit": 100
+                        }
+                        campaigns_response = await client.get(campaigns_url, params=campaigns_params)
+                        campaigns_response.raise_for_status()
+                        campaigns_data = campaigns_response.json()
+                        
+                        # ページネーション処理（すべてのキャンペーンを取得）
+                        all_campaigns_list = campaigns_data.get('data', [])
+                        paging = campaigns_data.get('paging', {})
+                        while 'next' in paging:
+                            next_url = paging.get('next')
+                            next_response = await client.get(next_url)
+                            next_response.raise_for_status()
+                            next_data = next_response.json()
+                            all_campaigns_list.extend(next_data.get('data', []))
+                            paging = next_data.get('paging', {})
+                        
+                        for campaign in all_campaigns_list:
+                            if campaign.get('name') == campaign_name:
+                                campaign_id = campaign.get('id')
+                                break
+                
+                # リーチ数を取得するためのlevelを決定
+                level = "campaign"
+                if ad_name:
+                    level = "ad"
+                elif ad_set_name:
+                    level = "adset"
+                
+                # 期間全体のユニークリーチ数を取得（time_incrementなし = 期間全体の集計）
+                time_range_dict = {
+                    "since": start_date.strftime('%Y-%m-%d'),
+                    "until": end_date.strftime('%Y-%m-%d')
+                }
+                time_range_json = json.dumps(time_range_dict, separators=(',', ':'))
+                time_range_encoded = urllib.parse.quote(time_range_json, safe='')
+                
+                if campaign_id:
+                    # 特定のキャンペーンのリーチ数を取得
+                    insights_url = f"https://graph.facebook.com/v24.0/{campaign_id}/insights"
+                    insights_params = {
+                        "access_token": current_user.meta_access_token,
+                        "fields": "reach",
+                        "time_range": time_range_json,
+                        "level": level,
+                        "limit": 1
+                    }
+                    
+                    # 広告セット/広告フィルタがある場合は、すべてのinsightsを取得してフィルタリング
+                    if ad_set_name or ad_name:
+                        insights_params["limit"] = 100
+                    
+                    insights_response = await client.get(insights_url, params=insights_params)
+                    insights_response.raise_for_status()
+                    insights_data = insights_response.json()
+                    insights = insights_data.get('data', [])
+                    
+                    # ページネーション処理（広告セット/広告フィルタがある場合）
+                    if ad_set_name or ad_name:
+                        paging = insights_data.get('paging', {})
+                        while 'next' in paging:
+                            next_url = paging.get('next')
+                            next_response = await client.get(next_url)
+                            next_response.raise_for_status()
+                            next_data = next_response.json()
+                            insights.extend(next_data.get('data', []))
+                            paging = next_data.get('paging', {})
+                    
+                    if insights:
+                        # 広告セット/広告フィルタがある場合はフィルタリング
+                        if ad_set_name or ad_name:
+                            filtered_insights = []
+                            for insight in insights:
+                                if ad_name and insight.get('ad_name') != ad_name:
+                                    continue
+                                if ad_set_name and insight.get('adset_name') != ad_set_name:
+                                    continue
+                                filtered_insights.append(insight)
+                            insights = filtered_insights
+                        
+                        # 期間全体のリーチ数を合算（time_incrementなしなので1件のみ、またはフィルタ後の合計）
+                        if insights:
+                            # 広告セット/広告フィルタがある場合は合算、ない場合は1件のみ
+                            if ad_set_name or ad_name:
+                                total_reach = sum(int(insight.get('reach', 0)) for insight in insights)
+                            else:
+                                total_reach = int(insights[0].get('reach', 0))
+                            print(f"[Summary] Unique reach from Meta API: {total_reach} (period: {start_date} to {end_date}, level: {level})")
+                else:
+                    # キャンペーンIDが取得できない場合は、アカウント全体から取得
+                    # ただし、これは複雑なので、DBの合算値を使用
+                    print(f"[Summary] Campaign ID not found, using DB sum as fallback")
+        except Exception as e:
+            print(f"[Summary] Error fetching unique reach from Meta API: {str(e)}")
+            print(f"[Summary] Using DB sum as fallback: {total_reach_from_db}")
+            total_reach = total_reach_from_db
     
     # デバッグログ: 集計結果を検証
     print(f"[Summary] Aggregated metrics for period {start_date} to {end_date}:")
@@ -888,18 +1051,16 @@ def get_summary(
     print(f"  Total cost: {total_cost}")
     print(f"  Total conversions: {total_conversions}")
     print(f"  Total conversion_value: {total_conversion_value}")
-    print(f"  Total reach: {total_reach}")
+    print(f"  Total reach (unique): {total_reach} (DB sum: {total_reach_from_db})")
     print(f"  Total engagements: {total_engagements}")
     print(f"  Total landing_page_views: {total_landing_page_views}")
     print(f"  Total link_clicks: {total_link_clicks}")
     
-    # データレベルの統計を確認
+    # データレベルの統計を確認（キャンペーンレベルのみを集計しているため、すべてcampaign_levelになる）
     level_stats_query = query.with_entities(
-        func.sum(case((or_(Campaign.ad_set_name == '', Campaign.ad_set_name.is_(None)), 1), else_=0)).label('campaign_level'),
-        func.sum(case((and_(Campaign.ad_set_name != '', Campaign.ad_set_name.isnot(None), or_(Campaign.ad_name == '', Campaign.ad_name.is_(None))), 1), else_=0)).label('adset_level'),
-        func.sum(case((and_(Campaign.ad_name != '', Campaign.ad_name.isnot(None)), 1), else_=0)).label('ad_level')
+        func.count(Campaign.id).label('campaign_level')
     ).first()
-    print(f"  Data level breakdown: campaign={level_stats_query.campaign_level or 0}, adset={level_stats_query.adset_level or 0}, ad={level_stats_query.ad_level or 0}")
+    print(f"  Data level: campaign_level only (filtered) = {level_stats_query.campaign_level or 0} records")
     
     # Calculate averages（Meta広告マネージャの定義に合わせる）
     # CTR = (clicks / impressions) * 100（clicksはinline_link_clicks）
