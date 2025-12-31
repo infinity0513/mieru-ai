@@ -68,12 +68,42 @@ const debugLogin = (_phase: string, _data: any = {}) => {
 
 class ApiClient {
   private baseURL: string;
+  private cache: Map<string, { data: any; timestamp: number }>;
+  private readonly CACHE_TTL = 30 * 60 * 1000; // 30分（5分から延長）
 
   constructor(baseURL: string) {
     // baseURLを正規化して確実にhttp://を使用
     this.baseURL = ApiClient.normalizeURL(baseURL);
     console.log('[ApiClient] Constructor - baseURL:', this.baseURL);
     // Don't cache token in instance - always read from localStorage
+    this.cache = new Map();
+    // デバッグ用: キャッシュをwindowオブジェクトに公開
+    if (typeof window !== 'undefined') {
+      (window as any).apiCache = this.cache;
+    }
+  }
+  
+  private getCacheKey(url: string, params?: Record<string, any>): string {
+    const paramStr = params ? JSON.stringify(params) : '';
+    return `${url}${paramStr}`;
+  }
+
+  private getFromCache(key: string): any | null {
+    const cached = this.cache.get(key);
+    if (!cached) return null;
+    
+    const now = Date.now();
+    if (now - cached.timestamp > this.CACHE_TTL) {
+      this.cache.delete(key);
+      return null;
+    }
+    
+    console.log('[ApiClient] Performance: Cache hit:', key);
+    return cached.data;
+  }
+
+  private setCache(key: string, data: any): void {
+    this.cache.set(key, { data, timestamp: Date.now() });
   }
 
   /**
@@ -1135,6 +1165,8 @@ class ApiClient {
         if (endDate) params.append('end_date', endDate);
         params.append('limit', String(limit));
         params.append('offset', String(offset));
+        // キャッシュを防ぐためにタイムスタンプを追加
+        params.append('_t', Date.now().toString());
         
         const url = `${this.baseURL}/campaigns/?${params}`;
         console.log(`[ApiClient] Fetching page: offset=${offset}, limit=${limit}`);
@@ -1146,6 +1178,7 @@ class ApiClient {
         const response = await fetch(normalizedUrl, {
           credentials: 'include',  // CORS credentials をサポート
           headers: this.getHeaders(),
+          cache: 'no-store'  // キャッシュを無効化して常に最新データを取得
         });
         
         console.log('[ApiClient] Response status:', response.status, response.statusText);
@@ -1262,18 +1295,45 @@ class ApiClient {
     }
   }
 
-  async getCampaignSummary(startDate?: string, endDate?: string, metaAccountId?: string) {
+  async getCampaignSummary(startDate?: string, endDate?: string, metaAccountId?: string, campaignName?: string, adSetName?: string, adName?: string, forceRefresh = false) {
     const token = this.getToken();
     if (!token) {
       console.warn("[ApiClient] No token available for getCampaignSummary");
       throw new Error('認証トークンがありません');
     }
     
+    // キャッシュキーを生成（campaign_name が空の場合は "__ALL__" として扱う）
+    const cacheKey = this.getCacheKey('/campaigns/summary/', { 
+      startDate, 
+      endDate, 
+      metaAccountId, 
+      campaignName: campaignName || '__ALL__',  // 空の場合は特別なキーを使う
+      adSetName, 
+      adName 
+    });
+    
+    // forceRefresh が true の場合はキャッシュをクリア
+    if (forceRefresh) {
+      console.log('[Api] getCampaignSummary: Force refresh, clearing cache for', campaignName || '全体');
+      this.cache.delete(cacheKey);
+    }
+    
+    const cached = this.getFromCache(cacheKey);
+    if (cached) {
+      console.log('[Api] getCampaignSummary: Cache hit for', campaignName || '全体');
+      return cached;
+    }
+    
+    console.log('[Api] getCampaignSummary: Fetching from API for', campaignName || '全体');
+    
     try {
       const params = new URLSearchParams();
       if (startDate) params.append('start_date', startDate);
       if (endDate) params.append('end_date', endDate);
       if (metaAccountId) params.append('meta_account_id', metaAccountId);
+      if (campaignName) params.append('campaign_name', campaignName);
+      if (adSetName) params.append('ad_set_name', adSetName);
+      if (adName) params.append('ad_name', adName);
       
       let url = `${this.baseURL}/campaigns/summary/?${params}`;
       // fetch呼び出し直前に再度正規化（ブラウザがURLを変換する可能性があるため）
@@ -1313,7 +1373,8 @@ class ApiClient {
           fetchUrl,
           { 
             credentials: 'include',  // CORS credentials をサポート
-            headers: this.getHeaders() 
+            headers: this.getHeaders(),
+            cache: 'no-store'  // キャッシュを無効化して常に最新データを取得
           }
         );
       } catch (fetchError: any) {
@@ -1329,13 +1390,14 @@ class ApiClient {
           url = url.replace(/localhost/g, '127.0.0.1');
           console.log('[ApiClient] Retrying getCampaignSummary with HTTP URL:', url);
           try {
-            response = await fetch(
-              url,
-              { 
-                credentials: 'include',
-                headers: this.getHeaders() 
-              }
-            );
+        response = await fetch(
+          url,
+          { 
+            credentials: 'include',
+            headers: this.getHeaders(),
+            cache: 'no-store'  // キャッシュを無効化して常に最新データを取得
+          }
+        );
           } catch (retryError: any) {
             console.error('[ApiClient] Retry also failed:', retryError);
             throw new Error(`サーバーに接続できませんでした。バックエンドサーバー（http://localhost:8000）が起動しているか確認してください。エラー: ${fetchError?.message || 'Unknown error'}`);
@@ -1352,7 +1414,10 @@ class ApiClient {
         }
         throw new Error(`サマリーの取得に失敗しました: ${response.status} ${response.statusText}`);
       }
-      return response.json();
+      const data = await response.json();
+      // キャッシュに保存
+      this.setCache(cacheKey, data);
+      return data;
     } catch (error: any) {
       console.error("[ApiClient] Failed to fetch summary:", error);
       if (error.message?.includes('Failed to fetch') || error.message?.includes('NetworkError') || error.name === 'TypeError') {
@@ -1369,11 +1434,23 @@ class ApiClient {
       throw new Error('認証トークンがありません');
     }
     
+    // キャッシュキーを生成
+    const cacheKey = this.getCacheKey('/campaigns/trends/', { startDate, endDate, groupBy, metaAccountId });
+    const cached = this.getFromCache(cacheKey);
+    if (cached) {
+      console.log('[Api] getCampaignTrends: Cache hit');
+      return cached;
+    }
+    
+    console.log('[Api] getCampaignTrends: Fetching from API');
+    
     try {
       const params = new URLSearchParams({ group_by: groupBy });
       if (startDate) params.append('start_date', startDate);
       if (endDate) params.append('end_date', endDate);
       if (metaAccountId) params.append('meta_account_id', metaAccountId);
+      // キャッシュを防ぐためにタイムスタンプを追加
+      params.append('_t', Date.now().toString());
       
       let url = `${this.baseURL}/campaigns/trends/?${params}`;
       // fetch呼び出し直前に再度正規化（ブラウザがURLを変換する可能性があるため）
@@ -1413,7 +1490,8 @@ class ApiClient {
           fetchUrl,
           { 
             credentials: 'include',  // CORS credentials をサポート
-            headers: this.getHeaders()
+            headers: this.getHeaders(),
+            cache: 'no-store'  // キャッシュを無効化して常に最新データを取得
           }
         );
       } catch (fetchError: any) {
@@ -1429,13 +1507,14 @@ class ApiClient {
           url = url.replace(/localhost/g, '127.0.0.1');
           console.log('[ApiClient] Retrying getCampaignTrends with HTTP URL:', url);
           try {
-            response = await fetch(
-              url,
-              { 
-                credentials: 'include',
-                headers: this.getHeaders()
-              }
-            );
+        response = await fetch(
+          url,
+          { 
+            credentials: 'include',
+            headers: this.getHeaders(),
+            cache: 'no-store'  // キャッシュを無効化して常に最新データを取得
+          }
+        );
           } catch (retryError: any) {
             console.error('[ApiClient] Retry also failed:', retryError);
             throw new Error(`サーバーに接続できませんでした。バックエンドサーバー（http://localhost:8000）が起動しているか確認してください。エラー: ${fetchError?.message || 'Unknown error'}`);
@@ -1452,7 +1531,10 @@ class ApiClient {
         }
         throw new Error(`トレンドデータの取得に失敗しました: ${response.status} ${response.statusText}`);
       }
-      return response.json();
+      const data = await response.json();
+      // キャッシュに保存
+      this.setCache(cacheKey, data);
+      return data;
     } catch (error: any) {
       console.error("[ApiClient] Failed to fetch trends:", error);
       if (error.message?.includes('Failed to fetch') || error.message?.includes('NetworkError') || error.name === 'TypeError') {

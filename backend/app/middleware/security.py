@@ -52,12 +52,15 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         
         # If response is a redirect (307), ensure it uses HTTPS
         # This handles cases where FastAPI or Starlette redirects to trailing slash
+        # BUT NOT for localhost/127.0.0.1 (local development uses HTTP)
         if hasattr(response, 'status_code') and response.status_code in [301, 302, 307, 308]:
             location = response.headers.get("location", "")
             if location and location.startswith("http://"):
-                # Replace http:// with https://
-                location = location.replace("http://", "https://", 1)
-                response.headers["location"] = location
+                # localhostや127.0.0.1の場合は変換しない（ローカル開発環境はHTTPで起動しているため）
+                if "localhost" not in location and "127.0.0.1" not in location:
+                    # Replace http:// with https://
+                    location = location.replace("http://", "https://", 1)
+                    response.headers["location"] = location
         
         # Check if CORS headers are present - if so, don't modify headers at all
         has_cors_headers = any(

@@ -1,4 +1,5 @@
 // Netlifyデプロイ用の変更検知 - 2025-12-30
+// Fix: リーチ数をMeta APIから期間全体のユニーク数として取得
 import React, { useState, useMemo, useEffect, useContext } from 'react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer,
@@ -406,6 +407,30 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     end: string;
     metaAccountId: string | null;
   } | null>(null);
+  
+  // 前回のロードパラメータを保存（キャンペーン切り替え時の最適化用）
+  const prevLoadParamsRef = React.useRef<{
+    selectedMetaAccountId: string | null;
+    dateRange: { start: string; end: string };
+    selectedCampaign: string | null;
+    selectedAdSet: string | null;
+    selectedAd: string | null;
+  } | null>(null);
+  
+  // 前回のパラメータを保存（API呼び出し最適化用）
+  const prevApiParamsRef = React.useRef<{
+    metaAccountId?: string;
+    startDate?: string;
+    endDate?: string;
+    selectedCampaign?: string;
+  } | null>(null);
+  
+  // 初回ロード判定用
+  const hasLoadedRef = React.useRef(false);
+  const prevSelectedCampaignRef = React.useRef<string | null>(null);
+  const prevStartDateRef = React.useRef<string | null>(null);
+  const prevEndDateRef = React.useRef<string | null>(null);
+  const prevSelectedMetaAccountIdRef = React.useRef<string | null>(null);
 
   // Initialize date range - localStorageから復元、なければデータの全期間
   const [dateRange, setDateRange] = useState<{start: string, end: string}>(() => {
@@ -422,7 +447,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     }
 
     // デフォルト: データが存在する全期間、なければ7日間（昨日まで）
-    const allData = [...(propData || [])];
+    const allData = [...(apiData.length > 0 ? apiData : propData || [])];
     if (allData.length > 0) {
       const uniqueDates = Array.from(new Set(allData.map(d => d.date)));
       const minDate = new Date(Math.min(...uniqueDates.map(d => new Date(d).getTime())));
@@ -579,13 +604,131 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
       }
     };
     
-    loadMetaAccounts();
+    // 初回のみ実行
+    if (!hasLoadedRef.current) {
+      hasLoadedRef.current = true;
+      loadMetaAccounts();
+    }
     // 依存配列を空にして、初回マウント時のみ実行
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // propDataの前回の参照を保持（変更検知用）
-  const prevPropDataRef = React.useRef<CampaignData[] | undefined>(propData);
+  // propDataの内容ベースのハッシュを計算（参照ではなく内容で判定）
+  const propDataHash = useMemo(() => {
+    if (!propData || propData.length === 0) return '';
+    // データの内容に基づいたハッシュを作成
+    const firstId = propData[0]?.id || '';
+    const lastId = propData[propData.length - 1]?.id || '';
+    const length = propData.length;
+    return `${length}-${firstId}-${lastId}`;
+  }, [propData]);
+  
+  const prevPropDataHashRef = React.useRef<string>(propDataHash);
+
+  // キャンペーン切替時の高速化用関数（summaryのみ取得）
+  const loadSummaryOnly = React.useCallback(async (campaignName?: string | null) => {
+    const targetCampaign = campaignName !== undefined ? campaignName : selectedCampaign;
+    
+    if (!targetCampaign || targetCampaign === 'all') {
+      // キャンペーン未選択時は全体データを取得
+      console.log('[Dashboard] loadSummaryOnly: Fetching全体データ (no campaign selected)');
+      
+      try {
+        const metaAccountParam = selectedMetaAccountId || undefined;
+        const summary = await Api.getCampaignSummary(
+          dateRange.start,
+          dateRange.end,
+          metaAccountParam,
+          undefined, // campaign_name を渡さない = 全体データ
+          undefined,
+          undefined,
+          true // 強制リフレッシュ
+        );
+        
+        setSummaryData(summary);
+        console.log('[Dashboard] loadSummaryOnly: 全体データ updated successfully');
+        console.log('[Dashboard] loadSummaryOnly: summary.totals.reach:', summary?.totals?.reach);
+        console.log('[Dashboard] loadSummaryOnly: Full summary data:', summary);
+      } catch (error) {
+        console.error('[Dashboard] Failed to load summary (全体):', error);
+        // エラー時はsummaryDataをnullに設定して、リーチ数を0にする
+        setSummaryData(null);
+      }
+      return;
+    }
+
+    try {
+      console.log('[Dashboard] loadSummaryOnly: Fast summary update for campaign:', targetCampaign);
+      const metaAccountParam = selectedMetaAccountId || undefined;
+      const campaignNameParam = targetCampaign && targetCampaign !== 'all' ? targetCampaign : undefined;
+      const adSetNameParam = selectedAdSet && selectedAdSet !== 'all' ? selectedAdSet : undefined;
+      const adNameParam = selectedAd && selectedAd !== 'all' ? selectedAd : undefined;
+      
+      // キャンペーン切替時は必ずキャッシュをクリア（強制リフレッシュ）
+      const summary = await Api.getCampaignSummary(
+        dateRange.start,
+        dateRange.end,
+        metaAccountParam,
+        campaignNameParam,
+        adSetNameParam,
+        adNameParam,
+        true // 強制リフレッシュフラグ
+      );
+      
+      setSummaryData(summary);
+      console.log('[Dashboard] loadSummaryOnly: Summary updated successfully');
+      console.log('[Dashboard] loadSummaryOnly: summary.totals.reach:', summary?.totals?.reach);
+      console.log('[Dashboard] loadSummaryOnly: Full summary data:', summary);
+    } catch (error) {
+      console.error('[Dashboard] loadSummaryOnly: Failed to load summary:', error);
+      // エラー時はsummaryDataをnullに設定して、リーチ数を0にする
+      setSummaryData(null);
+    }
+  }, [selectedCampaign, selectedMetaAccountId, dateRange, selectedAdSet, selectedAd]);
+
+  // キャンペーン切替時のハンドラー（summaryのみ取得して全データ再取得を回避）
+  const handleCampaignChange = React.useCallback(async (campaignName: string | null) => {
+    console.log('[Dashboard] handleCampaignChange: Campaign change to:', campaignName);
+    
+    // 前のキャンペーンを保存
+    const previousCampaign = prevSelectedCampaignRef.current;
+    
+    // キャンペーンを更新
+    setSelectedCampaign(campaignName);
+    
+    // 広告セットと広告をクリア
+    setSelectedAdSet(null);
+    setSelectedAd(null);
+    
+    // localStorageに保存
+    try {
+      localStorage.setItem('dashboard_selectedCampaign', campaignName || '');
+      localStorage.setItem('dashboard_selectedAdSet', '');
+      localStorage.setItem('dashboard_selectedAd', '');
+    } catch (err) {
+      console.error('[Dashboard] Failed to save to localStorage:', err);
+    }
+    
+    // summaryDataをクリア（前のキャンペーンのデータが残らないように）
+    if (previousCampaign && previousCampaign !== campaignName) {
+      console.log('[Dashboard] Clearing previous summaryData for campaign switch');
+      setSummaryData(null);
+    }
+    
+    // summaryのみ取得（全データは再取得しない）
+    try {
+      console.log('[Dashboard] Fetching summary for campaign:', campaignName);
+      await loadSummaryOnly(campaignName);
+      console.log('[Dashboard] Summary updated successfully');
+    } catch (error) {
+      console.error('[Dashboard] Failed to update summary:', error);
+      // エラー時はfilteredDataの値を使用（既存の動作を維持）
+    }
+    
+    // 参照を更新
+    prevSelectedCampaignRef.current = campaignName;
+  }, [loadSummaryOnly]);
 
   // Load dashboard data from API
   useEffect(() => {
@@ -597,9 +740,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
         metaAccountId: metaAccountParam
       };
       
-      // propDataの参照が変わった場合は、キャッシュをリセットして強制的に再取得
-      // 参照が変わった = 新しいデータが取得された
-      const propDataChanged = prevPropDataRef.current !== propData;
+      // propDataの内容が変わった場合は、キャッシュをリセットして強制的に再取得
+      const propDataChanged = prevPropDataHashRef.current !== propDataHash && propDataHash !== '';
       
       if (propDataChanged) {
         console.log('[Dashboard] propData reference changed, resetting cache and forcing refresh');
@@ -625,20 +767,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
         setTrendsData(null);
       }
       
-      // キャッシュチェック: 同じパラメータで既にデータが取得されている場合は再取得しない
-      // ただし、propDataが変更された場合は必ず再取得
-      const shouldSkipFetch = !propDataChanged && // propDataが変更された場合は必ず再取得
-          lastFetchParamsRef.current && 
-          lastFetchParamsRef.current.start === currentParams.start &&
-          lastFetchParamsRef.current.end === currentParams.end &&
-          lastFetchParamsRef.current.metaAccountId === currentParams.metaAccountId &&
-          apiData.length > 0 && 
-          summaryData !== null && 
-          trendsData !== null;
-      
+      // キャッシュチェックを削除: 常に最新データを取得する
       // propDataが変更された場合は、propDataを優先的に使用して即座に反映（API呼び出しをスキップ）
-      // 注意: この処理は上記のpropDataChangedチェックで既にapiDataとallApiDataを更新しているため、
-      // ここでは重複して更新しない（ただし、念のため再度更新）
       if (propDataChanged && propData && propData.length > 0) {
         console.log('[Dashboard] propData changed, ensuring apiData and allApiData are updated (skipping API call)');
         console.log('[Dashboard] propData sample:', propData[0]);
@@ -665,10 +795,47 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
         return; // propDataが変更された場合はAPI呼び出しをスキップ
       }
       
-      if (shouldSkipFetch) {
-        console.log('[Dashboard] Data already loaded with same params, skipping fetch');
-        setLoading(false);
+      // キャンペーン切替時の最適化チェック
+      const prevParams = prevApiParamsRef.current;
+      const needsFullReload = 
+        !prevParams ||
+        prevParams.metaAccountId !== selectedMetaAccountId ||
+        prevParams.startDate !== dateRange.start ||
+        prevParams.endDate !== dateRange.end;
+      
+      const isCampaignOnlyChange = 
+        !needsFullReload &&
+        prevParams &&
+        prevParams.selectedCampaign !== selectedCampaign &&
+        selectedCampaign !== 'all';
+      
+      // キャンペーン切替時にsummaryDataをクリア
+      if (selectedCampaign && prevSelectedCampaignRef.current && prevSelectedCampaignRef.current !== selectedCampaign) {
+        console.log('[Dashboard] Clearing previous summaryData for campaign switch');
+        console.log('[Dashboard] Previous campaign:', prevSelectedCampaignRef.current);
+        console.log('[Dashboard] New campaign:', selectedCampaign);
+        setSummaryData(null);
+      }
+      
+      if (isCampaignOnlyChange) {
+        console.log('[Dashboard] Campaign-only change detected, loading summary only');
+        await loadSummaryOnly();
+        // パラメータを更新
+        prevApiParamsRef.current = {
+          metaAccountId: selectedMetaAccountId || undefined,
+          startDate: dateRange.start,
+          endDate: dateRange.end,
+          selectedCampaign: selectedCampaign || undefined
+        };
         return;
+      }
+      
+      // データ取得前にstateをクリアしてキャッシュを防ぐ（フルリロード時のみ）
+      if (needsFullReload) {
+        setSummaryData(null);
+        setTrendsData(null);
+        setApiData([]);
+        setAllApiData([]);
       }
       
       setLoading(true);
@@ -677,10 +844,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
         start: dateRange.start,
         end: dateRange.end,
         selectedMetaAccountId: selectedMetaAccountId,
+        selectedCampaign: selectedCampaign,
+        selectedAdSet: selectedAdSet,
+        selectedAd: selectedAd,
         hasPropData: !!(propData && propData.length > 0),
         propDataLength: propData?.length || 0,
         currentApiDataLength: apiData?.length || 0,
-        lastFetchParams: lastFetchParamsRef.current
+        lastFetchParams: lastFetchParamsRef.current,
+        needsFullReload,
+        isCampaignOnlyChange
       });
       
       try {
@@ -688,8 +860,16 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
         const metaAccountParam = selectedMetaAccountId || undefined;
         
         // 必要なAPIを並行して呼び出し
+        // summary APIにキャンペーン/広告セット/広告のフィルタを渡す
+        const campaignNameParam = selectedCampaign && selectedCampaign !== 'all' ? selectedCampaign : undefined;
+        const adSetNameParam = selectedAdSet && selectedAdSet !== 'all' ? selectedAdSet : undefined;
+        const adNameParam = selectedAd && selectedAd !== 'all' ? selectedAd : undefined;
+        
+        // キャッシュを防ぐためにタイムスタンプを追加
+        const timestamp = Date.now();
+        
         const [summaryResult, trendsResult, campaignsResult, allCampaignsResult] = await Promise.allSettled([
-          Api.getCampaignSummary(dateRange.start, dateRange.end, metaAccountParam),
+          Api.getCampaignSummary(dateRange.start, dateRange.end, metaAccountParam, campaignNameParam, adSetNameParam, adNameParam),
           Api.getCampaignTrends(dateRange.start, dateRange.end, 'day', metaAccountParam),
           metaAccountParam ? Api.fetchCampaignData(metaAccountParam, dateRange.start, dateRange.end) : Promise.resolve([]),
           Api.fetchCampaignData(metaAccountParam) // 全期間データを取得（キャンペーン/広告セット/広告一覧用）
@@ -699,6 +879,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
         if (summaryResult.status === 'fulfilled') {
           console.log('[Dashboard] Summary loaded:', summaryResult.value);
           setSummaryData(summaryResult.value);
+          // デバッグ用: windowオブジェクトにsummaryDataを公開（コンソールで確認用）
+          if (typeof window !== 'undefined') {
+            (window as any).summaryData = summaryResult.value;
+          }
         } else {
           console.error('[Dashboard] Failed to load summary:', summaryResult.reason);
         }
@@ -828,12 +1012,27 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
         
         // データ取得成功時にキャッシュキーを更新
         if (combinedData.length > 0 || summaryData !== null || trendsData !== null) {
+          // キャッシュキーを更新（デバッグ用のみ）
           lastFetchParamsRef.current = {
             start: dateRange.start,
             end: dateRange.end,
             metaAccountId: metaAccountParam
           };
-          console.log('[Dashboard] Cache key updated after successful fetch:', lastFetchParamsRef.current);
+          prevLoadParamsRef.current = {
+            selectedMetaAccountId,
+            dateRange,
+            selectedCampaign,
+            selectedAdSet,
+            selectedAd
+          };
+          // パラメータを更新
+          prevApiParamsRef.current = {
+            metaAccountId: selectedMetaAccountId || undefined,
+            startDate: dateRange.start,
+            endDate: dateRange.end,
+            selectedCampaign: selectedCampaign || undefined
+          };
+          console.log('[Dashboard] Data fetched successfully:', lastFetchParamsRef.current);
         }
       } catch (error) {
         console.error('[Dashboard] Error loading dashboard data:', error);
@@ -855,11 +1054,33 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
       }
     };
     
-    loadDashboardData();
+    // 初回ロード完了前はスキップ
+    if (!hasLoadedRef.current) {
+      hasLoadedRef.current = true;
+      loadDashboardData();
+      return;
+    }
+    
+    // キャンペーン/日付/アカウントが変わった場合のみ
+    if (
+      selectedCampaign !== prevSelectedCampaignRef.current ||
+      dateRange.start !== prevStartDateRef.current ||
+      dateRange.end !== prevEndDateRef.current ||
+      selectedMetaAccountId !== prevSelectedMetaAccountIdRef.current
+    ) {
+      loadDashboardData();
+      
+      // 参照を更新
+      prevSelectedCampaignRef.current = selectedCampaign;
+      prevStartDateRef.current = dateRange.start;
+      prevEndDateRef.current = dateRange.end;
+      prevSelectedMetaAccountIdRef.current = selectedMetaAccountId;
+    }
     // propDataを依存配列に追加して、新規データ取得時に再読み込み
     // propDataの参照が変わった場合（新しいデータが取得された場合）に再実行
+    // selectedCampaign, selectedAdSet, selectedAdも依存配列に追加（summary APIのフィルタに使用）
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dateRange.start, dateRange.end, selectedMetaAccountId, propData]);
+  }, [dateRange.start, dateRange.end, selectedMetaAccountId, propData, selectedCampaign, selectedAdSet, selectedAd, loadSummaryOnly]);
 
   // Use propData if available (from App.tsx), otherwise fallback to apiData
   // Filter by asset and date range
@@ -888,8 +1109,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     
     if (selectedMetaAccountId === 'all' || !selectedMetaAccountId) {
       // 「すべてのアカウント」が選択されている場合、またはアカウントが選択されていない場合
-      sourceData = (propData && propData.length > 0) ? propData : (allApiData && allApiData.length > 0 ? allApiData : apiData);
-      console.log('[Dashboard] Using propData/allApiData (all accounts or no selection):', sourceData.length, 'records');
+      // apiDataを優先してデータソースを統一
+      sourceData = (allApiData && allApiData.length > 0) ? allApiData : (apiData && apiData.length > 0 ? apiData : (propData && propData.length > 0 ? propData : []));
+      console.log('[Dashboard] Using allApiData/apiData (all accounts or no selection):', sourceData.length, 'records');
     } else {
       // 特定のアカウントが選択されている場合
       // apiData/allApiData が存在すればそちらを優先 (正しくフィルタリング済み)
@@ -1140,19 +1362,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     console.log('[Dashboard] ===== availableAdSets calculation =====');
     console.log('[Dashboard] selectedCampaign:', selectedCampaign);
     console.log('[Dashboard] selectedMetaAccountId:', selectedMetaAccountId);
-    console.log('[Dashboard] allApiData length:', allApiData?.length || 0);
-    console.log('[Dashboard] apiData length:', apiData?.length || 0);
-    console.log('[Dashboard] propData length:', propData?.length || 0);
+    console.log('[Dashboard] data length:', data?.length || 0);
 
     if (!selectedCampaign) {
       console.log('[Dashboard] No campaign selected, returning empty ad sets');
       return [];
     }
 
-    // アセットが選択されている場合はallApiDataを使用、そうでない場合はapiDataを使用
-    const sourceData = selectedMetaAccountId && allApiData && allApiData.length > 0 
-      ? allApiData 
-      : (apiData && apiData.length > 0 ? apiData : []);
+    // dataを使用（dateFilteredDataから計算されたデータ）
+    const sourceData = data || [];
 
     // 広告セットのみを抽出
     // 新API構造: { ad_set_name, campaign_name, ... }
@@ -1176,7 +1394,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     console.log('[Dashboard] ===== End availableAdSets calculation =====');
 
     return uniqueAdSetNames.sort();
-  }, [selectedCampaign, selectedMetaAccountId, apiData, allApiData, propData]);
+  }, [selectedCampaign, selectedMetaAccountId, data]);
   
   // Get unique ads for selected campaign and ad set
   const availableAds = useMemo(() => {
@@ -1184,18 +1402,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     console.log('[Dashboard] selectedCampaign:', selectedCampaign);
     console.log('[Dashboard] selectedAdSet:', selectedAdSet);
     console.log('[Dashboard] selectedMetaAccountId:', selectedMetaAccountId);
-    console.log('[Dashboard] allApiData length:', allApiData?.length || 0);
-    console.log('[Dashboard] apiData length:', apiData?.length || 0);
+    console.log('[Dashboard] data length:', data?.length || 0);
 
     if (!selectedCampaign) {
       console.log('[Dashboard] Campaign not selected, returning empty ads');
       return [];
     }
 
-    // アセットが選択されている場合はallApiDataを使用、そうでない場合はapiDataを使用
-    const sourceData = selectedMetaAccountId && allApiData && allApiData.length > 0 
-      ? allApiData 
-      : (apiData && apiData.length > 0 ? apiData : []);
+    // dataを使用（dateFilteredDataから計算されたデータ）
+    const sourceData = data || [];
 
     // 広告のみを抽出
     // 新API構造: { ad_name, ad_set_name, campaign_name, ... }
@@ -1222,7 +1437,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     console.log('[Dashboard] ===== End availableAds calculation =====');
 
     return uniqueAdNames.sort();
-  }, [selectedCampaign, selectedAdSet, selectedMetaAccountId, apiData, allApiData]);
+  }, [selectedCampaign, selectedAdSet, selectedMetaAccountId, data]);
 
   // Filter Data - シンプル版（重複排除付き）
   const filteredData = useMemo(() => {
@@ -1331,6 +1546,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     // filteredDataから直接計算（API summaryは使用しない）
     const current = filteredData;
     
+    // デバッグ用: windowオブジェクトにデータを公開（コンソールで確認用）
+    if (typeof window !== 'undefined') {
+      (window as any).apiData = current;
+      (window as any).filteredData = current;
+    }
+    
     // 基本指標を計算
     const totalCost = current.reduce((acc, curr) => acc + (curr.cost || 0), 0);
     const totalImpressions = current.reduce((acc, curr) => acc + (curr.impressions || 0), 0);
@@ -1345,7 +1566,55 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     const totalValue = current.reduce((acc, curr) => acc + (curr.conversion_value || 0), 0);
     
     // 追加指標を計算
-    const totalReach = current.reduce((acc, curr) => acc + (curr.reach || 0), 0);
+    // リーチ数は summary API から取得 (ユニークユーザー数として正しい)
+    // summaryDataが存在する場合は必ずそれを使用（日別合算は使わない）
+    let totalReach = 0;
+    if (summaryData?.totals?.reach !== undefined && summaryData?.totals?.reach !== null) {
+      totalReach = summaryData.totals.reach;
+    } else {
+      // summaryDataが取得されていない場合は0を表示（ローディング中）
+      console.warn('[Dashboard] ⚠️ summaryData not available, reach will be 0 until summary is loaded');
+      totalReach = 0;
+    }
+    
+    // デバッグログを追加
+    console.log('[Dashboard] ===== Reach Calculation =====');
+    console.log('[Dashboard] summaryData?.totals?.reach:', summaryData?.totals?.reach);
+    console.log('[Dashboard] filteredData sum:', current.reduce((acc, curr) => acc + (curr.reach || 0), 0));
+    console.log('[Dashboard] Using totalReach:', totalReach);
+    console.log('[Dashboard] selectedCampaign:', selectedCampaign);
+    console.log('[Dashboard] selectedAdSet:', selectedAdSet);
+    console.log('[Dashboard] selectedAd:', selectedAd);
+    
+    // デバッグ: リーチ数の詳細ログ
+    console.log('[Dashboard] ===== Reach Data Analysis =====');
+    const reachValues = current.map(d => ({
+      campaign: d.campaign_name,
+      date: d.date,
+      reach: d.reach,
+      impressions: d.impressions,
+      clicks: d.clicks,
+      ad_set_name: d.ad_set_name || '(empty)',
+      ad_name: d.ad_name || '(empty)',
+      meta_account_id: d.meta_account_id
+    }));
+    console.log('[Dashboard] Reach values:', reachValues);
+    console.log('[Dashboard] Total Reach (from summary API):', totalReach);
+    console.log('[Dashboard] Total Impressions:', totalImpressions);
+    console.log('[Dashboard] Total Clicks:', totalClicks);
+    
+    // リーチ数の異常値をチェック
+    const abnormalReach = current.filter(d => d.reach && d.impressions && d.reach > d.impressions);
+    if (abnormalReach.length > 0) {
+      console.warn('[Dashboard] ⚠️ Abnormal reach (reach > impressions):', abnormalReach.length, 'records');
+      console.warn('[Dashboard] Abnormal reach details:', abnormalReach.map(d => ({
+        campaign: d.campaign_name,
+        date: d.date,
+        reach: d.reach,
+        impressions: d.impressions
+      })));
+    }
+    console.log('[Dashboard] ===== End Reach Data Analysis =====');
     const totalEngagements = current.reduce((acc, curr) => acc + (curr.engagements || 0), 0);
     const totalLinkClicks = current.reduce((acc, curr) => acc + (curr.link_clicks || 0), 0);
     const totalLandingPageViews = current.reduce((acc, curr) => acc + (curr.landing_page_views || 0), 0);
@@ -1399,7 +1668,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
       cpcTrend: (Math.random() * 5) - 2.5,
       cvrTrend: (Math.random() * 3) - 1.5
     };
-  }, [filteredData, dateRange, selectedCampaign]); // summaryDataへの依存を削除（常にfilteredDataから計算）
+  }, [filteredData, dateRange, selectedCampaign, summaryData]); // summaryDataを依存配列に追加（リーチ数の計算で使用）
 
   // Group by Date for Trend Chart - use API trends if available
   const trendData = useMemo(() => {
@@ -1967,16 +2236,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
                                 {/* 全体タブ */}
                 <button 
                                     onClick={() => {
-                                        setSelectedCampaign(null);
-                                        setSelectedAdSet(null); // 全体を選択したら広告セットと広告をクリア
-                                        setSelectedAd(null);
-                                        try {
-                                            localStorage.setItem('dashboard_selectedCampaign', '');
-                                            localStorage.setItem('dashboard_selectedAdSet', '');
-                                            localStorage.setItem('dashboard_selectedAd', '');
-                                        } catch (err) {
-                                            // 無視
-                                        }
+                                        handleCampaignChange(null);
                                     }}
                                     className={`px-3 py-1.5 text-sm font-medium rounded-lg border transition-colors whitespace-nowrap shrink-0 ${
                                         selectedCampaign === null
@@ -1991,16 +2251,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
                                     <button
                                         key={campaign}
                                         onClick={() => {
-                                            setSelectedCampaign(campaign);
-                                        setSelectedAdSet(null); // キャンペーンを変更したら広告セットと広告をクリア
-                                        setSelectedAd(null);
-                                            try {
-                                                localStorage.setItem('dashboard_selectedCampaign', campaign);
-                                            localStorage.setItem('dashboard_selectedAdSet', '');
-                                            localStorage.setItem('dashboard_selectedAd', '');
-                                            } catch (err) {
-                                                // 無視
-                                            }
+                                            handleCampaignChange(campaign);
                                         }}
                                         className={`px-3 py-1.5 text-sm font-medium rounded-lg border transition-colors whitespace-nowrap shrink-0 ${
                                             selectedCampaign === campaign
@@ -2612,12 +2863,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
                   onClick={(e) => {
                     // テーブルヘッダーのクリックと区別するため、行のクリックのみ処理
                     e.stopPropagation();
-                    setSelectedCampaign(campaign.campaign_name);
-                    try {
-                      localStorage.setItem('dashboard_selectedCampaign', campaign.campaign_name);
-                    } catch (err) {
-                      // 無視
-                    }
+                    handleCampaignChange(campaign.campaign_name);
                     // モーダルを開いて詳細分析結果を表示
                     setSelectedCampaignName(campaign.campaign_name);
                   }}

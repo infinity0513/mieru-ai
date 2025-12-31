@@ -383,26 +383,26 @@ class DataService:
                 print(f"  Will CREATE new campaign (deleted {deleted_count} existing record(s))")
             
             # 新規データを保存（既存データは削除済み）
-            campaign = Campaign(
-                user_id=user_id,
-                upload_id=upload_id,
-                date=campaign_date,
-                campaign_name=campaign_name,
-                ad_set_name=ad_set_name,
-                ad_name=ad_name,
-                impressions=impressions,
-                clicks=clicks,
-                cost=cost,
-                conversions=conversions,
-                conversion_value=conversion_value,
-                reach=reach,
-                engagements=engagements,
-                link_clicks=link_clicks,
-                landing_page_views=landing_page_views,
-                **metrics
-            )
-            db.add(campaign)
-            saved_count += 1
+                campaign = Campaign(
+                    user_id=user_id,
+                    upload_id=upload_id,
+                    date=campaign_date,
+                    campaign_name=campaign_name,
+                    ad_set_name=ad_set_name,
+                    ad_name=ad_name,
+                    impressions=impressions,
+                    clicks=clicks,
+                    cost=cost,
+                    conversions=conversions,
+                    conversion_value=conversion_value,
+                    reach=reach,
+                    engagements=engagements,
+                    link_clicks=link_clicks,
+                    landing_page_views=landing_page_views,
+                    **metrics
+                )
+                db.add(campaign)
+                saved_count += 1
             print(f"[DataService] Created new campaign: '{campaign_name}' on {campaign_date} (saved_count: {saved_count})")
         
         db.commit()

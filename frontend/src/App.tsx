@@ -254,14 +254,34 @@ const AppContent: React.FC = () => {
   // 注意: handleLogoutは後で定義されるため、初期値はnull
   const handleLogoutRef = useRef<(() => void) | null>(null);
   const addToastRef = useRef(addToast);
+  
+  // 初回データロード判定用
+  const hasLoadedInitialDataRef = useRef(false);
 
   // loadInitialDataを先に定義（useEffectで使用するため）
   const loadInitialData = useCallback(async () => {
     console.log('[App] loadInitialData called');
-    setDataLoading(true);
+    
     try {
-      // Fetch actual campaign data from backend (daily data)
-      console.log('[App] Fetching campaign data from API...');
+      // 1. まずlocalStorageから取得（高速表示）
+      const cachedData = localStorage.getItem('campaignData');
+      if (cachedData && cachedData !== '[]') {  // 空配列チェック追加
+        try {
+          const parsedData = JSON.parse(cachedData);
+          if (parsedData && parsedData.length > 0) {  // データ存在チェック
+            console.log('[App] Loaded from cache:', parsedData.length, 'records');
+            setData(parsedData); // 即座に表示
+            setHasUploadedData(parsedData.length > 0);
+          }
+        } catch (e) {
+          console.error('[App] Failed to parse cached data:', e);
+          localStorage.removeItem('campaignData'); // 壊れたキャッシュを削除
+        }
+      }
+      
+      // 2. バックグラウンドでAPIから最新データを取得
+      setDataLoading(true);
+      console.log('[App] Fetching latest campaign data from API...');
       const fetchedData = await Api.fetchCampaignData();
       console.log('[App] Fetched data count:', fetchedData.length);
       
@@ -276,6 +296,16 @@ const AppContent: React.FC = () => {
         console.log('[App] 最大日付:', maxDate);
         console.log('[App] ユニークな日付数:', daysCount, '日分');
         console.log('[App] ============================================================');
+      }
+      
+      // 3. localStorageに保存（データが空でないことを確認）
+      if (fetchedData && fetchedData.length > 0) {
+        try {
+          localStorage.setItem('campaignData', JSON.stringify(fetchedData));
+          console.log('[App] Data saved to cache:', fetchedData.length, 'records');
+        } catch (e) {
+          console.error('[App] Error saving to cache:', e);
+        }
       }
       
       setData(fetchedData);
@@ -297,8 +327,25 @@ const AppContent: React.FC = () => {
         return;
       }
       
-      setData([]);
-      setHasUploadedData(false);
+      // エラー時もキャッシュがあれば使う
+      const cachedData = localStorage.getItem('campaignData');
+      if (cachedData && cachedData !== '[]') {
+        try {
+          const parsedData = JSON.parse(cachedData);
+          if (parsedData && parsedData.length > 0) {
+            console.log('[App] Using cached data due to error:', parsedData.length, 'records');
+            setData(parsedData);
+            setHasUploadedData(parsedData.length > 0);
+          }
+        } catch (parseError) {
+          console.error('[App] Failed to parse cached data on error:', parseError);
+          setData([]);
+          setHasUploadedData(false);
+        }
+      } else {
+        setData([]);
+        setHasUploadedData(false);
+      }
     } finally {
       setDataLoading(false);
     }
@@ -306,13 +353,15 @@ const AppContent: React.FC = () => {
 
   // Initial Data Fetch on Login - ログイン時は常にデータを再読み込み
   useEffect(() => {
-    if (user) {
+    if (user && !hasLoadedInitialDataRef.current) {
       console.log('[App] User logged in, loading initial data for:', user.email);
+      hasLoadedInitialDataRef.current = true;
       loadInitialData();
-    } else {
+    } else if (!user) {
       console.log('[App] No user, clearing data');
       setData([]);
       setHasUploadedData(false);
+      hasLoadedInitialDataRef.current = false; // ログアウト時にリセット
     }
   }, [user, loadInitialData]);
 

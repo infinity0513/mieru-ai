@@ -1,0 +1,123 @@
+a4cde9d chore: Netlifyデプロイ用にfrontendファイルを変更
+ecfd901 chore: Netlifyデプロイを強制トリガー
+0cc2fc3 fix: Netlifyのbase設定を復元（変更検知の問題を別方法で解決）
+467d863 fix: Netlifyのbase設定を削除してルートからビルドするように修正
+a7fc59b fix: Netlifyのpublishパスをbase相対パスに修正
+9de32d3 fix: Netlifyのpublishパスを修正
+85e98b3 feat: 広告セット/広告レベルのデータ取得処理を追加
+10e11b6 fix: Meta API全期間データ取得のデバッグログ追加と日付範囲フィルタリング改善
+7da24d3 fix: フロントエンドのアセット名表示とキャッシュ処理を修正
+3164963 fix: get_meta_accountsにページネーション処理を追加して全アカウントを取得できるように修正
+7dd775c fix: get_meta_accountsでMeta APIから取得した全アカウントを表示するように修正
+d4c9d7f fix: 本番環境のHTTPS URLをHTTPに変換しないように修正（Mixed Contentエラー解消）
+c4d1dd9 fix: frontend/netlify.tomlを削除して設定の競合を解消
+082156a trigger: Netlifyデプロイをトリガー
+34ba990 fix: アセット名表示の改善とuntil_dtの確認
+24671c2 Netlifyデプロイ設定のpublishパスを修正
+b213784 OAuthコールバック時のaccount_count未定義エラーを修正
+33dd24e OAuthコールバック時の90日分取得を削除、全期間取得のみに統一
+7a31ce7 修正: Netlifyビルドコマンドにnpm ciを追加
+384b797 デプロイ再実行: フロントエンド
+bac497f 修正: days=Noneの場合、既に設定されたsince/untilを使用して全期間データを確実に取得
+b165845 修正: propData変更時に既存データをクリアして強制的に再取得するように変更
+8ff5d19 修正: propDataの依存配列を参照に変更して確実に再取得
+2561267 修正: propDataの参照変更を検知して必ず再取得するように変更
+70b72c4 修正: .envファイルの読み込みエラーを完全にハンドリングしてビルドが失敗しないように変更
+d30b227 デプロイ再実行: フロントエンド
+1563839 修正: days=Noneの場合、期間制限を適用しないように変更（全期間取得を保証）
+f80e242 修正: propData更新時にキャッシュをリセットして強制的に再取得
+539b9bd 修正: 新規データ取得時にキャッシュを無視して再読み込みするように変更
+42d1424 パフォーマンス改善: ダッシュボードとアセット情報のキャッシュ機能追加、通知取得頻度の最適化
+6a889e1 fix: 重複防止処理を修正 - どの順番でも先にアップされたデータを削除し最新データを保存
+3c5a271 Add debug endpoint to analyze data source (Meta API vs CSV upload)
+57e2f5e Fix: sync-all endpoint now deletes all existing data before syncing to prevent old data from remaining
+2d00ac8 Add test endpoints for deleting and re-syncing all Meta data (for production testing)
+571135d Fix: データ重複を排除し、キャンペーンレベルのデータをシンプルに表示
+a39d223 Fix: キャンペーンレベルのデータが表示されない問題を修正
+7180300 Fix: 数値パース処理を修正（None/空文字列を適切に処理）とデバッグログ追加
+d5b542f Remove: 広告セット・広告レベルのデータ取得処理を削除（キャンペーンレベルのみに変更）
+021fd78 Fix: CORS設定に本番環境のフロントエンドURLを追加
+64c1e01 Fix: meta_api.pyの構文エラーを修正（不要なコードを削除）
+2ea8eb9 Refactor: データ取得・表示ロジックをシンプルに再構築
+462b322 Fix: Add filtering parameter to fetch all ad set statuses (ACTIVE, PAUSED, ARCHIVED, DELETED) and fix Dashboard.tsx useEffect infinite loop
+4a15d38 Fix: Add trailing slashes to API endpoints and resolve ERR_SSL_PROTOCOL_ERROR
+79f896b Add detailed logging for OAuth callback handling in frontend
+34d9ce2 Add detailed logging for account selection and background task execution
+c9ada20 Fix: Remove invalid redirect_response.url access (use headers['location'] instead)
+37bdd3c Fix: Move data sync to background and add detailed redirect URL logging
+7a111e1 Add debug logging for date range calculation to identify future date issue
+ee7f0e9 Fix: Correct import name from notification to notifications
+d5f6947 Fix: Do not convert HTTP to HTTPS for localhost in HTTPSRedirectMiddleware
+=== Git Status ===
+On branch main
+Your branch is up to date with 'origin/main'.
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   SESSION_HISTORY_20251223.md
+	modified:   backend/app/middleware/security.py
+	modified:   backend/app/routers/campaigns.py
+	modified:   backend/app/services/data_service.py
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	BACKUP_GIT_LOG.txt
+	CONVERSION_ANALYSIS.md
+	CONVERSION_DISCREPANCY_ANALYSIS.md
+	CONVERSION_FIX_ISSUES.md
+	CONVERSION_LOGIC_ISSUES.md
+	DATA_HANDLING_FLOW.md
+	DATA_UPDATE_SCENARIOS.md
+	DATA_UPDATE_SCENARIOS_FIXED.md
+	DUPLICATE_HANDLING.md
+	DUPLICATE_PREVENTION_ANALYSIS.md
+	DUPLICATE_PREVENTION_FIXED.md
+	MOST_LIKELY_ISSUES.md
+	REAL_ISSUE_ANALYSIS.md
+	VERIFICATION_CHECKLIST.md
+	WHY_209_RECORDS_REMAINED.md
+	backend/RESTART_AND_CHECK.md
+	backend/RESTART_SERVER.md
+	backend/analyze_conversion_calculation.py
+	backend/analyze_deletion_issue.py
+	backend/check_854731_account.py
+	backend/check_background_task_execution.py
+	backend/check_campaign_data.py
+	backend/check_code_loaded.py
+	backend/check_conversion_breakdown.py
+	backend/check_conversion_data.py
+	backend/check_csv_now.py
+	backend/check_current_data_source.py
+	backend/check_dashboard_data_source.md
+	backend/check_data_source.py
+	backend/check_data_source_direct.py
+	backend/check_date_range.py
+	backend/check_date_range_investigation.py
+	backend/check_duplicates.py
+	backend/check_oauth_logs.py
+	backend/check_platinum1_breakdown.py
+	backend/check_platinum1_data.py
+	backend/check_platinum1_stats.py
+	backend/check_production_data.py
+	backend/check_specific_account_data.py
+	backend/check_user_data_investigation.py
+	backend/delete_all_from_postgres.py
+	backend/delete_all_now.py
+	backend/estimate_cost_by_service.py
+	backend/estimate_cost_by_users.py
+	backend/estimate_cost_daily_9am.py
+	backend/estimate_cost_two_phase.py
+	backend/estimate_cost_unified_sync.py
+	backend/estimate_delete_cost.py
+	backend/force_delete_all.py
+	backend/force_delete_all_data.py
+	backend/quick_check_data.py
+	backend/start_server.sh
+	backend/test_delete_all.py
+	backend/test_delete_via_api.py
+	backend/test_duplicate_fix.py
+	backend/test_get_meta_accounts.py
+	backend/verify_time_increment.py
+
+no changes added to commit (use "git add" and/or "git commit -a")

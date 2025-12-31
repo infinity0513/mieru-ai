@@ -930,18 +930,31 @@ async def get_summary(
     # リーチ数はMeta APIから期間全体のユニーク数を取得（重複を避けるため）
     total_reach = total_reach_from_db  # デフォルトはDBの合算値
     if current_user.meta_access_token and meta_account_id:
+        print(f"[Summary] Fetching unique reach for campaign: {campaign_name or 'All Campaigns'}")
+        print(f"[Summary] Date range: {start_date} to {end_date}")
+        print(f"[Summary] Meta Account ID: {meta_account_id}")
         try:
             # Meta APIから期間全体のユニークリーチ数を取得
             async with httpx.AsyncClient() as client:
                 # キャンペーンIDを取得（campaign_nameから）
                 campaign_id = None
                 if campaign_name:
+                    # まずDBから取得を試みる
                     campaign_query = db.query(Campaign).filter(
                         Campaign.user_id == current_user.id,
                         Campaign.meta_account_id == meta_account_id,
                         Campaign.campaign_name == campaign_name
                     ).first()
                     if campaign_query:
+                        # DBにcampaign_idが保存されている場合はそれを使用
+                        if hasattr(campaign_query, 'campaign_id') and campaign_query.campaign_id:
+                            campaign_id = campaign_query.campaign_id
+                            print(f"[Summary] Found campaign_id from DB: {campaign_id} for {campaign_name}")
+                    else:
+                        print(f"[Summary] Campaign not found in DB: {campaign_name}")
+                    
+                    # DBにない場合、またはcampaign_idが取得できない場合はMeta APIから直接取得
+                    if not campaign_id:
                         # キャンペーンIDを取得するためにMeta APIを呼び出す
                         campaigns_url = f"https://graph.facebook.com/v24.0/{meta_account_id}/campaigns"
                         campaigns_params = {
@@ -967,7 +980,11 @@ async def get_summary(
                         for campaign in all_campaigns_list:
                             if campaign.get('name') == campaign_name:
                                 campaign_id = campaign.get('id')
+                                print(f"[Summary] Found campaign_id from Meta API: {campaign_id} for {campaign_name}")
                                 break
+                        
+                        if not campaign_id:
+                            print(f"[Summary] Campaign ID not found in Meta API for: {campaign_name}")
                 
                 # リーチ数を取得するためのlevelを決定
                 level = "campaign"
@@ -1034,6 +1051,7 @@ async def get_summary(
                                 total_reach = sum(int(insight.get('reach', 0)) for insight in insights)
                             else:
                                 total_reach = int(insights[0].get('reach', 0))
+                            print(f"[Summary] Total reach from Meta API: {total_reach}")
                             print(f"[Summary] Unique reach from Meta API: {total_reach} (period: {start_date} to {end_date}, level: {level})")
                 else:
                     # キャンペーンIDが取得できない場合は、アカウント全体から取得
