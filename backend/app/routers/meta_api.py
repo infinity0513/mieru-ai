@@ -527,29 +527,10 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                     return default
             
             # InsightsデータをCampaignテーブルに保存（キャンペーン/広告セット/広告レベル）
-            # 同じ期間の既存データを削除（重複を防ぐ、CSVデータも含む）
-            # days=None（全期間取得）の場合は期間制限なしで削除、それ以外は期間内のみ削除
-            # Meta APIデータとCSVデータの両方を削除（最新データを優先）
-            # キャンペーンレベル、広告セットレベル、広告レベルのすべてのデータを削除
-            delete_query = db.query(Campaign).filter(
-                Campaign.user_id == user.id,
-                Campaign.meta_account_id == account_id
-            )
-            # days=Noneの場合は期間制限なしで削除（全期間のデータを削除）
-            if days is not None:
-                # 指定期間内のみ削除
-                delete_query = delete_query.filter(
-                    Campaign.date >= datetime.strptime(since, '%Y-%m-%d').date(),
-                    Campaign.date <= datetime.strptime(until, '%Y-%m-%d').date()
-                )
-            # 削除前のレコード数をログ出力
-            count_before_delete = delete_query.count()
-            if count_before_delete > 0:
-                print(f"[Meta API] Deleting {count_before_delete} existing records (Meta API + CSV data) for account {account_id} (days={'all' if days is None else days})")
-                deleted_count = delete_query.delete(synchronize_session=False)
-                print(f"[Meta API] Deleted {deleted_count} existing records (including CSV data)")
-            else:
-                print(f"[Meta API] No existing records to delete for account {account_id}")
+            # 既存データの削除は行わない（新規データのみ追加する方式に変更）
+            # 過去の日付のデータは確定後は変更されないため、更新処理は不要
+            # 新規データのみを追加する実装
+            print(f"[Meta API] Starting data sync for account {account_id} (adding new data only, not deleting existing data)")
             
             saved_count = 0
             # 重複チェック用のセット（campaign_name, date, meta_account_idの組み合わせ）
@@ -829,7 +810,22 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                         continue
                     seen_records.add(record_key)
                     
-                    # 新規作成（既に同じ期間のデータは削除済み）
+                    # 既存データの確認（同じcampaign_name, ad_set_name, ad_name, date, meta_account_idの組み合わせ）
+                    existing_campaign = db.query(Campaign).filter(
+                        Campaign.user_id == user.id,
+                        Campaign.meta_account_id == account_id,
+                        Campaign.campaign_name == campaign_name,
+                        Campaign.ad_set_name == ad_set_name,
+                        Campaign.ad_name == ad_name,
+                        Campaign.date == campaign_date
+                    ).first()
+                    
+                    # 既存データがある場合はスキップ（過去の日付は更新しない）
+                    if existing_campaign:
+                        print(f"[Meta API] Skipping existing record: {campaign_name} / {ad_set_name} / {ad_name} on {campaign_date}")
+                        continue
+                    
+                    # 新規作成（既存データがない場合のみ）
                     campaign = Campaign(
                         user_id=user.id,
                         upload_id=upload.id,

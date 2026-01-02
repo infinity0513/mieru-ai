@@ -56,15 +56,48 @@ export const DailyData: React.FC<DailyDataProps> = ({ data: propData }) => {
     setSpreadsheetUrl(savedUrl);
   }, [selectedCampaign]);
 
-  // Load meta accounts on mount
+  // Load meta accounts on mount (キャッシュを使用)
   useEffect(() => {
     console.log('[DailyData] useEffect for loadMetaAccounts triggered');
     const loadMetaAccounts = async () => {
+      // まずキャッシュを確認
+      try {
+        const cachedAccounts = localStorage.getItem('dashboard_metaAccounts');
+        const cacheTime = localStorage.getItem('dashboard_metaAccounts_time');
+        const CACHE_VALIDITY_MS = 10 * 60 * 1000; // 10分間キャッシュ有効
+        const isCacheValid = cacheTime && (Date.now() - parseInt(cacheTime)) < CACHE_VALIDITY_MS;
+        
+        if (cachedAccounts && isCacheValid) {
+          try {
+            const parsedAccounts = JSON.parse(cachedAccounts);
+            if (parsedAccounts && parsedAccounts.length > 0) {
+              console.log('[DailyData] Loaded meta accounts from cache:', parsedAccounts.length, 'accounts');
+              setMetaAccounts(parsedAccounts);
+              return; // キャッシュが有効な場合はAPI呼び出しをスキップ
+            }
+          } catch (e) {
+            console.error('[DailyData] Failed to parse cached meta accounts:', e);
+            localStorage.removeItem('dashboard_metaAccounts');
+            localStorage.removeItem('dashboard_metaAccounts_time');
+          }
+        }
+      } catch (e) {
+        // 無視して続行
+      }
+      
+      // キャッシュがない、または期限切れの場合のみAPIから取得
       try {
         console.log('[DailyData] Calling Api.getMetaAccounts()');
         const accounts = await Api.getMetaAccounts();
         console.log('[DailyData] Api.getMetaAccounts() completed, accounts count:', accounts.accounts?.length || 0);
         setMetaAccounts(accounts.accounts || []);
+        // localStorageにキャッシュを保存
+        try {
+          localStorage.setItem('dashboard_metaAccounts', JSON.stringify(accounts.accounts || []));
+          localStorage.setItem('dashboard_metaAccounts_time', Date.now().toString());
+        } catch (e) {
+          console.error('[DailyData] Failed to cache meta accounts:', e);
+        }
       } catch (error) {
         console.error('[DailyData] Failed to load meta accounts:', error);
       }

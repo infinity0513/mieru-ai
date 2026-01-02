@@ -734,6 +734,14 @@ class ApiClient {
     return response;
   }
 
+  async syncAllMetaData(accountId?: string): Promise<{ status: string; message: string; total_accounts: number; synced_accounts: number; results: Array<{ account_id: string; status: string; error?: string }> }> {
+    const params = accountId ? `?account_id=${accountId}` : '';
+    const response = await this.request<{ status: string; message: string; total_accounts: number; synced_accounts: number; results: Array<{ account_id: string; status: string; error?: string }> }>(`/meta/sync-all${params}`, {
+      method: 'POST',
+    });
+    return response;
+  }
+
   async register(email: string, password: string, name?: string): Promise<User> {
     const response = await fetch(`${this.baseURL}/auth/register/`, {
       method: 'POST',
@@ -1229,6 +1237,7 @@ class ApiClient {
           campaign_name: c.campaign_name,
           ad_set_name: c.ad_set_name || '',  // 広告セット名を追加
           ad_name: c.ad_name || '',  // 広告名を追加
+          meta_account_id: c.meta_account_id || null,  // MetaアカウントIDを追加
           impressions: c.impressions,
           clicks: c.clicks,
           cost: Number(c.cost),

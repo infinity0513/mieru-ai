@@ -63,7 +63,7 @@ export const Settings: React.FC<SettingsProps> = ({ user }) => {
       
       if (accountId) {
         setMetaAccountId(accountId);
-        addToast('Metaアカウントの連携が完了しました', 'success');
+        addToast('Metaアカウントの連携が完了しました。データ同期を開始します...', 'success');
         // URLパラメータをクリア（http://localhostを強制）
         const baseUrl = window.location.protocol === 'https:' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
           ? window.location.href.replace('https://', 'http://').split('?')[0]
@@ -77,6 +77,47 @@ export const Settings: React.FC<SettingsProps> = ({ user }) => {
         }).catch(error => {
           console.error('[Settings] Failed to reload Meta settings:', error);
         });
+        
+        // OAuth認証後の自動同期はバックグラウンドで実行されるため、
+        // ポーリングで同期完了を検知する
+        let pollCount = 0;
+        const maxPolls = 120; // 最大10分間（5秒間隔 × 120回）
+        const pollInterval = 5000; // 5秒間隔
+        
+        const pollSyncStatus = async () => {
+          pollCount++;
+          console.log(`[Settings] Polling sync status (attempt ${pollCount}/${maxPolls})...`);
+          
+          try {
+            // 最新のデータ件数を確認（同期が完了していればデータが増えているはず）
+            const accounts = await Api.getMetaAccounts();
+            const hasData = accounts.accounts?.some(acc => acc.data_count > 0);
+            
+            if (hasData && pollCount > 3) { // 3回目以降でデータがあれば完了とみなす
+              console.log('[Settings] Sync appears to be completed, dispatching dataSyncComplete event');
+              window.dispatchEvent(new CustomEvent('dataSyncComplete'));
+              addToast('データ同期が完了しました', 'success');
+              return;
+            }
+            
+            if (pollCount < maxPolls) {
+              setTimeout(pollSyncStatus, pollInterval);
+            } else {
+              console.log('[Settings] Polling timeout reached, dispatching dataSyncComplete event anyway');
+              // タイムアウトしてもイベントを発火（データが取得できている可能性がある）
+              window.dispatchEvent(new CustomEvent('dataSyncComplete'));
+              addToast('データ同期が完了した可能性があります。ページをリロードしてください。', 'info');
+            }
+          } catch (error) {
+            console.error('[Settings] Error polling sync status:', error);
+            if (pollCount < maxPolls) {
+              setTimeout(pollSyncStatus, pollInterval);
+            }
+          }
+        };
+        
+        // 初回ポーリングを開始（10秒後から開始）
+        setTimeout(pollSyncStatus, 10000);
       } else {
         console.warn('[Settings] OAuth success but no accountId in URL');
       }
@@ -418,6 +459,41 @@ export const Settings: React.FC<SettingsProps> = ({ user }) => {
                 >
                   {metaSettingsLoading ? '保存中...' : 'Meta設定を保存'}
                 </Button>
+              </div>
+
+              {/* 手動データ同期ボタン */}
+              <div className="mt-4 p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="text-sm font-medium text-gray-900 dark:text-white mb-1">
+                      データを手動で同期
+                    </h4>
+                    <p className="text-xs text-gray-600 dark:text-gray-400">
+                      Meta APIから最新のデータを取得してデータベースを更新します（数分かかる場合があります）
+                    </p>
+                  </div>
+                  <Button
+                    onClick={async () => {
+                      setMetaSettingsLoading(true);
+                      try {
+                        const result = await Api.syncAllMetaData();
+                        addToast(`データ同期が完了しました: ${result.synced_accounts}/${result.total_accounts}アカウント`, 'success');
+                        
+                        // データ同期完了イベントを発火
+                        window.dispatchEvent(new CustomEvent('dataSyncComplete'));
+                        console.log('[Settings] dataSyncComplete event dispatched');
+                      } catch (error: any) {
+                        addToast(error.message || 'データ同期に失敗しました', 'error');
+                      } finally {
+                        setMetaSettingsLoading(false);
+                      }
+                    }}
+                    disabled={metaSettingsLoading}
+                    variant="outline"
+                  >
+                    {metaSettingsLoading ? '同期中...' : 'データを同期'}
+                  </Button>
+                </div>
               </div>
             </div>
           </div>

@@ -265,13 +265,19 @@ const AppContent: React.FC = () => {
     try {
       // 1. まずlocalStorageから取得（高速表示）
       const cachedData = localStorage.getItem('campaignData');
-      if (cachedData && cachedData !== '[]') {  // 空配列チェック追加
+      const cacheTime = localStorage.getItem('campaignData_time');
+      const CACHE_VALIDITY_MS = 24 * 60 * 60 * 1000; // 24時間キャッシュ有効
+      const isCacheValid = cacheTime && (Date.now() - parseInt(cacheTime)) < CACHE_VALIDITY_MS;
+      
+      if (cachedData && cachedData !== '[]' && isCacheValid) {  // 空配列チェック追加
         try {
           const parsedData = JSON.parse(cachedData);
           if (parsedData && parsedData.length > 0) {  // データ存在チェック
             console.log('[App] Loaded from cache:', parsedData.length, 'records');
             setData(parsedData); // 即座に表示
             setHasUploadedData(parsedData.length > 0);
+            // キャッシュが有効な場合はAPI呼び出しをスキップ
+            return;
           }
         } catch (e) {
           console.error('[App] Failed to parse cached data:', e);
@@ -279,7 +285,7 @@ const AppContent: React.FC = () => {
         }
       }
       
-      // 2. バックグラウンドでAPIから最新データを取得
+      // 2. キャッシュがない、または期限切れの場合のみAPIから最新データを取得
       setDataLoading(true);
       console.log('[App] Fetching latest campaign data from API...');
       const fetchedData = await Api.fetchCampaignData();
@@ -302,6 +308,7 @@ const AppContent: React.FC = () => {
       if (fetchedData && fetchedData.length > 0) {
         try {
           localStorage.setItem('campaignData', JSON.stringify(fetchedData));
+          localStorage.setItem('campaignData_time', Date.now().toString());
           console.log('[App] Data saved to cache:', fetchedData.length, 'records');
         } catch (e) {
           console.error('[App] Error saving to cache:', e);
