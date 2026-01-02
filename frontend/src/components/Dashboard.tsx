@@ -2010,9 +2010,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
       stats[key].cost += d.cost || 0;
       stats[key].conversions += d.conversions || 0;
       stats[key].conversion_value += d.conversion_value || 0;
-      // リーチ数はユニークな値のため、合算せず最大値を使用（期間全体のユニークリーチ数の近似値）
-      // 正確なユニークリーチ数はバックエンドのget_summaryから取得する必要がある
-      stats[key].reach = Math.max(stats[key].reach || 0, d.reach || 0);
+      // 期間全体のユニークリーチ数を使用（DBから取得した値）
+      // period_unique_reachが存在する場合はそれを使用、なければ日次のreachの最大値を使用（フォールバック）
+      if (d.period_unique_reach && d.period_unique_reach > 0) {
+        stats[key].reach = d.period_unique_reach;
+      } else if (!stats[key].reach || (d.reach || 0) > (stats[key].reach || 0)) {
+        stats[key].reach = d.reach || 0;  // フォールバック: 日次のreachの最大値
+      }
       stats[key].engagements += d.engagements || 0;
       stats[key].link_clicks += d.link_clicks || 0;
       stats[key].landing_page_views += d.landing_page_views || 0;

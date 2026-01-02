@@ -47,6 +47,7 @@ export interface CampaignData {
   cvr?: number;
   // Optional fields for future expansion
   reach?: number;
+  period_unique_reach?: number;  // 期間全体のユニークリーチ数
   frequency?: number;
   engagements?: number;
   engagement_rate?: number;

@@ -1251,6 +1251,7 @@ class ApiClient {
           cvr: Number(c.cvr || 0),
           // Additional engagement metrics
           reach: Number(c.reach || 0),
+          period_unique_reach: Number(c.period_unique_reach || 0),  // 期間全体のユニークリーチ数
           engagements: Number(c.engagements || 0),
           link_clicks: Number(c.link_clicks || 0),
           landing_page_views: Number(c.landing_page_views || 0)
