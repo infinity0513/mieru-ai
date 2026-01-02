@@ -64,7 +64,7 @@ export const DailyData: React.FC<DailyDataProps> = ({ data: propData }) => {
       try {
         const cachedAccounts = localStorage.getItem('dashboard_metaAccounts');
         const cacheTime = localStorage.getItem('dashboard_metaAccounts_time');
-        const CACHE_VALIDITY_MS = 10 * 60 * 1000; // 10分間キャッシュ有効
+        const CACHE_VALIDITY_MS = 24 * 60 * 60 * 1000; // 24時間キャッシュ有効（App.tsxと同じ）
         const isCacheValid = cacheTime && (Date.now() - parseInt(cacheTime)) < CACHE_VALIDITY_MS;
         
         if (cachedAccounts && isCacheValid) {

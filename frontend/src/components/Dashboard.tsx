@@ -584,7 +584,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
       try {
         const cachedAccounts = localStorage.getItem('dashboard_metaAccounts');
         const cacheTime = localStorage.getItem('dashboard_metaAccounts_time');
-        const CACHE_VALIDITY_MS = 10 * 60 * 1000; // 10分間キャッシュ有効
+        const CACHE_VALIDITY_MS = 24 * 60 * 60 * 1000; // 24時間キャッシュ有効（App.tsxと同じ）
         
         // キャッシュ時間の検証
         let isCacheValid = false;
@@ -1212,9 +1212,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     
     // アセット選択変更時は、取得済みデータからフィルタリングのみ実行
     if (selectedMetaAccountId !== prevSelectedMetaAccountIdRef.current) {
-      if (allApiData.length > 0) {
+      if (allApiData.length > 0 || (propData && propData.length > 0)) {
+        // ソースデータを決定（allApiDataがあればそれを使用、なければpropDataを使用）
+        const sourceData = allApiData.length > 0 ? allApiData : propData || [];
+        
         // 日付範囲でフィルタリング
-        const dateFiltered = allApiData.filter((d: CampaignData) => {
+        const dateFiltered = sourceData.filter((d: CampaignData) => {
           if (!d.date) return false;
           return d.date >= dateRange.start && d.date <= dateRange.end;
         });
@@ -1655,10 +1658,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     // キャンペーンフィルタ
     if (selectedCampaign) {
       const beforeCampaignFilter = filtered.length;
+      const beforeCampaignFilterData = [...filtered]; // フィルタリング前のデータを保存
       filtered = filtered.filter(d => d.campaign_name === selectedCampaign);
       console.log('[Dashboard] After campaign filter:', { before: beforeCampaignFilter, after: filtered.length, selectedCampaign });
       if (filtered.length === 0 && beforeCampaignFilter > 0) {
-        const campaignNames = Array.from(new Set(filtered.map(d => d.campaign_name)));
+        const campaignNames = Array.from(new Set(beforeCampaignFilterData.map(d => d.campaign_name).filter(name => name && name.trim() !== '')));
         console.log('[Dashboard] WARNING: No data after campaign filter. Available campaigns:', campaignNames);
       }
     }
