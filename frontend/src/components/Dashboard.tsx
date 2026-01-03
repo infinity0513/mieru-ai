@@ -1943,13 +1943,19 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     // 追加指標を計算
     // リーチ数（全体）: フィルタリングされた期間の日次reachの合計（他の指標と同じ）
     const filteredDataSum = current.reduce((acc, curr) => acc + (curr.reach || 0), 0);
-    const totalReach = summaryData?.totals?.reach !== undefined && summaryData?.totals?.reach !== null
+    
+    // summaryDataが現在の日付範囲と一致しているかチェック
+    const isSummaryDataValid = summaryData && 
+      summaryData.period?.start === dateRange.start && 
+      summaryData.period?.end === dateRange.end;
+    
+    const totalReach = isSummaryDataValid && summaryData?.totals?.reach !== undefined && summaryData?.totals?.reach !== null
       ? summaryData.totals.reach 
       : filteredDataSum;
     
-    // ユニークリーチ数の計算: summaryDataが有効な場合はそれを使用、そうでない場合はfilteredDataから直接計算
+    // ユニークリーチ数の計算: summaryDataが有効で現在の日付範囲と一致する場合はそれを使用、そうでない場合はfilteredDataから直接計算
     let totalUniqueReach = 0;
-    if (summaryData?.totals?.unique_reach !== undefined && summaryData?.totals?.unique_reach !== null) {
+    if (isSummaryDataValid && summaryData?.totals?.unique_reach !== undefined && summaryData?.totals?.unique_reach !== null) {
       totalUniqueReach = summaryData.totals.unique_reach;
     } else {
       // summaryDataがnullの場合、loadSummaryOnlyと同じロジックで計算
@@ -2039,7 +2045,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
       cpcTrend: (Math.random() * 5) - 2.5,
       cvrTrend: (Math.random() * 3) - 1.5
     };
-  }, [filteredData, dateRange, selectedCampaign, summaryData?.totals?.reach]); // summaryDataの特定の値のみを依存配列に追加（refは含めない）
+  }, [filteredData, dateRange.start, dateRange.end, selectedCampaign, summaryData]); // dateRangeとsummaryDataを依存配列に追加
 
   // Group by Date for Trend Chart - use calculated trendsData
   const trendData = useMemo(() => {
