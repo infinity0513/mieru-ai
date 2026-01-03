@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks, Request
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
-from sqlalchemy import func, or_
+from sqlalchemy import func, or_, text
 from typing import Optional
 from datetime import datetime, timedelta
 from ..models.user import User
@@ -620,8 +620,8 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                         campaign_id = campaign.get('id')
                         campaign_name = campaign.get('name', 'Unknown')
                         # 期間全体のユニークリーチ数を取得（time_incrementなしで期間全体の集計データを取得）
-                        # period_unique_reach, unique_reach, reachの順で試す
-                        period_reach_fields = "campaign_id,campaign_name,period_unique_reach,unique_reach,reach"
+                        # reachフィールドが既にユニークリーチを表している
+                        period_reach_fields = "campaign_id,campaign_name,reach"
                         time_range_encoded = urllib.parse.quote(time_range_json, safe='')
                         # time_incrementを指定しないことで、期間全体の集計データ（1件）を取得
                         relative_url = f"{campaign_id}/insights?fields={period_reach_fields}&time_range={time_range_encoded}&level=campaign&limit=100"
@@ -650,28 +650,9 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                                         # time_incrementなしの場合、期間全体のデータは1件のみ
                                         insight_data = period_insights[0]
                                         
-                                        # デバッグ: 利用可能なフィールドを確認
-                                        available_fields = list(insight_data.keys())
-                                        print(f"[Meta API] Available fields for '{campaign_name}': {available_fields}")
-                                        
-                                        # フィールドの優先順位: period_unique_reach > unique_reach > reach
-                                        period_unique_reach_value = insight_data.get('period_unique_reach')
-                                        unique_reach_value = insight_data.get('unique_reach')
-                                        reach_value = insight_data.get('reach', '0')
-                                        
-                                        # デバッグ: 各フィールドの値を確認
-                                        print(f"[Meta API] Field values for '{campaign_name}': period_unique_reach={period_unique_reach_value}, unique_reach={unique_reach_value}, reach={reach_value}")
-                                        
-                                        # 優先順位で使用
-                                        if period_unique_reach_value is not None and safe_int(period_unique_reach_value, 0) > 0:
-                                            period_reach = safe_int(period_unique_reach_value, 0)
-                                            print(f"[Meta API] Using 'period_unique_reach' for '{campaign_name}': {period_reach:,}")
-                                        elif unique_reach_value is not None and safe_int(unique_reach_value, 0) > 0:
-                                            period_reach = safe_int(unique_reach_value, 0)
-                                            print(f"[Meta API] Using 'unique_reach' for '{campaign_name}': {period_reach:,}")
-                                        else:
-                                            period_reach = safe_int(reach_value, 0)
-                                            print(f"[Meta API] Using 'reach' for '{campaign_name}': {period_reach:,}")
+                                        # reachフィールドが既にユニークリーチを表している（time_incrementなしの場合）
+                                        period_reach = safe_int(insight_data.get('reach', 0), 0)
+                                        print(f"[Meta API] Period unique reach for '{campaign_name}': {period_reach:,}")
                                         
                                         campaign_period_reach_map[campaign_name] = period_reach
                                         print(f"[Meta API] Period unique reach for '{campaign_name}': {period_reach:,}")
@@ -1007,21 +988,27 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                     ).first()
                     
                     # 期間全体のユニークリーチ数を取得（キャンペーンレベルのデータのみ）
+                    # time_incrementなしで取得したreachフィールドをperiod_unique_reachとして使用
                     period_unique_reach = 0
                     if not ad_set_name and not ad_name:  # キャンペーンレベルのデータのみ
-                        period_unique_reach = campaign_period_reach_map.get(campaign_name, 0)
+                        # campaign_period_reach_mapから取得（time_incrementなしで取得したreach）
+                        period_unique_reach_from_map = campaign_period_reach_map.get(campaign_name, 0)
+                        # period_unique_reach_from_mapが0より大きい場合はそれを使用
+                        if period_unique_reach_from_map > 0:
+                            period_unique_reach = period_unique_reach_from_map
+                        # period_unique_reach_from_mapが0の場合でも、日次のreachが0より大きい場合はそれを使用（フォールバック）
+                        elif reach > 0:
+                            period_unique_reach = reach
+                            print(f"[Meta API] Using daily reach as period_unique_reach (fallback) for '{campaign_name}': {period_unique_reach:,}")
                     
                     # 既存データがある場合の処理
                     if existing_campaign:
-                        # キャンペーンレベルのデータで、period_unique_reachが0より大きい場合は更新
+                        # キャンペーンレベルのデータで、period_unique_reachを更新（0でも更新）
                         if not ad_set_name and not ad_name:
-                            if period_unique_reach > 0:
-                                # APIから取得した値が0より大きい場合は常に更新
-                                existing_campaign.period_unique_reach = period_unique_reach
-                                db.commit()
-                                print(f"[Meta API] Updated period_unique_reach for existing record: {campaign_name} on {campaign_date} -> {period_unique_reach:,}")
-                            else:
-                                print(f"[Meta API] Skipping existing record (period_unique_reach is 0): {campaign_name} on {campaign_date}")
+                            # 0でも更新する
+                            existing_campaign.period_unique_reach = period_unique_reach
+                            db.commit()
+                            print(f"[Meta API] Updated period_unique_reach for existing record: {campaign_name} on {campaign_date} -> {period_unique_reach:,}")
                         else:
                             print(f"[Meta API] Skipping existing record: {campaign_name} / {ad_set_name} / {ad_name} on {campaign_date}")
                         continue
@@ -2398,3 +2385,224 @@ async def meta_oauth_callback(
             error_url = error_url.replace('https://127.0.0.1', 'http://127.0.0.1')
         return RedirectResponse(url=error_url, status_code=302)
 
+
+@router.post("/update-unique-reach")
+async def update_unique_reach(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    全キャンペーンのユニークリーチをMeta APIから取得してDBに保存
+    """
+    if not current_user.meta_access_token:
+        raise HTTPException(
+            status_code=400,
+            detail="Metaアクセストークンが設定されていません。設定画面でMetaアカウント情報を登録してください。"
+        )
+    
+    access_token = current_user.meta_access_token
+    
+    try:
+        # 1. データベースから全キャンペーン情報を取得
+        print("[Update Unique Reach] Fetching campaign information from database...")
+        campaign_query = text("""
+            SELECT 
+                campaign_name,
+                meta_account_id,
+                MIN(date) as start_date,
+                MAX(date) as end_date
+            FROM campaigns
+            WHERE campaign_name IS NOT NULL 
+              AND campaign_name != ''
+              AND meta_account_id IS NOT NULL
+              AND meta_account_id != ''
+            GROUP BY campaign_name, meta_account_id
+            ORDER BY campaign_name, meta_account_id
+        """)
+        
+        result = db.execute(campaign_query)
+        campaign_rows = result.fetchall()
+        
+        print(f"[Update Unique Reach] Found {len(campaign_rows)} unique campaigns")
+        
+        if len(campaign_rows) == 0:
+            return {
+                "success_count": 0,
+                "error_count": 0,
+                "details": [],
+                "message": "更新対象のキャンペーンが見つかりませんでした。"
+            }
+        
+        success_count = 0
+        error_count = 0
+        details = []
+        
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            for row in campaign_rows:
+                campaign_name = row[0]
+                meta_account_id = row[1]
+                start_date = row[2]
+                end_date = row[3]
+                
+                print(f"[Update Unique Reach] Processing: {campaign_name} ({meta_account_id})")
+                
+                try:
+                    # 2a) Meta Graph API でキャンペーンIDを検索
+                    # meta_account_idから"act_"プレフィックスを削除（既に含まれている場合）
+                    account_id = meta_account_id.replace("act_", "") if meta_account_id.startswith("act_") else meta_account_id
+                    
+                    campaigns_url = f"https://graph.facebook.com/v18.0/act_{account_id}/campaigns"
+                    campaigns_params = {
+                        "access_token": access_token,
+                        "fields": "id,name",
+                        "filtering": json.dumps([{"field": "name", "operator": "EQUAL", "value": campaign_name}]),
+                        "limit": 100
+                    }
+                    
+                    print(f"[Update Unique Reach] Searching for campaign: {campaign_name}")
+                    campaigns_response = await client.get(campaigns_url, params=campaigns_params)
+                    campaigns_response.raise_for_status()
+                    campaigns_data = campaigns_response.json()
+                    
+                    campaign_list = campaigns_data.get('data', [])
+                    
+                    if len(campaign_list) == 0:
+                        error_msg = f"Campaign '{campaign_name}' not found in Meta API"
+                        print(f"[Update Unique Reach] ❌ {error_msg}")
+                        error_count += 1
+                        details.append({
+                            "campaign_name": campaign_name,
+                            "meta_account_id": meta_account_id,
+                            "status": "error",
+                            "error": error_msg
+                        })
+                        continue
+                    
+                    # 最初に見つかったキャンペーンIDを使用
+                    campaign_id = campaign_list[0].get('id')
+                    found_campaign_name = campaign_list[0].get('name', '')
+                    
+                    print(f"[Update Unique Reach] Found campaign_id: {campaign_id} (name: {found_campaign_name})")
+                    
+                    # 2b) 期間全体のユニークリーチを取得
+                    insights_url = f"https://graph.facebook.com/v18.0/{campaign_id}/insights"
+                    time_range_dict = {
+                        "since": start_date.strftime("%Y-%m-%d"),
+                        "until": end_date.strftime("%Y-%m-%d")
+                    }
+                    time_range_json = json.dumps(time_range_dict, separators=(',', ':'))
+                    
+                    insights_params = {
+                        "access_token": access_token,
+                        "fields": "reach",
+                        "time_range": time_range_json
+                        # time_incrementは指定しない（期間全体の集計値を取得）
+                    }
+                    
+                    print(f"[Update Unique Reach] Fetching unique reach for period: {time_range_json}")
+                    insights_response = await client.get(insights_url, params=insights_params)
+                    insights_response.raise_for_status()
+                    insights_data = insights_response.json()
+                    
+                    insights_list = insights_data.get('data', [])
+                    
+                    if len(insights_list) == 0:
+                        error_msg = f"No insights data returned for campaign '{campaign_name}'"
+                        print(f"[Update Unique Reach] ❌ {error_msg}")
+                        error_count += 1
+                        details.append({
+                            "campaign_name": campaign_name,
+                            "meta_account_id": meta_account_id,
+                            "status": "error",
+                            "error": error_msg
+                        })
+                        continue
+                    
+                    # time_incrementなしの場合、期間全体のデータは1件のみ
+                    unique_reach = int(insights_list[0].get('reach', 0))
+                    
+                    print(f"[Update Unique Reach] Meta API unique reach: {unique_reach:,}")
+                    
+                    # 2c) 取得したユニークリーチをデータベースの period_unique_reach に更新
+                    update_query = text("""
+                        UPDATE campaigns 
+                        SET period_unique_reach = :unique_reach 
+                        WHERE campaign_name = :campaign_name 
+                          AND meta_account_id = :meta_account_id
+                    """)
+                    
+                    db.execute(update_query, {
+                        "unique_reach": unique_reach,
+                        "campaign_name": campaign_name,
+                        "meta_account_id": meta_account_id
+                    })
+                    db.commit()
+                    
+                    # 更新されたレコード数を確認
+                    count_query = text("""
+                        SELECT COUNT(*) 
+                        FROM campaigns 
+                        WHERE campaign_name = :campaign_name 
+                          AND meta_account_id = :meta_account_id
+                    """)
+                    count_result = db.execute(count_query, {
+                        "campaign_name": campaign_name,
+                        "meta_account_id": meta_account_id
+                    })
+                    updated_count = count_result.scalar()
+                    
+                    print(f"[Update Unique Reach] ✅ Updated {updated_count} records for '{campaign_name}': period_unique_reach = {unique_reach:,}")
+                    
+                    success_count += 1
+                    details.append({
+                        "campaign_name": campaign_name,
+                        "meta_account_id": meta_account_id,
+                        "status": "success",
+                        "unique_reach": unique_reach,
+                        "updated_records": updated_count
+                    })
+                    
+                except httpx.HTTPStatusError as e:
+                    error_msg = f"Meta API error: {e.response.status_code} - {e.response.text[:200]}"
+                    print(f"[Update Unique Reach] ❌ {error_msg}")
+                    error_count += 1
+                    details.append({
+                        "campaign_name": campaign_name,
+                        "meta_account_id": meta_account_id,
+                        "status": "error",
+                        "error": error_msg
+                    })
+                    continue
+                except Exception as e:
+                    error_msg = f"Unexpected error: {str(e)}"
+                    print(f"[Update Unique Reach] ❌ {error_msg}")
+                    import traceback
+                    print(f"[Update Unique Reach] Traceback: {traceback.format_exc()}")
+                    error_count += 1
+                    details.append({
+                        "campaign_name": campaign_name,
+                        "meta_account_id": meta_account_id,
+                        "status": "error",
+                        "error": error_msg
+                    })
+                    continue
+        
+        return {
+            "success_count": success_count,
+            "error_count": error_count,
+            "total": success_count + error_count,
+            "total_campaigns": len(campaign_rows),
+            "details": details,
+            "message": f"{success_count}/{len(campaign_rows)}キャンペーンのユニークリーチを更新しました。"
+        }
+        
+    except Exception as e:
+        db.rollback()
+        import traceback
+        error_details = traceback.format_exc()
+        print(f"[Update Unique Reach] CRITICAL ERROR: {str(e)}")
+        print(f"[Update Unique Reach] Traceback: {error_details}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"ユニークリーチ更新エラー: {str(e)}"
+        )
