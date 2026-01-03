@@ -363,6 +363,76 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
             
             print(f"[Meta API] Campaign-level insights retrieved: {len(all_insights)}")
             
+            # ===== 期間全体のユニークリーチ数を取得（キャンペーンレベルのみ） =====
+            print(f"[Meta API] Fetching period unique reach for campaign-level data...")
+            campaign_period_reach_map = {}  # キャンペーン名 -> 期間全体のユニークリーチ数
+            
+            # キャンペーンレベルのデータのみを対象（ad_set_nameとad_nameが空のデータ）
+            campaign_level_campaigns = [c for c in all_campaigns]
+            
+            for batch_start in range(0, len(campaign_level_campaigns), batch_size):
+                batch_end = min(batch_start + batch_size, len(campaign_level_campaigns))
+                batch_campaigns = campaign_level_campaigns[batch_start:batch_end]
+                batch_num = (batch_start // batch_size) + 1
+                total_batches = (len(campaign_level_campaigns) + batch_size - 1) // batch_size
+                
+                print(f"[Meta API] Processing period unique reach batch {batch_num}/{total_batches} ({len(batch_campaigns)} campaigns)")
+                
+                batch_requests = []
+                for campaign in batch_campaigns:
+                    campaign_id = campaign.get('id')
+                    # 期間全体のユニークリーチ数を取得（time_incrementなし）
+                    period_reach_fields = "campaign_id,campaign_name,reach"
+                    relative_url = f"{campaign_id}/insights?fields={period_reach_fields}&time_range={time_range_encoded}&level=campaign&limit=100"
+                    batch_requests.append({
+                        "method": "GET",
+                        "relative_url": relative_url
+                    })
+                
+                try:
+                    # バッチリクエストを送信
+                    period_batch_params = {
+                        "access_token": access_token,
+                        "batch": json.dumps(batch_requests, separators=(',', ':'))
+                    }
+                    batch_response = await client.post(batch_url, params=period_batch_params)
+                    batch_response.raise_for_status()
+                    batch_data = batch_response.json()
+                    
+                    for idx, batch_item in enumerate(batch_data):
+                        campaign = batch_campaigns[idx]
+                        campaign_name = campaign.get('name', 'Unknown')
+                        campaign_id = campaign.get('id')
+                        
+                        if batch_item.get('code') == 200:
+                            try:
+                                item_body = json.loads(batch_item.get('body', '{}'))
+                                period_insights = item_body.get('data', [])
+                                
+                                if len(period_insights) > 0:
+                                    # 期間全体のデータは1件のみ（time_incrementなしの場合）
+                                    period_reach = safe_int(period_insights[0].get('reach'), 0)
+                                    campaign_period_reach_map[campaign_name] = period_reach
+                                    print(f"[Meta API] Period unique reach for {campaign_name}: {period_reach:,}")
+                                else:
+                                    print(f"[Meta API] ⚠️ No period reach data for {campaign_name}")
+                            except json.JSONDecodeError as e:
+                                print(f"[Meta API] Error parsing period reach response for {campaign_name}: {str(e)}")
+                        else:
+                            error_body = batch_item.get('body', '{}')
+                            try:
+                                error_data = json.loads(error_body) if isinstance(error_body, str) else error_body
+                                error_msg = error_data.get('error', {}).get('message', str(error_body))
+                                print(f"[Meta API] Error fetching period reach for {campaign_name} ({campaign_id}): {error_msg}")
+                            except:
+                                print(f"[Meta API] Error fetching period reach for {campaign_name} ({campaign_id}): {error_body}")
+                
+                except Exception as e:
+                    print(f"[Meta API] Error processing period reach batch {batch_num}: {str(e)}")
+                    continue
+            
+            print(f"[Meta API] Period unique reach retrieved for {len(campaign_period_reach_map)} campaigns")
+            
             # ===== 広告セットレベルのinsights取得 =====
             print(f"[Meta API] Fetching adset-level insights for account {account_id}...")
             adset_fields = "campaign_id,campaign_name,adset_name,date_start,spend,impressions,clicks,inline_link_clicks,reach,actions,conversions,action_values,frequency"
@@ -655,6 +725,11 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                     # ad_set_name と ad_name を Meta API のレスポンスから取得
                     ad_set_name = insight.get('adset_name')  # 広告セット名（あれば）
                     ad_name = insight.get('ad_name')          # 広告名（あれば）
+                    
+                    # 期間全体のユニークリーチ数を取得（キャンペーンレベルのみ）
+                    period_unique_reach = 0
+                    if (not ad_set_name or ad_set_name == '') and (not ad_name or ad_name == ''):
+                        period_unique_reach = campaign_period_reach_map.get(campaign_name, 0)
                     
                     # デバッグログ（最初の数件のみ）
                     if saved_count < 3:

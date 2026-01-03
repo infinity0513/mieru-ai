@@ -704,6 +704,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
       filteredData = filteredData.filter(d => d.ad_name === selectedAd);
     }
     
+    // フィルタリング後のデータが空の場合はsummaryDataをクリア
+    if (filteredData.length === 0) {
+      console.log('[Dashboard] loadSummaryOnly: No data after filtering, clearing summaryData');
+      setSummaryData(null);
+      summaryDataCampaignRef.current = targetCampaign || null;
+      return;
+    }
+    
     // フロントエンドでsummaryDataを集計
     const totalImpressions = filteredData.reduce((sum, d) => sum + (d.impressions || 0), 0);
     const totalClicks = filteredData.reduce((sum, d) => {
@@ -1063,7 +1071,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
             existing.conversions += d.conversions || 0;
             existing.conversion_value += d.conversion_value || 0;
             existing.impressions += d.impressions || 0;
-            existing.reach += d.reach || 0;
+            // リーチ数はユニークな値のため、合算せず最大値を使用
+            existing.reach = Math.max(existing.reach || 0, d.reach || 0);
           } else {
             trendsMap.set(d.date, {
               date: d.date,
@@ -2320,6 +2329,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
       };
     });
   }, [filteredData, selectedCampaign, selectedAdSet, selectedAd, selectedMetaAccountId]);
+
+  // campaignStatsが空の場合、summaryDataもクリア
+  useEffect(() => {
+    if (campaignStats.length === 0 && summaryData !== null) {
+      console.log('[Dashboard] campaignStats is empty, clearing summaryData');
+      setSummaryData(null);
+      summaryDataCampaignRef.current = null;
+    }
+  }, [campaignStats, summaryData]);
 
   // Scatter Chart Data
   const scatterData = useMemo(() => {
