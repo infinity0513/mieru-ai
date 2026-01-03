@@ -95,17 +95,6 @@ const CampaignDetailModal = ({ campaignName, allData, onClose }: { campaignName:
     const totalConversions = campaignHistory.reduce((acc, curr) => acc + (curr.conversions || 0), 0);
     const totalValue = campaignHistory.reduce((acc, curr) => acc + (curr.conversion_value || 0), 0);
     const totalReach = campaignHistory.reduce((acc, curr) => acc + (curr.reach || 0), 0);
-    // ユニークリーチ数: period_unique_reachの合計（0より大きい値のみ、キャンペーンごとに1回のみカウント）
-    const campaignUniqueReachMap = new Map<string, number>();
-    campaignHistory.forEach(curr => {
-      if (curr.period_unique_reach && curr.period_unique_reach > 0) {
-        const campaignKey = curr.campaign_name || 'unknown';
-        if (!campaignUniqueReachMap.has(campaignKey)) {
-          campaignUniqueReachMap.set(campaignKey, curr.period_unique_reach);
-        }
-      }
-    });
-    const totalUniqueReach = Array.from(campaignUniqueReachMap.values()).reduce((sum, reach) => sum + reach, 0);
     const totalEngagements = campaignHistory.reduce((acc, curr) => acc + (curr.engagements || 0), 0);
     const totalLinkClicks = campaignHistory.reduce((acc, curr) => acc + (curr.link_clicks || 0), 0);
     const totalLandingPageViews = campaignHistory.reduce((acc, curr) => acc + (curr.landing_page_views || 0), 0);
@@ -134,7 +123,6 @@ const CampaignDetailModal = ({ campaignName, allData, onClose }: { campaignName:
       totalClicks,
       totalConversions, 
       totalReach,
-      totalUniqueReach,
       totalEngagements,
       totalLinkClicks,
       totalLandingPageViews,
@@ -273,20 +261,13 @@ const CampaignDetailModal = ({ campaignName, allData, onClose }: { campaignName:
               {/* リーチ・エンゲージメント指標 */}
                 <div>
                   <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-4 break-words">リーチ・エンゲージメント指標</h4>
-                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
                       <div className="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-3 border border-purple-200 dark:border-purple-800 min-w-0 overflow-hidden">
-                        <div className="text-xs text-purple-600 dark:text-purple-400 mb-1 font-medium truncate">リーチ数（全体）</div>
+                        <div className="text-xs text-purple-600 dark:text-purple-400 mb-1 font-medium truncate">リーチ数</div>
                         <div className="text-lg font-bold text-purple-700 dark:text-purple-300 break-words leading-tight">
                           {(stats.totalReach || 0).toLocaleString()}
                         </div>
                         <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate">合計</div>
-                </div>
-                      <div className="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-3 border border-purple-200 dark:border-purple-800 min-w-0 overflow-hidden">
-                        <div className="text-xs text-purple-600 dark:text-purple-400 mb-1 font-medium truncate">リーチ数（ユニーク）</div>
-                        <div className="text-lg font-bold text-purple-700 dark:text-purple-300 break-words leading-tight">
-                          {(stats.totalUniqueReach || 0).toLocaleString()}
-                        </div>
-                        <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate">ユニーク</div>
                 </div>
                       <div className="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-3 border border-purple-200 dark:border-purple-800 min-w-0 overflow-hidden">
                         <div className="text-xs text-purple-600 dark:text-purple-400 mb-1 font-medium truncate">フリークエンシー</div>
@@ -723,14 +704,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
       filteredData = filteredData.filter(d => d.ad_name === selectedAd);
     }
     
-    // フィルタリング後のデータが空の場合はsummaryDataをクリア
-    if (filteredData.length === 0) {
-      console.log('[Dashboard] loadSummaryOnly: No data after filtering, clearing summaryData');
-      setSummaryData(null);
-      summaryDataCampaignRef.current = targetCampaign || null;
-      return;
-    }
-    
     // フロントエンドでsummaryDataを集計
     const totalImpressions = filteredData.reduce((sum, d) => sum + (d.impressions || 0), 0);
     const totalClicks = filteredData.reduce((sum, d) => {
@@ -742,38 +715,27 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     const totalConversions = filteredData.reduce((sum, d) => sum + (d.conversions || 0), 0);
     const totalConversionValue = filteredData.reduce((sum, d) => sum + (d.conversion_value || 0), 0);
     
-    // リーチ数の計算: period_unique_reachを優先的に使用（0より大きい場合のみ）
+    // リーチ数の計算: period_unique_reachを優先的に使用
     // キャンペーンごとにperiod_unique_reachを取得し、複数キャンペーンの場合は合計（重複排除は困難なため、近似値として合計）
-    // period_unique_reachは期間全体のユニークリーチ数なので、同じキャンペーンの複数日付データでは同じ値のはず
     const campaignReachMap = new Map<string, number>();
     filteredData.forEach(d => {
       const campaignKey = d.campaign_name || 'unknown';
-      // period_unique_reachが存在し、0より大きい場合のみ使用
       if (d.period_unique_reach && d.period_unique_reach > 0) {
-        // period_unique_reachが設定されている場合は、最初に見つかった値を使用
-        if (!campaignReachMap.has(campaignKey)) {
+        // period_unique_reachが存在する場合は、最大値を使用（同じキャンペーンの複数日付データがある場合）
+        const currentReach = campaignReachMap.get(campaignKey) || 0;
+        if (d.period_unique_reach > currentReach) {
           campaignReachMap.set(campaignKey, d.period_unique_reach);
+        }
+      } else if (d.reach && d.reach > 0) {
+        // フォールバック: 日次のreachの最大値を使用
+        const currentReach = campaignReachMap.get(campaignKey) || 0;
+        if (d.reach > currentReach) {
+          campaignReachMap.set(campaignKey, d.reach);
         }
       }
     });
-    
-    // period_unique_reachが未設定または0のキャンペーンについては、日次のreachの合計を使用（フォールバック）
-    const campaignDailyReachMap = new Map<string, number>();
-    filteredData.forEach(d => {
-      const campaignKey = d.campaign_name || 'unknown';
-      if (!campaignReachMap.has(campaignKey)) {
-        // period_unique_reachが未設定または0のキャンペーンの場合、日次のreachの合計を使用
-        const currentDailyReach = campaignDailyReachMap.get(campaignKey) || 0;
-        campaignDailyReachMap.set(campaignKey, currentDailyReach + (d.reach || 0));
-      }
-    });
-    
     // 各キャンペーンのリーチ数を合計
-    const totalReach = Array.from(campaignReachMap.values()).reduce((sum, reach) => sum + reach, 0) +
-                      Array.from(campaignDailyReachMap.values()).reduce((sum, reach) => sum + reach, 0);
-    
-    // ユニークリーチ数の合計（period_unique_reachのみ）
-    const totalUniqueReach = Array.from(campaignReachMap.values()).reduce((sum, reach) => sum + reach, 0);
+    const totalReach = Array.from(campaignReachMap.values()).reduce((sum, reach) => sum + reach, 0);
     
     const totalEngagements = filteredData.reduce((sum, d) => sum + (d.engagements || 0), 0);
     const totalLinkClicks = filteredData.reduce((sum, d) => sum + (d.link_clicks || 0), 0);
@@ -802,7 +764,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
         conversions: totalConversions,
         conversion_value: totalConversionValue,
         reach: totalReach,
-        unique_reach: totalUniqueReach,
         engagements: totalEngagements,
         link_clicks: totalLinkClicks,
         landing_page_views: totalLandingPageViews
@@ -1008,38 +969,27 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
         const totalConversions = filteredData.reduce((sum, d) => sum + (d.conversions || 0), 0);
         const totalConversionValue = filteredData.reduce((sum, d) => sum + (d.conversion_value || 0), 0);
         
-        // リーチ数の計算: period_unique_reachを優先的に使用（0より大きい場合のみ）
+        // リーチ数の計算: period_unique_reachを優先的に使用
         // キャンペーンごとにperiod_unique_reachを取得し、複数キャンペーンの場合は合計（重複排除は困難なため、近似値として合計）
-        // period_unique_reachは期間全体のユニークリーチ数なので、同じキャンペーンの複数日付データでは同じ値のはず
         const campaignReachMap = new Map<string, number>();
         filteredData.forEach(d => {
           const campaignKey = d.campaign_name || 'unknown';
-          // period_unique_reachが存在し、0より大きい場合のみ使用
           if (d.period_unique_reach && d.period_unique_reach > 0) {
-            // period_unique_reachが設定されている場合は、最初に見つかった値を使用
-            if (!campaignReachMap.has(campaignKey)) {
+            // period_unique_reachが存在する場合は、最大値を使用（同じキャンペーンの複数日付データがある場合）
+            const currentReach = campaignReachMap.get(campaignKey) || 0;
+            if (d.period_unique_reach > currentReach) {
               campaignReachMap.set(campaignKey, d.period_unique_reach);
+            }
+          } else if (d.reach && d.reach > 0) {
+            // フォールバック: 日次のreachの最大値を使用
+            const currentReach = campaignReachMap.get(campaignKey) || 0;
+            if (d.reach > currentReach) {
+              campaignReachMap.set(campaignKey, d.reach);
             }
           }
         });
-        
-        // period_unique_reachが未設定または0のキャンペーンについては、日次のreachの合計を使用（フォールバック）
-        const campaignDailyReachMap = new Map<string, number>();
-        filteredData.forEach(d => {
-          const campaignKey = d.campaign_name || 'unknown';
-          if (!campaignReachMap.has(campaignKey)) {
-            // period_unique_reachが未設定または0のキャンペーンの場合、日次のreachの合計を使用
-            const currentDailyReach = campaignDailyReachMap.get(campaignKey) || 0;
-            campaignDailyReachMap.set(campaignKey, currentDailyReach + (d.reach || 0));
-          }
-        });
-        
         // 各キャンペーンのリーチ数を合計
-        const totalReach = Array.from(campaignReachMap.values()).reduce((sum, reach) => sum + reach, 0) +
-                          Array.from(campaignDailyReachMap.values()).reduce((sum, reach) => sum + reach, 0);
-        
-        // ユニークリーチ数の合計（period_unique_reachのみ）
-        const totalUniqueReach = Array.from(campaignReachMap.values()).reduce((sum, reach) => sum + reach, 0);
+        const totalReach = Array.from(campaignReachMap.values()).reduce((sum, reach) => sum + reach, 0);
         
         const totalEngagements = filteredData.reduce((sum, d) => sum + (d.engagements || 0), 0);
         const totalLinkClicks = filteredData.reduce((sum, d) => sum + (d.link_clicks || 0), 0);
@@ -1068,7 +1018,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
             conversions: totalConversions,
             conversion_value: totalConversionValue,
             reach: totalReach,
-            unique_reach: totalUniqueReach,
             engagements: totalEngagements,
             link_clicks: totalLinkClicks,
             landing_page_views: totalLandingPageViews
@@ -1114,8 +1063,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
             existing.conversions += d.conversions || 0;
             existing.conversion_value += d.conversion_value || 0;
             existing.impressions += d.impressions || 0;
-            // リーチ数はユニークな値のため、合算せず最大値を使用
-            existing.reach = Math.max(existing.reach || 0, d.reach || 0);
+            existing.reach += d.reach || 0;
           } else {
             trendsMap.set(d.date, {
               date: d.date,
@@ -1457,7 +1405,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
             console.log('[Dashboard] No data for selected account in propData, returning empty array (to prevent infinite loading)');
           }
         } else {
-        console.log('[Dashboard] Using allApiData (asset selected, filtered):', sourceData.length, 'records');
+          console.log('[Dashboard] Using allApiData (asset selected, filtered):', sourceData.length, 'records');
         }
       } else if (apiData && apiData.length > 0) {
         // apiDataは既にアセットでフィルタリング済み
@@ -1476,7 +1424,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
           });
           if (propDataFiltered.length > 0) {
             sourceData = propDataFiltered;
-        console.log('[Dashboard] Using propData as fallback (no apiData/allApiData, filtered):', sourceData.length, 'records');
+            console.log('[Dashboard] Using propData as fallback (no apiData/allApiData, filtered):', sourceData.length, 'records');
           } else {
             // propDataにも該当アカウントのデータがない場合、空配列を返す（無限読み込みを防ぐため、propDataは使用しない）
             sourceData = [];
@@ -1524,15 +1472,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
   }, [propData, apiData, allApiData, selectedMetaAccountId, dateRange.start, dateRange.end]);
 
   // 利用可能なキャンペーン一覧を取得
-  // 重要: 日付範囲でフィルタリングしない（全期間のデータから取得）
-  // これにより、日付範囲を選択しても、選択されているキャンペーンが自動的に変更されない
   const availableCampaigns = useMemo(() => {
     // アセットが選択されている場合は、allApiDataを使用（日付範囲でフィルタリングされていない全データ）
-    // アセットが選択されていない場合は、allApiDataまたはpropDataを使用（日付範囲でフィルタリングされていない全データ）
+    // アセットが選択されていない場合は、dataまたはpropDataを使用
     let sourceData: CampaignData[];
     
     if (selectedMetaAccountId && selectedMetaAccountId !== 'all') {
-      // アセットが選択されている場合: アセットでフィルタリング（日付範囲ではフィルタリングしない）
+      // アセットが選択されている場合: アセットでフィルタリング
       if (allApiData && allApiData.length > 0) {
         // データベースには act_ プレフィックス付きで保存されているので、それに合わせて比較
         const selectedAccountIdWithPrefix = selectedMetaAccountId.startsWith('act_') 
@@ -1549,12 +1495,16 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
             const accountId = d.meta_account_id || (d as any).meta_account_id;
             return accountId === selectedMetaAccountId;
           });
-          console.log('[Dashboard] Using propData for campaigns (allApiData filtered to 0, filtered by asset only, not by date):', sourceData.length, 'records');
+          console.log('[Dashboard] Using propData for campaigns (allApiData filtered to 0, filtered):', sourceData.length, 'records');
+        } else {
+          console.log('[Dashboard] Using allApiData for campaigns (asset selected, filtered):', sourceData.length, 'records');
+        }
+      } else if (apiData && apiData.length > 0) {
+        // allApiDataが空の場合は、apiDataを使用（既にアセットでフィルタリング済み）
+        sourceData = apiData;
+        console.log('[Dashboard] Using apiData for campaigns (allApiData empty):', apiData.length, 'records');
       } else {
-          console.log('[Dashboard] Using allApiData for campaigns (asset selected, filtered by asset only, not by date):', sourceData.length, 'records');
-      }
-    } else {
-        // allApiDataが空の場合は、propDataから取得を試みる（アセットでフィルタリング、日付範囲ではフィルタリングしない）
+        // apiDataも空の場合は、propDataから取得を試みる（アセットでフィルタリング）
         if (propData && propData.length > 0) {
           // データベースには act_ プレフィックス付きで保存されているので、それに合わせて比較
           const selectedAccountIdWithPrefix = selectedMetaAccountId.startsWith('act_') 
@@ -1567,16 +1517,16 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
         } else {
           sourceData = [];
         }
-        console.log('[Dashboard] Using propData for campaigns (allApiData empty, filtered by asset only, not by date):', sourceData.length, 'records');
+        console.log('[Dashboard] Using propData for campaigns (apiData empty, filtered):', sourceData.length, 'records');
       }
     } else {
-      // アセットが選択されていない場合: allApiDataまたはpropDataを使用（日付範囲でフィルタリングされていない全データ）
-      if (allApiData && allApiData.length > 0) {
-        sourceData = allApiData;
-        console.log('[Dashboard] Using allApiData for campaigns (no asset selected, not filtered by date):', allApiData.length, 'records');
+      // アセットが選択されていない場合: dataまたはpropDataを使用
+      if (data && data.length > 0) {
+        sourceData = data;
+        console.log('[Dashboard] Using data for campaigns (no asset selected):', data.length, 'records');
       } else if (propData && propData.length > 0) {
         sourceData = propData;
-        console.log('[Dashboard] Using propData for campaigns (no asset selected, not filtered by date):', propData.length, 'records');
+        console.log('[Dashboard] Using propData for campaigns (data empty):', propData.length, 'records');
       } else {
         sourceData = [];
         console.log('[Dashboard] No data available for campaigns');
@@ -1621,7 +1571,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     console.log('[Dashboard] ===== End available campaigns calculation =====');
     
     return campaigns;
-  }, [propData, allApiData, selectedMetaAccountId]); // dataとapiDataを依存配列から削除（日付範囲でフィルタリングされていない全データを使用するため）
+  }, [propData, apiData, allApiData, selectedMetaAccountId, data]);
 
   // selectedCampaign の自動選択
   useEffect(() => {
@@ -1930,16 +1880,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     
     // 追加指標を計算
     // リーチ数は summaryData から取得（フロントエンドで計算済み）
-    // summaryDataが有効な場合は必ず使用
+    // summaryDataが有効な場合は必ず使用（ユニークリーチ）
     const filteredDataSum = current.reduce((acc, curr) => acc + (curr.reach || 0), 0);
     const totalReach = summaryData?.totals?.reach !== undefined && summaryData?.totals?.reach !== null
       ? summaryData.totals.reach 
       : filteredDataSum;
-    
-    // ユニークリーチ数は summaryData から取得
-    const totalUniqueReach = summaryData?.totals?.unique_reach !== undefined && summaryData?.totals?.unique_reach !== null
-      ? summaryData.totals.unique_reach
-      : 0;
 
     // デバッグログは削除（パフォーマンス向上のため）
     const totalEngagements = current.reduce((acc, curr) => acc + (curr.engagements || 0), 0);
@@ -1973,7 +1918,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
       totalConversions,
       totalValue, // 総コンバージョン価値
       totalReach,
-      totalUniqueReach,
       totalEngagements,
       totalLinkClicks,
       totalLandingPageViews,
@@ -2229,7 +2173,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
       stats[key].cost += (d.cost || 0);
       stats[key].conversions += (d.conversions || 0);
       stats[key].conversion_value += (d.conversion_value || 0);
-      stats[key].reach += d.reach || 0;  // 日次のreachを合計
       stats[key].engagements += (d.engagements || 0);
       stats[key].link_clicks += (d.link_clicks || 0);
       stats[key].landing_page_views += (d.landing_page_views || 0);
@@ -2243,22 +2186,19 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
         });
       }
       
-      // 期間全体のユニークリーチ数を取得（period_unique_reachが正しく取得できている場合のみ使用）
-      // period_unique_reachは期間全体のユニークリーチ数なので、同じキャンペーンの複数日付データでは同じ値のはず
+      // 期間全体のユニークリーチ数を優先的に使用（DBから取得した値）
+      // period_unique_reachが存在する場合は最大値を使用、なければ日次のreachの最大値を使用（フォールバック）
       if (d.period_unique_reach && d.period_unique_reach > 0) {
-        // まだ設定されていない場合のみ設定（最初に見つかった値を使用）
-        if (!stats[key].period_unique_reach || stats[key].period_unique_reach === 0) {
+        // 複数日付がある場合、最大のperiod_unique_reachを使用
+        if (!stats[key].period_unique_reach || d.period_unique_reach > stats[key].period_unique_reach) {
           stats[key].period_unique_reach = d.period_unique_reach;
         }
-        // 値が異なる場合は、最新の日付の値を使用（日付が新しい場合のみ更新）
-        else if (d.period_unique_reach !== stats[key].period_unique_reach) {
-          // 日付を比較して、新しい日付の値を使用
-          const currentDate = new Date(d.date);
-          const existingDate = new Date(stats[key].date);
-          if (currentDate > existingDate) {
-            stats[key].period_unique_reach = d.period_unique_reach;
-            stats[key].date = d.date; // 日付も更新
-          }
+      }
+      
+      // 日次のreachの最大値を使用（フォールバック）
+      if (d.reach && d.reach > 0) {
+        if (!stats[key].reach || d.reach > stats[key].reach) {
+          stats[key].reach = d.reach;
         }
       }
     });
@@ -2279,11 +2219,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     });
 
     const statsArray = Object.values(stats).map(s => {
-      // 期間全体のユニークリーチ数を優先的に使用（0より大きい場合のみ）
-      // period_unique_reachが0の場合は、日次のreachの合計（s.reach）を使用
+      // 期間全体のユニークリーチ数を優先的に使用
+      // period_unique_reachが0より大きい場合のみ使用、それ以外はreachの最大値を使用
       const reach = (s.period_unique_reach !== undefined && s.period_unique_reach !== null && s.period_unique_reach > 0)
         ? s.period_unique_reach
-        : (s.reach || 0); // フォールバック: 日次リーチの合計
+        : (s.reach || 0); // フォールバック: 日次リーチの最大値
+      
+      // reachの値を明示的に設定（period_unique_reachが0の場合はreachを使用）
+      s.reach = reach;
       
       return {
         ...s,
@@ -2368,15 +2311,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
       };
     });
   }, [filteredData, selectedCampaign, selectedAdSet, selectedAd, selectedMetaAccountId]);
-
-  // campaignStatsが空の場合、summaryDataもクリア
-  useEffect(() => {
-    if (campaignStats.length === 0 && summaryData !== null) {
-      console.log('[Dashboard] campaignStats is empty, clearing summaryData');
-      setSummaryData(null);
-      summaryDataCampaignRef.current = null;
-    }
-  }, [campaignStats, summaryData]);
 
   // Scatter Chart Data
   const scatterData = useMemo(() => {
@@ -2705,9 +2639,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
                         dataCount
                       });
                       return (
-                      <option key={account.account_id} value={account.account_id}>
+                        <option key={account.account_id} value={account.account_id}>
                           {displayName} (キャンペーン: {campaignCount}件 / データ: {dataCount}件)
-                      </option>
+                        </option>
                       );
                     })}
                   </select>
@@ -3145,20 +3079,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
         {/* リーチ・エンゲージメント指標 */}
           <div>
             <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-4 break-words">リーチ・エンゲージメント指標</h4>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
                 <div className="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-3 border border-purple-200 dark:border-purple-800 min-w-0 overflow-hidden">
-                  <div className="text-xs text-purple-600 dark:text-purple-400 mb-1 font-medium truncate">リーチ数（全体）</div>
+                  <div className="text-xs text-purple-600 dark:text-purple-400 mb-1 font-medium truncate">リーチ数</div>
                   <div className="text-lg font-bold text-purple-700 dark:text-purple-300 break-words leading-tight">
                     {kpiData.totalReach.toLocaleString()}
                   </div>
                   <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate">合計</div>
-                </div>
-                <div className="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-3 border border-purple-200 dark:border-purple-800 min-w-0 overflow-hidden">
-                  <div className="text-xs text-purple-600 dark:text-purple-400 mb-1 font-medium truncate">リーチ数（ユニーク）</div>
-                  <div className="text-lg font-bold text-purple-700 dark:text-purple-300 break-words leading-tight">
-                    {kpiData.totalUniqueReach.toLocaleString()}
-                  </div>
-                  <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate">ユニーク</div>
                 </div>
                 <div className="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-3 border border-purple-200 dark:border-purple-800 min-w-0 overflow-hidden">
                   <div className="text-xs text-purple-600 dark:text-purple-400 mb-1 font-medium truncate">フリークエンシー</div>

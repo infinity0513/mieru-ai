@@ -579,6 +579,23 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
             all_insights = all_insights + all_adset_insights + all_ad_insights
             print(f"[Meta API] Total insights (all levels): {len(all_insights)} (campaign: {len(all_insights) - len(all_adset_insights) - len(all_ad_insights)}, adset: {len(all_adset_insights)}, ad: {len(all_ad_insights)})")
             
+            # 数値の安全なパース関数（Noneや空文字列を0に変換）
+            def safe_float(value, default=0.0):
+                if value is None or value == '':
+                    return default
+                try:
+                    return float(value)
+                except (ValueError, TypeError):
+                    return default
+            
+            def safe_int(value, default=0):
+                if value is None or value == '':
+                    return default
+                try:
+                    return int(float(value))  # float経由で変換（文字列の数値も対応）
+                except (ValueError, TypeError):
+                    return default
+            
             # ===== 期間全体のユニークリーチ数を取得（キャンペーンレベルのみ） =====
             print(f"[Meta API] Fetching period unique reach for campaign-level data...")
             campaign_period_reach_map = {}  # キャンペーン名 -> 期間全体のユニークリーチ数
@@ -602,9 +619,10 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                     for campaign in batch_campaigns:
                         campaign_id = campaign.get('id')
                         campaign_name = campaign.get('name', 'Unknown')
-                        # 期間全体のユニークリーチ数を取得（time_incrementなし）
+                        # 期間全体のユニークリーチ数を取得（time_incrementなしで期間全体の集計データを取得）
                         period_reach_fields = "campaign_id,campaign_name,reach"
                         time_range_encoded = urllib.parse.quote(time_range_json, safe='')
+                        # time_incrementを指定しないことで、期間全体の集計データ（1件）を取得
                         relative_url = f"{campaign_id}/insights?fields={period_reach_fields}&time_range={time_range_encoded}&level=campaign&limit=100"
                         batch_requests.append({
                             "method": "GET",
@@ -630,13 +648,15 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                                     if period_insights:
                                         # time_incrementなしの場合、期間全体のデータは1件のみ
                                         reach_value = period_insights[0].get('reach', '0')
-                                        campaign_period_reach_map[campaign_name] = safe_int(reach_value, 0)
-                                        print(f"[Meta API] Period unique reach for '{campaign_name}': {campaign_period_reach_map[campaign_name]:,}")
+                                        period_reach = safe_int(reach_value, 0)
+                                        campaign_period_reach_map[campaign_name] = period_reach
+                                        print(f"[Meta API] Period unique reach for '{campaign_name}': {period_reach:,}")
                                     else:
                                         campaign_period_reach_map[campaign_name] = 0
                                         print(f"[Meta API] ⚠️ No period reach data for '{campaign_name}', using 0")
                                 except json.JSONDecodeError as e:
                                     print(f"[Meta API] Error parsing period reach response for {campaign_name}: {str(e)}")
+                                    print(f"[Meta API] Response body: {batch_item.get('body', '{}')}")
                                     campaign_period_reach_map[campaign_name] = 0
                             else:
                                 error_body = batch_item.get('body', '{}')
@@ -649,6 +669,8 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                                 campaign_period_reach_map[campaign_name] = 0
                     except Exception as e:
                         print(f"[Meta API] Error processing period unique reach batch {batch_num}: {str(e)}")
+                        import traceback
+                        traceback.print_exc()
                         # エラー時は該当バッチのキャンペーンに0を設定
                         for campaign in batch_campaigns:
                             campaign_name = campaign.get('name', 'Unknown')
@@ -657,25 +679,9 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                         continue
                 
                 print(f"[Meta API] Period unique reach map created: {len(campaign_period_reach_map)} campaigns")
+                print(f"[Meta API] Sample period unique reach values: {dict(list(campaign_period_reach_map.items())[:5])}")
             else:
                 print(f"[Meta API] No campaigns found, skipping period unique reach fetch")
-            
-            # 数値の安全なパース関数（Noneや空文字列を0に変換）
-            def safe_float(value, default=0.0):
-                if value is None or value == '':
-                    return default
-                try:
-                    return float(value)
-                except (ValueError, TypeError):
-                    return default
-            
-            def safe_int(value, default=0):
-                if value is None or value == '':
-                    return default
-                try:
-                    return int(float(value))  # float経由で変換（文字列の数値も対応）
-                except (ValueError, TypeError):
-                    return default
             
             # InsightsデータをCampaignテーブルに保存（キャンペーン/広告セット/広告レベル）
             # 既存データの削除は行わない（新規データのみ追加する方式に変更）
@@ -976,15 +982,22 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                         Campaign.date == campaign_date
                     ).first()
                     
-                    # 既存データがある場合はスキップ（過去の日付は更新しない）
-                    if existing_campaign:
-                        print(f"[Meta API] Skipping existing record: {campaign_name} / {ad_set_name} / {ad_name} on {campaign_date}")
-                        continue
-                    
                     # 期間全体のユニークリーチ数を取得（キャンペーンレベルのデータのみ）
                     period_unique_reach = 0
                     if not ad_set_name and not ad_name:  # キャンペーンレベルのデータのみ
                         period_unique_reach = campaign_period_reach_map.get(campaign_name, 0)
+                    
+                    # 既存データがある場合の処理
+                    if existing_campaign:
+                        # キャンペーンレベルのデータで、period_unique_reachが0または未設定の場合は更新
+                        if not ad_set_name and not ad_name and period_unique_reach > 0:
+                            if not existing_campaign.period_unique_reach or existing_campaign.period_unique_reach == 0:
+                                existing_campaign.period_unique_reach = period_unique_reach
+                                db.commit()
+                                print(f"[Meta API] Updated period_unique_reach for existing record: {campaign_name} on {campaign_date} -> {period_unique_reach:,}")
+                        else:
+                            print(f"[Meta API] Skipping existing record: {campaign_name} / {ad_set_name} / {ad_name} on {campaign_date}")
+                        continue
                     
                     # 新規作成（既存データがない場合のみ）
                     campaign = Campaign(
