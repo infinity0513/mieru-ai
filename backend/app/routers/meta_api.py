@@ -509,6 +509,87 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
             all_insights = all_insights + all_adset_insights + all_ad_insights
             print(f"[Meta API] Total insights (all levels): {len(all_insights)} (campaign: {len(all_insights) - len(all_adset_insights) - len(all_ad_insights)}, adset: {len(all_adset_insights)}, ad: {len(all_ad_insights)})")
             
+            # ===== 期間全体のユニークリーチ数を取得（キャンペーンレベルのみ） =====
+            print(f"[Meta API] Fetching period unique reach for campaign-level data...")
+            campaign_period_reach_map = {}  # キャンペーン名 -> 期間全体のユニークリーチ数
+            
+            # キャンペーンレベルのデータのみを対象（ad_set_nameとad_nameが空のデータ）
+            # all_campaignsからキャンペーンIDと名前を取得
+            campaign_level_campaigns = [c for c in all_campaigns]
+            
+            if len(campaign_level_campaigns) > 0:
+                # バッチ処理で期間全体のユニークリーチ数を取得
+                batch_size = 50  # Meta APIのバッチリクエスト最大数
+                for batch_start in range(0, len(campaign_level_campaigns), batch_size):
+                    batch_end = min(batch_start + batch_size, len(campaign_level_campaigns))
+                    batch_campaigns = campaign_level_campaigns[batch_start:batch_end]
+                    batch_num = (batch_start // batch_size) + 1
+                    total_batches = (len(campaign_level_campaigns) + batch_size - 1) // batch_size
+                    
+                    print(f"[Meta API] Processing period unique reach batch {batch_num}/{total_batches} ({len(batch_campaigns)} campaigns)")
+                    
+                    batch_requests = []
+                    for campaign in batch_campaigns:
+                        campaign_id = campaign.get('id')
+                        campaign_name = campaign.get('name', 'Unknown')
+                        # 期間全体のユニークリーチ数を取得（time_incrementなし）
+                        period_reach_fields = "campaign_id,campaign_name,reach"
+                        time_range_encoded = urllib.parse.quote(time_range_json, safe='')
+                        relative_url = f"{campaign_id}/insights?fields={period_reach_fields}&time_range={time_range_encoded}&level=campaign&limit=100"
+                        batch_requests.append({
+                            "method": "GET",
+                            "relative_url": relative_url
+                        })
+                    
+                    try:
+                        batch_response = await client.post(batch_url, params={
+                            "access_token": access_token,
+                            "batch": json.dumps(batch_requests, separators=(',', ':'))
+                        })
+                        batch_response.raise_for_status()
+                        batch_data = batch_response.json()
+                        
+                        for idx, batch_item in enumerate(batch_data):
+                            campaign = batch_campaigns[idx]
+                            campaign_name = campaign.get('name', 'Unknown')
+                            
+                            if batch_item.get('code') == 200:
+                                try:
+                                    item_body = json.loads(batch_item.get('body', '{}'))
+                                    period_insights = item_body.get('data', [])
+                                    if period_insights:
+                                        # time_incrementなしの場合、期間全体のデータは1件のみ
+                                        reach_value = period_insights[0].get('reach', '0')
+                                        campaign_period_reach_map[campaign_name] = safe_int(reach_value, 0)
+                                        print(f"[Meta API] Period unique reach for '{campaign_name}': {campaign_period_reach_map[campaign_name]:,}")
+                                    else:
+                                        campaign_period_reach_map[campaign_name] = 0
+                                        print(f"[Meta API] ⚠️ No period reach data for '{campaign_name}', using 0")
+                                except json.JSONDecodeError as e:
+                                    print(f"[Meta API] Error parsing period reach response for {campaign_name}: {str(e)}")
+                                    campaign_period_reach_map[campaign_name] = 0
+                            else:
+                                error_body = batch_item.get('body', '{}')
+                                try:
+                                    error_data = json.loads(error_body) if isinstance(error_body, str) else error_body
+                                    error_msg = error_data.get('error', {}).get('message', str(error_body))
+                                    print(f"[Meta API] Error fetching period reach for {campaign_name}: {error_msg}")
+                                except:
+                                    print(f"[Meta API] Error fetching period reach for {campaign_name}: {error_body}")
+                                campaign_period_reach_map[campaign_name] = 0
+                    except Exception as e:
+                        print(f"[Meta API] Error processing period unique reach batch {batch_num}: {str(e)}")
+                        # エラー時は該当バッチのキャンペーンに0を設定
+                        for campaign in batch_campaigns:
+                            campaign_name = campaign.get('name', 'Unknown')
+                            if campaign_name not in campaign_period_reach_map:
+                                campaign_period_reach_map[campaign_name] = 0
+                        continue
+                
+                print(f"[Meta API] Period unique reach map created: {len(campaign_period_reach_map)} campaigns")
+            else:
+                print(f"[Meta API] No campaigns found, skipping period unique reach fetch")
+            
             # 数値の安全なパース関数（Noneや空文字列を0に変換）
             def safe_float(value, default=0.0):
                 if value is None or value == '':
@@ -825,6 +906,11 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                         print(f"[Meta API] Skipping existing record: {campaign_name} / {ad_set_name} / {ad_name} on {campaign_date}")
                         continue
                     
+                    # 期間全体のユニークリーチ数を取得（キャンペーンレベルのデータのみ）
+                    period_unique_reach = 0
+                    if not ad_set_name and not ad_name:  # キャンペーンレベルのデータのみ
+                        period_unique_reach = campaign_period_reach_map.get(campaign_name, 0)
+                    
                     # 新規作成（既存データがない場合のみ）
                     campaign = Campaign(
                         user_id=user.id,
@@ -832,14 +918,15 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                         meta_account_id=account_id,
                         date=campaign_date,
                         campaign_name=campaign_name,
-                        ad_set_name=None,  # キャンペーンレベルのみ
-                        ad_name=None,  # キャンペーンレベルのみ
+                        ad_set_name=ad_set_name,  # 広告セット名（あれば）
+                        ad_name=ad_name,  # 広告名（あれば）
                         cost=Decimal(str(spend)),
                         impressions=impressions,
                         clicks=clicks,
                         conversions=conversions,
                         conversion_value=Decimal(str(conversion_value)),
                         reach=reach,
+                        period_unique_reach=period_unique_reach,  # 期間全体のユニークリーチ数
                         engagements=engagements,
                         link_clicks=link_clicks,
                         landing_page_views=landing_page_views,
@@ -909,12 +996,33 @@ async def get_meta_accounts(
                         
                         if "data" in accounts_data:
                             for account in accounts_data["data"]:
-                                account_id = account.get("id")
+                                # Meta APIのレスポンスでは、idとaccount_idの両方が存在する可能性がある
+                                # idフィールドには act_ プレフィックスが含まれている可能性がある（例: act_343589077304936）
+                                # account_idフィールドには act_ プレフィックスが含まれていない可能性がある（例: 343589077304936）
+                                account_id_from_id = account.get("id")  # act_343589077304936 の形式
+                                account_id_from_account_id = account.get("account_id")  # 343589077304936 の形式
+                                
+                                # account_idを決定（act_プレフィックスを削除した形式を使用）
+                                if account_id_from_account_id:
+                                    account_id = account_id_from_account_id
+                                elif account_id_from_id:
+                                    # idフィールドから act_ プレフィックスを削除
+                                    account_id = account_id_from_id.replace("act_", "") if account_id_from_id.startswith("act_") else account_id_from_id
+                                else:
+                                    continue
+                                
                                 account_name = account.get("name")
                                 if not account_name or account_name.strip() == "":
                                     account_name = account_id
                                 print(f"[Meta Accounts] Account ID: {account_id}, Name: {account_name}")
+                                # account_idとidの両方のキーで保存（どちらでも検索できるように）
                                 account_names[account_id] = account_name
+                                if account_id_from_id and account_id_from_id != account_id:
+                                    account_names[account_id_from_id] = account_name
+                                    # act_プレフィックスなしの形式も保存
+                                    account_id_without_act = account_id_from_id.replace("act_", "") if account_id_from_id.startswith("act_") else account_id_from_id
+                                    if account_id_without_act != account_id:
+                                        account_names[account_id_without_act] = account_name
                                 all_account_ids_from_api.append(account_id)
                         
                         print(f"[Meta Accounts] Retrieved {len(accounts_data.get('data', []))} accounts (total: {len(all_account_ids_from_api)})")
@@ -953,21 +1061,88 @@ async def get_meta_accounts(
             ).distinct().all()
             account_ids = [acc[0] for acc in accounts if acc[0]]
             print(f"[Meta Accounts] Using {len(account_ids)} account IDs from database (fallback)")
+            
+            # データベースから取得したアカウントIDの場合でも、Meta APIからアカウント名を取得を試みる
+            if account_ids and current_user.meta_access_token:
+                # account_namesにデータがないアカウントIDのみ取得
+                missing_names = [aid for aid in account_ids if aid not in account_names]
+                if missing_names:
+                    try:
+                        print(f"[Meta Accounts] Attempting to fetch account names for {len(missing_names)} accounts from database")
+                        async with httpx.AsyncClient() as client:
+                            for account_id in missing_names:
+                                try:
+                                    # 個別にアカウント情報を取得
+                                    account_url = f"https://graph.facebook.com/v24.0/{account_id}"
+                                    account_params = {
+                                        "access_token": current_user.meta_access_token,
+                                        "fields": "account_id,id,name"
+                                    }
+                                    account_response = await client.get(account_url, params=account_params)
+                                    account_response.raise_for_status()
+                                    account_data = account_response.json()
+                                    
+                                    # エラーチェック
+                                    if "error" in account_data:
+                                        print(f"[Meta Accounts] Error from Meta API for {account_id}: {account_data.get('error')}")
+                                        account_names[account_id] = account_id
+                                        continue
+                                    
+                                    account_name = account_data.get("name")
+                                    if account_name and account_name.strip():
+                                        account_names[account_id] = account_name
+                                        print(f"[Meta Accounts] Fetched name for {account_id}: {account_name}")
+                                    else:
+                                        account_names[account_id] = account_id
+                                        print(f"[Meta Accounts] Name is empty for {account_id}, using account_id")
+                                except Exception as e:
+                                    print(f"[Meta Accounts] Error fetching name for {account_id}: {str(e)}")
+                                    account_names[account_id] = account_id
+                    except Exception as e:
+                        print(f"[Meta Accounts] Error fetching account names from Meta API: {str(e)}")
+                        # エラーが発生した場合、account_idをそのまま使用
+                        for account_id in missing_names:
+                            if account_id not in account_names:
+                                account_names[account_id] = account_id
+        
+        # データベースに実際に保存されているmeta_account_idの形式を確認
+        existing_account_ids = db.query(Campaign.meta_account_id).filter(
+            Campaign.user_id == current_user.id,
+            Campaign.meta_account_id.isnot(None)
+        ).distinct().all()
+        existing_account_ids_list = [acc[0] for acc in existing_account_ids if acc[0]]
+        print(f"[Meta Accounts] Existing meta_account_ids in DB: {existing_account_ids_list}")
         
         # 各アカウントの統計情報を取得
         result = []
         for account_id in account_ids:
             try:
+                # account_idの形式を確認（act_プレフィックスがあるかどうか）
+                # Meta APIから取得したaccount_idは act_ プレフィックスなしの形式（例: 343589077304936）
+                # データベースには act_343589077304936 の形式で保存されている
+                # データベースの形式（act_付き）で検索する
+                account_id_with_prefix = f"act_{account_id}" if not account_id.startswith("act_") else account_id
+                account_id_without_prefix = account_id.replace("act_", "") if account_id.startswith("act_") else account_id
+                
+                print(f"[Meta Accounts] Searching for account_id: {account_id} (with prefix: {account_id_with_prefix}, without prefix: {account_id_without_prefix})")
+                
+                # データベースに実際に存在する形式を確認
+                matching_ids = [aid for aid in existing_account_ids_list if account_id_with_prefix == aid or account_id_without_prefix == aid.replace("act_", "")]
+                print(f"[Meta Accounts] Matching account_ids in DB: {matching_ids}")
+                
                 # 各アカウントのデータ件数を取得（全レベル合計）
+                # データベースには act_ プレフィックス付きで保存されているので、それで検索
                 total_count = db.query(Campaign).filter(
                     Campaign.user_id == current_user.id,
-                    Campaign.meta_account_id == account_id
+                    Campaign.meta_account_id == account_id_with_prefix
                 ).count()
+                
+                print(f"[Meta Accounts] Query result for {account_id} (searching with {account_id_with_prefix}): total_count={total_count}")
                 
                 # ユニークなキャンペーン数を取得
                 unique_campaigns = db.query(Campaign.campaign_name).filter(
                     Campaign.user_id == current_user.id,
-                    Campaign.meta_account_id == account_id,
+                    Campaign.meta_account_id == account_id_with_prefix,
                     or_(
                         Campaign.ad_set_name == '',
                         Campaign.ad_set_name.is_(None)
@@ -981,23 +1156,55 @@ async def get_meta_accounts(
                 # 最新のデータ日付を取得
                 latest_date = db.query(func.max(Campaign.date)).filter(
                     Campaign.user_id == current_user.id,
-                    Campaign.meta_account_id == account_id
+                    Campaign.meta_account_id == account_id_with_prefix
                 ).scalar()
                 
                 # アカウント名を取得（Meta APIから取得できた場合はそれを使用、なければアカウントID）
-                account_name = account_names.get(account_id, account_id)
-                print(f"[Meta Accounts] For account_id {account_id}, got name: {account_name}")
+                account_name = account_names.get(account_id)
                 if not account_name or account_name.strip() == "":
-                    account_name = account_id
-                    print(f"[Meta Accounts] Name was empty, using account_id: {account_name}")
+                    # account_namesにデータがない場合、Meta APIから個別に取得を試みる
+                    if current_user.meta_access_token:
+                        try:
+                            async with httpx.AsyncClient() as client:
+                                account_url = f"https://graph.facebook.com/v24.0/{account_id}"
+                                account_params = {
+                                    "access_token": current_user.meta_access_token,
+                                    "fields": "account_id,id,name"
+                                }
+                                account_response = await client.get(account_url, params=account_params)
+                                account_response.raise_for_status()
+                                account_data = account_response.json()
+                                
+                                if "error" not in account_data and "name" in account_data:
+                                    account_name = account_data.get("name")
+                                    if account_name and account_name.strip():
+                                        account_names[account_id] = account_name
+                                        print(f"[Meta Accounts] Fetched name for {account_id}: {account_name}")
+                                    else:
+                                        account_name = account_id
+                                else:
+                                    account_name = account_id
+                        except Exception as e:
+                            print(f"[Meta Accounts] Error fetching name for {account_id}: {str(e)}")
+                            account_name = account_id
+                    else:
+                        account_name = account_id
                 
-                result.append({
+                print(f"[Meta Accounts] For account_id {account_id}, final name: {account_name}")
+                print(f"[Meta Accounts] Account {account_id} stats: data_count={total_count}, campaign_count={unique_campaigns}")
+                
+                # nameが空の場合はaccount_idを使用
+                final_name = account_name if account_name and account_name.strip() else account_id
+                
+                account_result = {
                     "account_id": account_id,
-                    "name": account_name,
+                    "name": final_name,
                     "data_count": total_count,
                     "campaign_count": unique_campaigns,
                     "latest_date": str(latest_date) if latest_date else None
-                })
+                }
+                print(f"[Meta Accounts] Account result: {account_result}")
+                result.append(account_result)
             except Exception as e:
                 import traceback
                 print(f"[Meta Accounts] Error processing account {account_id}: {str(e)}")
@@ -1372,7 +1579,7 @@ async def get_meta_insights(
                 "insights": all_insights,
                 "total": len(all_insights),
                 "period": {
-                "since": since,
+                    "since": since,
                     "until": until
                 }
             }
@@ -1983,6 +2190,75 @@ async def meta_oauth_callback(
             print(f"[Meta OAuth] =====================================")
             
             return redirect_response
+            
+    except httpx.HTTPStatusError as e:
+        error_text = e.response.text if hasattr(e.response, 'text') else str(e)
+        normalized_url = normalize_localhost_url(frontend_url)
+        error_url = f"{normalized_url}/settings?meta_oauth=error&message={urllib.parse.quote(f'Meta APIエラー: {error_text}')}"
+        if 'https://localhost' in error_url or 'https://127.0.0.1' in error_url:
+            error_url = error_url.replace('https://localhost', 'http://localhost')
+            error_url = error_url.replace('https://127.0.0.1', 'http://127.0.0.1')
+        return RedirectResponse(url=error_url, status_code=302)
+    except HTTPException:
+        # HTTPExceptionはそのまま再スロー（ただし、リダイレクトに変換する）
+        raise
+    except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
+        print(f"[Meta OAuth] Error in callback: {str(e)}")
+        print(f"[Meta OAuth] Error details: {error_details}")
+        normalized_url = normalize_localhost_url(frontend_url)
+        error_url = f"{normalized_url}/settings?meta_oauth=error&message={urllib.parse.quote(f'OAuth認証に失敗しました: {str(e)}')}"
+        if 'https://localhost' in error_url or 'https://127.0.0.1' in error_url:
+            error_url = error_url.replace('https://localhost', 'http://localhost')
+            error_url = error_url.replace('https://127.0.0.1', 'http://127.0.0.1')
+        return RedirectResponse(url=error_url, status_code=302)
+            
+    except httpx.HTTPStatusError as e:
+        error_text = e.response.text if hasattr(e.response, 'text') else str(e)
+        normalized_url = normalize_localhost_url(frontend_url)
+        error_url = f"{normalized_url}/settings?meta_oauth=error&message={urllib.parse.quote(f'Meta APIエラー: {error_text}')}"
+        if 'https://localhost' in error_url or 'https://127.0.0.1' in error_url:
+            error_url = error_url.replace('https://localhost', 'http://localhost')
+            error_url = error_url.replace('https://127.0.0.1', 'http://127.0.0.1')
+        return RedirectResponse(url=error_url, status_code=302)
+    except HTTPException:
+        # HTTPExceptionはそのまま再スロー（ただし、リダイレクトに変換する）
+        raise
+    except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
+        print(f"[Meta OAuth] Error in callback: {str(e)}")
+        print(f"[Meta OAuth] Error details: {error_details}")
+        normalized_url = normalize_localhost_url(frontend_url)
+        error_url = f"{normalized_url}/settings?meta_oauth=error&message={urllib.parse.quote(f'OAuth認証に失敗しました: {str(e)}')}"
+        if 'https://localhost' in error_url or 'https://127.0.0.1' in error_url:
+            error_url = error_url.replace('https://localhost', 'http://localhost')
+            error_url = error_url.replace('https://127.0.0.1', 'http://127.0.0.1')
+        return RedirectResponse(url=error_url, status_code=302)
+            
+    except httpx.HTTPStatusError as e:
+        error_text = e.response.text if hasattr(e.response, 'text') else str(e)
+        normalized_url = normalize_localhost_url(frontend_url)
+        error_url = f"{normalized_url}/settings?meta_oauth=error&message={urllib.parse.quote(f'Meta APIエラー: {error_text}')}"
+        if 'https://localhost' in error_url or 'https://127.0.0.1' in error_url:
+            error_url = error_url.replace('https://localhost', 'http://localhost')
+            error_url = error_url.replace('https://127.0.0.1', 'http://127.0.0.1')
+        return RedirectResponse(url=error_url, status_code=302)
+    except HTTPException:
+        # HTTPExceptionはそのまま再スロー（ただし、リダイレクトに変換する）
+        raise
+    except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
+        print(f"[Meta OAuth] Error in callback: {str(e)}")
+        print(f"[Meta OAuth] Error details: {error_details}")
+        normalized_url = normalize_localhost_url(frontend_url)
+        error_url = f"{normalized_url}/settings?meta_oauth=error&message={urllib.parse.quote(f'OAuth認証に失敗しました: {str(e)}')}"
+        if 'https://localhost' in error_url or 'https://127.0.0.1' in error_url:
+            error_url = error_url.replace('https://localhost', 'http://localhost')
+            error_url = error_url.replace('https://127.0.0.1', 'http://127.0.0.1')
+        return RedirectResponse(url=error_url, status_code=302)
             
     except httpx.HTTPStatusError as e:
         error_text = e.response.text if hasattr(e.response, 'text') else str(e)

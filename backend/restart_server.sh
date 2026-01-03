@@ -13,7 +13,15 @@ sleep 1
 # バックエンドサーバーを起動
 echo "🚀 バックエンドサーバーを起動中..."
 cd "$(dirname "$0")"
-python3 -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 &
+
+# 仮想環境をアクティベートしてからサーバーを起動
+if [ -d "venv" ]; then
+    source venv/bin/activate
+    python3 -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 &
+else
+    echo "⚠️  仮想環境が見つかりません。venvディレクトリを確認してください。"
+    python3 -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 &
+fi
 
 # 起動を待機
 sleep 3

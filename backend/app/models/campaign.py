@@ -36,7 +36,8 @@ class Campaign(Base):
     clicks = Column(Integer, default=0)
     conversions = Column(Integer, default=0)
     conversion_value = Column(Numeric(10, 2), default=0)
-    reach = Column(Integer, default=0)
+    reach = Column(Integer, default=0)  # 日次のリーチ数
+    period_unique_reach = Column(Integer, default=0)  # 期間全体のユニークリーチ数
     engagements = Column(Integer, default=0)
     link_clicks = Column(Integer, default=0)
     landing_page_views = Column(Integer, default=0)
@@ -46,4 +47,7 @@ class Campaign(Base):
     cpa = Column(Numeric(10, 2), default=0)
     cvr = Column(Numeric(10, 2), default=0)
     roas = Column(Numeric(10, 2), default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.utcnow)
     created_at = Column(DateTime, default=datetime.utcnow)

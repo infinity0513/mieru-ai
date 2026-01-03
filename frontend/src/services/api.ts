@@ -325,7 +325,7 @@ class ApiClient {
         if (controller) {
           controller.abort();
         }
-      }, 30000); // 30秒でタイムアウト
+      }, 15000); // 15秒でタイムアウト（接続できない場合は早めにエラーを出す）
       
       console.log('[Api] requestLoginCode: Starting fetch...');
       console.log('[Api] requestLoginCode: Request body:', { email, password: '***' });
@@ -400,14 +400,25 @@ class ApiClient {
       console.error('[Api] requestLoginCode exception name:', error.name);
       console.error('[Api] requestLoginCode exception message:', error.message);
       
-      // タイムアウトエラーの場合
-      if (error.name === 'AbortError') {
-        throw new Error('リクエストがタイムアウトしました。バックエンドサーバー（http://127.0.0.1:8000）が起動しているか確認してください。');
+      // タイムアウトエラーの場合（AbortErrorまたは接続タイムアウト）
+      if (error.name === 'AbortError' || error.message.includes('timeout') || error.message.includes('TIMED_OUT')) {
+        const serverURL = this.baseURL.includes('localhost') || this.baseURL.includes('127.0.0.1') 
+          ? 'http://localhost:8000' 
+          : this.baseURL;
+        throw new Error(`リクエストがタイムアウトしました（15秒）。バックエンドサーバー（${serverURL}）が起動しているか確認してください。`);
       }
       
-      // ネットワークエラーの場合
-      if (error.name === 'TypeError' && (error.message.includes('fetch') || error.message.includes('Failed to fetch'))) {
-        throw new Error('サーバーに接続できませんでした。バックエンドサーバー（http://localhost:8000）が起動しているか確認してください。');
+      // ネットワークエラーの場合（接続できない、CORSエラーなど）
+      if (error.name === 'TypeError' && (
+        error.message.includes('fetch') || 
+        error.message.includes('Failed to fetch') ||
+        error.message.includes('ERR_CONNECTION') ||
+        error.message.includes('ERR_NETWORK')
+      )) {
+        const serverURL = this.baseURL.includes('localhost') || this.baseURL.includes('127.0.0.1') 
+          ? 'http://localhost:8000' 
+          : this.baseURL;
+        throw new Error(`サーバーに接続できませんでした。バックエンドサーバー（${serverURL}）が起動しているか確認してください。\n\n考えられる原因:\n- バックエンドサーバーが起動していない\n- ファイアウォールやネットワーク設定の問題\n- CORS設定の問題`);
       }
       
       throw error;
@@ -724,13 +735,21 @@ class ApiClient {
     return response;
   }
 
-  async getMetaAccounts(): Promise<{ accounts: Array<{ account_id: string; name: string; data_count: number; campaign_count?: number; latest_date: string | null }>; total: number }> {
+  async getMetaAccounts(): Promise<{ accounts: Array<{ account_id: string; name: string; data_count: number; campaign_count: number; latest_date: string | null }>; total: number }> {
     console.log('[API] getMetaAccounts called');
     console.trace('[API] Call stack');  // どこから呼ばれているか確認
-    const response = await this.request<{ accounts: Array<{ account_id: string; name: string; data_count: number; latest_date: string | null }>; total: number }>('/meta/accounts/', {
+    const response = await this.request<{ accounts: Array<{ account_id: string; name: string; data_count: number; campaign_count: number; latest_date: string | null }>; total: number }>('/meta/accounts/', {
       method: 'GET',
     });
     console.log('[API] getMetaAccounts response received:', JSON.stringify(response, null, 2));
+    // campaign_countがundefinedの場合は0を設定
+    if (response.accounts) {
+      response.accounts = response.accounts.map(account => ({
+        ...account,
+        campaign_count: account.campaign_count ?? 0,
+        data_count: account.data_count ?? 0
+      }));
+    }
     return response;
   }
 
@@ -1251,6 +1270,7 @@ class ApiClient {
           cvr: Number(c.cvr || 0),
           // Additional engagement metrics
           reach: Number(c.reach || 0),
+          period_unique_reach: Number(c.period_unique_reach || 0),  // 期間全体のユニークリーチ数
           engagements: Number(c.engagements || 0),
           link_clicks: Number(c.link_clicks || 0),
           landing_page_views: Number(c.landing_page_views || 0)
@@ -1286,6 +1306,15 @@ class ApiClient {
           meta_account_id: (allCampaigns[0] as any).meta_account_id,
           date: allCampaigns[0].date
         });
+        // period_unique_reachが含まれているか確認
+        console.log('[ApiClient] Sample campaign data with period_unique_reach:', 
+          allCampaigns.slice(0, 3).map(d => ({
+            campaign_name: d.campaign_name,
+            date: d.date,
+            reach: d.reach,
+            period_unique_reach: d.period_unique_reach
+          }))
+        );
       }
       
       return allCampaigns;
@@ -2309,35 +2338,47 @@ ${campaignSummary}
 ${anomalyReport}
 `;
 
-    // 2. Prepare Contents (History + New Message)
-    // Map internal ChatMessage type to API expected format
-    const contents = history.map(h => ({
-      role: h.role,
-      parts: [{ text: h.text }]
-    }));
-
-    // Add current user message
-    contents.push({
-      role: 'user',
-      parts: [{ text: message }]
-    });
-
     // 3. Call API
     try {
+      // Validate inputs
+      if (!message || !message.trim()) {
+        throw new Error("メッセージが空です。");
+      }
+
+      if (!history || !Array.isArray(history)) {
+        throw new Error("会話履歴の形式が正しくありません。");
+      }
+
       const aiInstance = getAI();
       if (!aiInstance) {
         throw new Error("AI API key is not configured");
       }
+      
       // Convert history to OpenAI format
+      // ChatMessage.role is 'user' | 'model', but OpenAI expects 'user' | 'assistant'
       const messages = [
         { role: 'system' as const, content: systemInstruction },
-        ...history.map(h => ({
-          role: h.role === 'user' ? 'user' as const : 'assistant' as const,
-          content: h.text
-        })),
+        ...history.map(h => {
+          // Validate history item
+          if (!h || typeof h !== 'object' || !h.text || !h.role) {
+            console.warn("Invalid history item:", h);
+            return null;
+          }
+          // Convert 'model' role to 'assistant' for OpenAI API
+          const role = h.role === 'user' ? 'user' as const : 'assistant' as const;
+          return {
+            role: role,
+            content: h.text
+          };
+        }).filter((msg): msg is { role: 'user' | 'assistant'; content: string } => msg !== null),
         { role: 'user' as const, content: message }
       ];
       
+      // Validate messages array
+      if (messages.length === 0) {
+        throw new Error("メッセージが生成できませんでした。");
+      }
+
       const response = await aiInstance.chat.completions.create({
         model: 'gpt-4o',
         messages: messages,
@@ -2345,9 +2386,31 @@ ${anomalyReport}
         max_tokens: 1000
       });
       
+      if (!response.choices || response.choices.length === 0) {
+        throw new Error("AIからの応答が空です。");
+      }
+
       return response.choices[0]?.message?.content || "申し訳ありません、回答を生成できませんでした。";
-    } catch (error) {
+    } catch (error: any) {
       console.error("Chat API Error:", error);
+      
+      // Return more detailed error message
+      if (error?.message) {
+        if (error.message.includes("API key")) {
+          return "AI APIキーが設定されていません。設定画面でAPIキーを設定してください。";
+        }
+        if (error.message.includes("rate limit") || error.message.includes("429")) {
+          return "リクエストが多すぎます。しばらく待ってから再度お試しください。";
+        }
+        if (error.message.includes("invalid") || error.message.includes("400")) {
+          return `リクエストエラー: ${error.message}。入力内容を確認してください。`;
+        }
+        if (error.message.includes("401") || error.message.includes("unauthorized")) {
+          return "AI APIキーが無効です。設定画面でAPIキーを確認してください。";
+        }
+        return `エラー: ${error.message}`;
+      }
+      
       return "エラーが発生しました。もう一度お試しください。";
     }
   }

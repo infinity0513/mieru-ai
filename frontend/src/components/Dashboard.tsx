@@ -523,7 +523,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
 
   // Meta Account (Asset) Selection
   // localStorageからキャッシュを読み込む（再マウント時も再利用）
-  const [metaAccounts, setMetaAccounts] = useState<Array<{ account_id: string; name: string; data_count: number; campaign_count?: number; latest_date: string | null }>>(() => {
+  const [metaAccounts, setMetaAccounts] = useState<Array<{ account_id: string; name: string; data_count: number; campaign_count: number; latest_date: string | null }>>(() => {
     try {
       const cached = localStorage.getItem('dashboard_metaAccounts');
       const cacheTime = localStorage.getItem('dashboard_metaAccounts_time');
@@ -532,8 +532,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
         // キャッシュが1時間以内の場合は使用
         if (age < 3600000) {
           const parsed = JSON.parse(cached);
-          console.log('[Dashboard] Meta accounts loaded from cache');
-          return parsed;
+          console.log('[Dashboard] Meta accounts loaded from cache (initial state):', parsed.length, 'accounts');
+          console.log('[Dashboard] Initial cached accounts data:', JSON.stringify(parsed, null, 2));
+          return Array.isArray(parsed) ? parsed : [];
         }
       }
     } catch (e) {
@@ -601,6 +602,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
             const parsedAccounts = JSON.parse(cachedAccounts);
             if (parsedAccounts && Array.isArray(parsedAccounts) && parsedAccounts.length > 0) {
               console.log('[Dashboard] Loaded meta accounts from cache:', parsedAccounts.length, 'accounts');
+              console.log('[Dashboard] Cached accounts data:', JSON.stringify(parsedAccounts, null, 2));
               setMetaAccounts(parsedAccounts);
               setMetaAccountsError(null);
               setMetaAccountsLoading(false);
@@ -632,6 +634,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
         console.log('[Dashboard] Calling Api.getMetaAccounts()');
         const result = await Api.getMetaAccounts();
         console.log('[Dashboard] Api.getMetaAccounts() completed, accounts count:', result.accounts?.length || 0);
+        console.log('[Dashboard] API accounts data:', JSON.stringify(result.accounts, null, 2));
         setMetaAccounts(result.accounts || []);
         setMetaAccountsError(null);
         // localStorageにキャッシュを保存
@@ -711,7 +714,29 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     const totalCost = filteredData.reduce((sum, d) => sum + (d.cost || 0), 0);
     const totalConversions = filteredData.reduce((sum, d) => sum + (d.conversions || 0), 0);
     const totalConversionValue = filteredData.reduce((sum, d) => sum + (d.conversion_value || 0), 0);
-    const totalReach = filteredData.reduce((sum, d) => sum + (d.reach || 0), 0);
+    
+    // リーチ数の計算: period_unique_reachを優先的に使用
+    // キャンペーンごとにperiod_unique_reachを取得し、複数キャンペーンの場合は合計（重複排除は困難なため、近似値として合計）
+    // period_unique_reachは期間全体のユニークリーチ数なので、同じキャンペーンの複数日付データでは同じ値のはず
+    const campaignReachMap = new Map<string, number>();
+    filteredData.forEach(d => {
+      const campaignKey = d.campaign_name || 'unknown';
+      if (d.period_unique_reach && d.period_unique_reach > 0) {
+        // period_unique_reachが存在する場合は、最初に見つかった値を使用（最大値ではなく、DBから取得した値をそのまま使用）
+        if (!campaignReachMap.has(campaignKey)) {
+          campaignReachMap.set(campaignKey, d.period_unique_reach);
+        }
+      } else if (d.reach && d.reach > 0) {
+        // フォールバック: 日次のreachの最大値を使用（period_unique_reachが存在しない場合のみ）
+        const currentReach = campaignReachMap.get(campaignKey) || 0;
+        if (d.reach > currentReach) {
+          campaignReachMap.set(campaignKey, d.reach);
+        }
+      }
+    });
+    // 各キャンペーンのリーチ数を合計
+    const totalReach = Array.from(campaignReachMap.values()).reduce((sum, reach) => sum + reach, 0);
+    
     const totalEngagements = filteredData.reduce((sum, d) => sum + (d.engagements || 0), 0);
     const totalLinkClicks = filteredData.reduce((sum, d) => sum + (d.link_clicks || 0), 0);
     const totalLandingPageViews = filteredData.reduce((sum, d) => sum + (d.landing_page_views || 0), 0);
@@ -813,7 +838,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
         console.log('[Dashboard] propData available, using it instead of API call:', propData.length, 'records');
         setAllApiData(propData);
         if (selectedMetaAccountId) {
-          const filteredByAsset = propData.filter((d: CampaignData) => d.meta_account_id === selectedMetaAccountId);
+          // データベースには act_ プレフィックス付きで保存されているので、それに合わせて比較
+          const selectedAccountIdWithPrefix = selectedMetaAccountId.startsWith('act_') 
+            ? selectedMetaAccountId 
+            : `act_${selectedMetaAccountId}`;
+          const filteredByAsset = propData.filter((d: CampaignData) => {
+            const accountId = d.meta_account_id;
+            return accountId === selectedAccountIdWithPrefix || accountId === selectedMetaAccountId;
+          });
           setApiData(filteredByAsset);
         } else {
           setApiData(propData);
@@ -936,7 +968,29 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
         const totalCost = filteredData.reduce((sum, d) => sum + (d.cost || 0), 0);
         const totalConversions = filteredData.reduce((sum, d) => sum + (d.conversions || 0), 0);
         const totalConversionValue = filteredData.reduce((sum, d) => sum + (d.conversion_value || 0), 0);
-        const totalReach = filteredData.reduce((sum, d) => sum + (d.reach || 0), 0);
+        
+        // リーチ数の計算: period_unique_reachを優先的に使用
+        // キャンペーンごとにperiod_unique_reachを取得し、複数キャンペーンの場合は合計（重複排除は困難なため、近似値として合計）
+        // period_unique_reachは期間全体のユニークリーチ数なので、同じキャンペーンの複数日付データでは同じ値のはず
+        const campaignReachMap = new Map<string, number>();
+        filteredData.forEach(d => {
+          const campaignKey = d.campaign_name || 'unknown';
+          if (d.period_unique_reach && d.period_unique_reach > 0) {
+            // period_unique_reachが存在する場合は、最初に見つかった値を使用（最大値ではなく、DBから取得した値をそのまま使用）
+            if (!campaignReachMap.has(campaignKey)) {
+              campaignReachMap.set(campaignKey, d.period_unique_reach);
+            }
+          } else if (d.reach && d.reach > 0) {
+            // フォールバック: 日次のreachの最大値を使用（period_unique_reachが存在しない場合のみ）
+            const currentReach = campaignReachMap.get(campaignKey) || 0;
+            if (d.reach > currentReach) {
+              campaignReachMap.set(campaignKey, d.reach);
+            }
+          }
+        });
+        // 各キャンペーンのリーチ数を合計
+        const totalReach = Array.from(campaignReachMap.values()).reduce((sum, reach) => sum + reach, 0);
+        
         const totalEngagements = filteredData.reduce((sum, d) => sum + (d.engagements || 0), 0);
         const totalLinkClicks = filteredData.reduce((sum, d) => sum + (d.link_clicks || 0), 0);
         const totalLandingPageViews = filteredData.reduce((sum, d) => sum + (d.landing_page_views || 0), 0);
@@ -1152,7 +1206,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
         console.log('[Dashboard] Using propData for initial load, skipping API call:', propData.length, 'records');
         setAllApiData(propData);
         if (selectedMetaAccountId) {
-          const filteredByAsset = propData.filter((d: CampaignData) => d.meta_account_id === selectedMetaAccountId);
+          // データベースには act_ プレフィックス付きで保存されているので、それに合わせて比較
+          const selectedAccountIdWithPrefix = selectedMetaAccountId.startsWith('act_') 
+            ? selectedMetaAccountId 
+            : `act_${selectedMetaAccountId}`;
+          const filteredByAsset = propData.filter((d: CampaignData) => {
+            const accountId = d.meta_account_id;
+            return accountId === selectedAccountIdWithPrefix || accountId === selectedMetaAccountId;
+          });
           setApiData(filteredByAsset);
         } else {
           setApiData(propData);
@@ -1182,9 +1243,19 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
           return d.date >= dateRange.start && d.date <= dateRange.end;
         });
         const assetFiltered = selectedMetaAccountId
-          ? dateFiltered.filter((d: CampaignData) => d.meta_account_id === selectedMetaAccountId)
+          ? (() => {
+              // データベースには act_ プレフィックス付きで保存されているので、それに合わせて比較
+              const selectedAccountIdWithPrefix = selectedMetaAccountId.startsWith('act_') 
+                ? selectedMetaAccountId 
+                : `act_${selectedMetaAccountId}`;
+              return dateFiltered.filter((d: CampaignData) => {
+                const accountId = d.meta_account_id;
+                return accountId === selectedAccountIdWithPrefix || accountId === selectedMetaAccountId;
+              });
+            })()
           : dateFiltered;
         setApiData(assetFiltered);
+        setLoading(false); // フィルタリングのみの場合はローディングを終了
         console.log('[Dashboard] Date range changed, filtered from existing data:', assetFiltered.length, 'records');
       } else {
         // データがない場合でも、propDataが空の場合はApp.tsxのデータ取得完了を待つ
@@ -1224,11 +1295,25 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
         
         // アセットでフィルタリング
         const assetFiltered = selectedMetaAccountId
-          ? dateFiltered.filter((d: CampaignData) => d.meta_account_id === selectedMetaAccountId)
+          ? (() => {
+              // データベースには act_ プレフィックス付きで保存されているので、それに合わせて比較
+              const selectedAccountIdWithPrefix = selectedMetaAccountId.startsWith('act_') 
+                ? selectedMetaAccountId 
+                : `act_${selectedMetaAccountId}`;
+              return dateFiltered.filter((d: CampaignData) => {
+                const accountId = d.meta_account_id;
+                return accountId === selectedAccountIdWithPrefix || accountId === selectedMetaAccountId;
+              });
+            })()
           : dateFiltered;
         
         setApiData(assetFiltered);
+        setLoading(false); // フィルタリングのみの場合はローディングを終了
         console.log('[Dashboard] Asset changed, filtered from existing data:', assetFiltered.length, 'records');
+      } else {
+        // データがない場合でも、ローディングを終了（無限読み込みを防ぐ）
+        setLoading(false);
+        console.log('[Dashboard] No data available for asset change, setting loading to false');
       }
       prevSelectedMetaAccountIdRef.current = selectedMetaAccountId;
     }
@@ -1269,6 +1354,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     if (propData && propData.length > 0) {
       console.log('[Dashboard] propData[0] sample:', propData[0]);
       console.log('[Dashboard] propData[0] keys:', Object.keys(propData[0]));
+      console.log('[Dashboard] propData[0] meta_account_id:', propData[0].meta_account_id);
+      // propData内のすべてのmeta_account_idを確認
+      const uniqueAccountIds = Array.from(new Set(propData.map(d => d.meta_account_id).filter(Boolean)));
+      console.log('[Dashboard] Unique meta_account_ids in propData:', uniqueAccountIds);
     }
     
     let sourceData: CampaignData[] = [];
@@ -1288,16 +1377,63 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     } else {
       // 特定のアカウントが選択されている場合
       if (allApiData && allApiData.length > 0) {
-        // allApiDataをそのまま使用（フィルタリングはfilteredData useMemoで行う）
-        sourceData = allApiData;
-        console.log('[Dashboard] Using allApiData (asset selected, will filter in filteredData):', sourceData.length, 'records');
+        // アセット選択時は、allApiDataをアセットでフィルタリング
+        // データベースには act_ プレフィックス付きで保存されているので、それに合わせて比較
+        const selectedAccountIdWithPrefix = selectedMetaAccountId.startsWith('act_') 
+          ? selectedMetaAccountId 
+          : `act_${selectedMetaAccountId}`;
+        sourceData = allApiData.filter(d => {
+          const accountId = d.meta_account_id || (d as any).meta_account_id;
+          return accountId === selectedAccountIdWithPrefix || accountId === selectedMetaAccountId;
+        });
+        // フィルタリング結果が0件の場合、propDataをフォールバックとして使用
+        if (sourceData.length === 0 && propData && propData.length > 0) {
+          // データベースには act_ プレフィックス付きで保存されているので、それに合わせて比較
+          const selectedAccountIdWithPrefix = selectedMetaAccountId.startsWith('act_') 
+            ? selectedMetaAccountId 
+            : `act_${selectedMetaAccountId}`;
+          const propDataFiltered = propData.filter(d => {
+            const accountId = d.meta_account_id || (d as any).meta_account_id;
+            return accountId === selectedAccountIdWithPrefix || accountId === selectedMetaAccountId;
+          });
+          if (propDataFiltered.length > 0) {
+            sourceData = propDataFiltered;
+            console.log('[Dashboard] Using propData as fallback (allApiData filtered to 0, filtered):', sourceData.length, 'records');
+          } else {
+            // propDataにも該当アカウントのデータがない場合、空配列を返す（無限読み込みを防ぐため、propDataは使用しない）
+            sourceData = [];
+            console.log('[Dashboard] No data for selected account in propData, returning empty array (to prevent infinite loading)');
+          }
+        } else {
+          console.log('[Dashboard] Using allApiData (asset selected, filtered):', sourceData.length, 'records');
+        }
       } else if (apiData && apiData.length > 0) {
+        // apiDataは既にアセットでフィルタリング済み
         sourceData = apiData;
         console.log('[Dashboard] Using apiData (asset selected):', sourceData.length, 'records');
       } else {
-        // apiData がない場合、propData を使用（フィルタリングはfilteredData useMemoで行う）
-        sourceData = propData && propData.length > 0 ? propData : [];
-        console.log('[Dashboard] Using propData as fallback (no apiData/allApiData):', sourceData.length, 'records');
+        // apiData がない場合、propData をアセットでフィルタリング
+        if (propData && propData.length > 0) {
+          // データベースには act_ プレフィックス付きで保存されているので、それに合わせて比較
+          const selectedAccountIdWithPrefix = selectedMetaAccountId.startsWith('act_') 
+            ? selectedMetaAccountId 
+            : `act_${selectedMetaAccountId}`;
+          const propDataFiltered = propData.filter(d => {
+            const accountId = d.meta_account_id || (d as any).meta_account_id;
+            return accountId === selectedAccountIdWithPrefix || accountId === selectedMetaAccountId;
+          });
+          if (propDataFiltered.length > 0) {
+            sourceData = propDataFiltered;
+            console.log('[Dashboard] Using propData as fallback (no apiData/allApiData, filtered):', sourceData.length, 'records');
+          } else {
+            // propDataにも該当アカウントのデータがない場合、空配列を返す（無限読み込みを防ぐため、propDataは使用しない）
+            sourceData = [];
+            console.log('[Dashboard] No data for selected account in propData, returning empty array (to prevent infinite loading)');
+          }
+        } else {
+          sourceData = propData || [];
+          console.log('[Dashboard] Using propData as fallback (no apiData/allApiData):', sourceData.length, 'records');
+        }
       }
     }
     
@@ -1312,89 +1448,83 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     const startDateStr = dateRange.start;
     const endDateStr = dateRange.end;
     
-    // デバッグ: フィルタリング前のデータの日付範囲を確認
-    if (sourceData.length > 0) {
+    // 日付範囲が設定されていない場合は、データの全期間を使用
+    if (!startDateStr || !endDateStr) {
+      console.warn('[Dashboard] ⚠️ dateRangeが設定されていません。データの全期間を使用します。');
       const sourceDates = sourceData.map(d => d.date).filter(Boolean).sort();
-      const sourceMinDate = sourceDates[0];
-      const sourceMaxDate = sourceDates[sourceDates.length - 1];
-      console.log('[Dashboard] ===== Before date range filtering =====');
-      console.log('[Dashboard] sourceData日付範囲:', { min: sourceMinDate, max: sourceMaxDate, count: sourceData.length });
-      console.log('[Dashboard] フィルタリング日付範囲:', { start: startDateStr, end: endDateStr });
+      if (sourceDates.length > 0) {
+        const actualStartDate = sourceDates[0];
+        const actualEndDate = sourceDates[sourceDates.length - 1];
+        console.log('[Dashboard] データの全期間を使用:', { start: actualStartDate, end: actualEndDate });
+        return sourceData; // フィルタリングせずに全データを返す
+      }
+      return [];
     }
+    
     
     const filtered = sourceData.filter((d: CampaignData) => {
-      if (!d.date) {
-        console.log('[Dashboard] WARNING: Data without date:', d);
-        return false;
-      }
-      const inRange = d.date >= startDateStr && d.date <= endDateStr;
-      if (!inRange && sourceData.length <= 10) {
-        console.log('[Dashboard] Filtered out (date out of range):', { date: d.date, campaign: d.campaign_name, range: { start: startDateStr, end: endDateStr } });
-      }
-      return inRange;
+      if (!d.date) return false;
+      return d.date >= startDateStr && d.date <= endDateStr;
     });
     
-    // 日付範囲を計算
-    if (filtered.length > 0) {
-      const uniqueDates = Array.from(new Set(filtered.map(d => d.date))).sort();
-      const minDate = uniqueDates[0];
-      const maxDate = uniqueDates[uniqueDates.length - 1];
-      const daysCount = uniqueDates.length;
-      const dateRangeDays = (new Date(maxDate).getTime() - new Date(minDate).getTime()) / (1000 * 60 * 60 * 24) + 1;
-      
-      console.log('[Dashboard] ===== Data filtered by date range =====');
-      console.log('[Dashboard] 表示されているデータ:', {
-        selectedMetaAccountId,
-        sourceDataCount: sourceData.length,
-        filteredCount: filtered.length,
-        dateRange: { start: startDateStr, end: endDateStr },
-        actualDateRange: { min: minDate, max: maxDate },
-        uniqueDatesCount: daysCount,
-        dateRangeDays: Math.round(dateRangeDays)
-      });
-      console.log('[Dashboard] 何日分のデータが表示されているか:', daysCount + '日分（ユニークな日付数）');
-    } else {
-      console.log('[Dashboard] ===== Data filtered by date range =====');
-      console.log('[Dashboard] 表示されているデータ: 0件（0日分）');
-      console.log('[Dashboard] 原因調査: sourceDataの日付範囲とフィルタリング日付範囲が一致していない可能性があります');
-      if (sourceData.length > 0) {
-        const sourceDates = sourceData.map(d => d.date).filter(Boolean).sort();
-        console.log('[Dashboard] sourceDataの実際の日付:', sourceDates);
-        console.log('[Dashboard] フィルタリング範囲:', { start: startDateStr, end: endDateStr });
-      }
-    }
     
     return filtered;
   }, [propData, apiData, allApiData, selectedMetaAccountId, dateRange.start, dateRange.end]);
 
   // 利用可能なキャンペーン一覧を取得
+  // 重要: 日付範囲でフィルタリングしない（全期間のデータから取得）
+  // これにより、日付範囲を選択しても、選択されているキャンペーンが自動的に変更されない
   const availableCampaigns = useMemo(() => {
     // アセットが選択されている場合は、allApiDataを使用（日付範囲でフィルタリングされていない全データ）
-    // アセットが選択されていない場合は、dataまたはpropDataを使用
+    // アセットが選択されていない場合は、allApiDataまたはpropDataを使用（日付範囲でフィルタリングされていない全データ）
     let sourceData: CampaignData[];
     
     if (selectedMetaAccountId && selectedMetaAccountId !== 'all') {
-      // アセットが選択されている場合: アセットでフィルタリング
+      // アセットが選択されている場合: アセットでフィルタリング（日付範囲ではフィルタリングしない）
       if (allApiData && allApiData.length > 0) {
-        sourceData = allApiData.filter(d => d.meta_account_id === selectedMetaAccountId);
-        console.log('[Dashboard] Using allApiData for campaigns (asset selected, filtered):', sourceData.length, 'records');
-      } else if (apiData && apiData.length > 0) {
-        // allApiDataが空の場合は、apiDataを使用（既にアセットでフィルタリング済み）
-        sourceData = apiData;
-        console.log('[Dashboard] Using apiData for campaigns (allApiData empty):', apiData.length, 'records');
+        // データベースには act_ プレフィックス付きで保存されているので、それに合わせて比較
+        const selectedAccountIdWithPrefix = selectedMetaAccountId.startsWith('act_') 
+          ? selectedMetaAccountId 
+          : `act_${selectedMetaAccountId}`;
+        sourceData = allApiData.filter(d => {
+          const accountId = d.meta_account_id;
+          return accountId === selectedAccountIdWithPrefix || accountId === selectedMetaAccountId;
+        });
+        // フィルタリング結果が0件の場合、propDataをフォールバックとして使用
+        if (sourceData.length === 0 && propData && propData.length > 0) {
+          sourceData = propData.filter(d => {
+            // meta_account_idがnullやundefinedの場合も考慮
+            const accountId = d.meta_account_id || (d as any).meta_account_id;
+            return accountId === selectedMetaAccountId;
+          });
+          console.log('[Dashboard] Using propData for campaigns (allApiData filtered to 0, filtered by asset only, not by date):', sourceData.length, 'records');
+        } else {
+          console.log('[Dashboard] Using allApiData for campaigns (asset selected, filtered by asset only, not by date):', sourceData.length, 'records');
+        }
       } else {
-        // apiDataも空の場合は、propDataから取得を試みる（アセットでフィルタリング）
-        sourceData = (propData && propData.length > 0) ? propData.filter(d => d.meta_account_id === selectedMetaAccountId) : [];
-        console.log('[Dashboard] Using propData for campaigns (apiData empty, filtered):', sourceData.length, 'records');
+        // allApiDataが空の場合は、propDataから取得を試みる（アセットでフィルタリング、日付範囲ではフィルタリングしない）
+        if (propData && propData.length > 0) {
+          // データベースには act_ プレフィックス付きで保存されているので、それに合わせて比較
+          const selectedAccountIdWithPrefix = selectedMetaAccountId.startsWith('act_') 
+            ? selectedMetaAccountId 
+            : `act_${selectedMetaAccountId}`;
+          sourceData = propData.filter(d => {
+            const accountId = d.meta_account_id;
+            return accountId === selectedAccountIdWithPrefix || accountId === selectedMetaAccountId;
+          });
+        } else {
+          sourceData = [];
+        }
+        console.log('[Dashboard] Using propData for campaigns (allApiData empty, filtered by asset only, not by date):', sourceData.length, 'records');
       }
     } else {
-      // アセットが選択されていない場合: dataまたはpropDataを使用
-      if (data && data.length > 0) {
-        sourceData = data;
-        console.log('[Dashboard] Using data for campaigns (no asset selected):', data.length, 'records');
+      // アセットが選択されていない場合: allApiDataまたはpropDataを使用（日付範囲でフィルタリングされていない全データ）
+      if (allApiData && allApiData.length > 0) {
+        sourceData = allApiData;
+        console.log('[Dashboard] Using allApiData for campaigns (no asset selected, not filtered by date):', allApiData.length, 'records');
       } else if (propData && propData.length > 0) {
         sourceData = propData;
-        console.log('[Dashboard] Using propData for campaigns (data empty):', propData.length, 'records');
+        console.log('[Dashboard] Using propData for campaigns (no asset selected, not filtered by date):', propData.length, 'records');
       } else {
         sourceData = [];
         console.log('[Dashboard] No data available for campaigns');
@@ -1439,7 +1569,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     console.log('[Dashboard] ===== End available campaigns calculation =====');
     
     return campaigns;
-  }, [data, propData, selectedMetaAccountId, allApiData, apiData]);
+  }, [propData, allApiData, selectedMetaAccountId]); // dataとapiDataを依存配列から削除（日付範囲でフィルタリングされていない全データを使用するため）
 
   // selectedCampaign の自動選択
   useEffect(() => {
@@ -1511,59 +1641,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
   }, [data.length, isInitialLoad]); 
 
   // Filter Data for Date Range Only (for Campaign Table)
+  // 注意: data useMemoで既にアセットフィルタリング済みのため、ここでは日付範囲のみでフィルタリング
+  // dateFilteredDataはdataをそのまま使用（dataで既に日付フィルタリング済み）
   const dateFilteredData = useMemo(() => {
-    if (data.length === 0) return [];
-    
-    // アセットフィルタリング（最優先）
-    let filteredData = data;
-    if (selectedMetaAccountId && selectedMetaAccountId !== 'all') {
-      const beforeAssetFilter = data.length;
-      filteredData = data.filter(d => d.meta_account_id === selectedMetaAccountId);
-      console.log('[Dashboard] ===== dateFilteredData useMemo =====');
-      console.log('[Dashboard] Before asset filter:', beforeAssetFilter, 'records');
-      console.log('[Dashboard] After asset filter:', filteredData.length, 'records');
-      console.log('[Dashboard] selectedMetaAccountId:', selectedMetaAccountId);
-      if (filteredData.length === 0 && beforeAssetFilter > 0) {
-        const accountIdsInData = Array.from(new Set(data.map(d => d.meta_account_id).filter(Boolean)));
-        console.log('[Dashboard] WARNING: No data after asset filter. Available accountIds:', accountIdsInData);
-        console.log('[Dashboard] Sample data meta_account_id:', data.slice(0, 10).map(d => ({ 
-          meta_account_id: d.meta_account_id, 
-          campaign_name: d.campaign_name,
-          date: d.date
-        })));
-      }
-    }
-    
-    // 日付範囲を事前に計算（毎回Dateオブジェクトを作成しない）
-    const startDateStr = dateRange.start;
-    const endDateStr = dateRange.end;
-    
-    // Sort raw data by date desc first
-    const sortedRaw = [...filteredData].sort((a, b) => {
-      // 文字列比較で高速化（dateが存在することを確認）
-      if (!a.date || !b.date) return 0;
-      return b.date.localeCompare(a.date);
-    });
-    
-    // 日付範囲のみでフィルタリング（キャンペーンフィルタは適用しない）
-    const dateFiltered = sortedRaw.filter(d => {
-      // dateが存在し、有効な文字列であることを確認
-      if (!d.date || typeof d.date !== 'string' || d.date.length < 10) {
-        return false;
-      }
-      // 文字列比較で高速化（日付フォーマットがYYYY-MM-DDの場合）
-      const inDateRange = d.date >= startDateStr && d.date <= endDateStr;
-      return inDateRange;
-    });
-    
-    if (selectedMetaAccountId && selectedMetaAccountId !== 'all') {
-      console.log('[Dashboard] After date filter:', dateFiltered.length, 'records');
-      console.log('[Dashboard] Date range:', { start: startDateStr, end: endDateStr });
-      console.log('[Dashboard] ===== End dateFilteredData useMemo =====');
-    }
-    
-    return dateFiltered;
-  }, [data, selectedMetaAccountId, dateRange.start, dateRange.end]);
+    // dataは既にアセットと日付範囲でフィルタリング済みなので、そのまま使用
+    return data;
+  }, [data]);
 
   // Get unique ad sets for selected campaign
   const availableAdSets = useMemo(() => {
@@ -1651,9 +1734,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
   const filteredData = useMemo(() => {
     if (dateFilteredData.length === 0) return [];
     
+    // dateFilteredDataは既にselectedMetaAccountIdでフィルタリング済み（data経由）
     let filtered = dateFilteredData;
-    
-    // アセットフィルタリングは dateFilteredData で既に実施済み
     
     // キャンペーンフィルタ
     if (selectedCampaign) {
@@ -1768,7 +1850,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     });
     
     return deduplicated;
-  }, [dateFilteredData, selectedMetaAccountId, selectedCampaign, selectedAdSet, selectedAd]);
+  }, [dateFilteredData, selectedCampaign, selectedAdSet, selectedAd]);
 
   // Aggregate for KPI Cards - 常にfilteredDataから計算（AnomalyDetectorと整合性を保つため）
   const kpiData = useMemo(() => {
@@ -1901,16 +1983,44 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     console.log('[Dashboard] Filters:', {
       selectedCampaign,
       selectedAdSet,
-      selectedAd
+      selectedAd,
+      selectedMetaAccountId
     });
     
     // キャンペーンレベルのデータのみを抽出
-    const campaignLevelData = filteredData.filter(d => 
-      (!d.ad_set_name || d.ad_set_name.trim() === '') && 
-      (!d.ad_name || d.ad_name.trim() === '')
-    );
+    let campaignLevelData = filteredData.filter(d => {
+      const isCampaignLevel = (!d.ad_set_name || d.ad_set_name.trim() === '') && 
+                              (!d.ad_name || d.ad_name.trim() === '');
+      return isCampaignLevel;
+    });
+    
+    // アセットが選択されている場合、そのアセットのデータのみを使用（データ0のキャンペーンに全体の合計が反映されないようにする）
+    if (selectedMetaAccountId && selectedMetaAccountId !== 'all') {
+      const selectedAccountIdWithPrefix = selectedMetaAccountId.startsWith('act_') 
+        ? selectedMetaAccountId 
+        : `act_${selectedMetaAccountId}`;
+      const beforeAssetFilter = campaignLevelData.length;
+      campaignLevelData = campaignLevelData.filter(d => {
+        const accountId = d.meta_account_id || (d as any).meta_account_id;
+        return accountId === selectedAccountIdWithPrefix || accountId === selectedMetaAccountId;
+      });
+      console.log('[Dashboard] Filtered campaignLevelData by selectedMetaAccountId:', {
+        before: beforeAssetFilter,
+        after: campaignLevelData.length,
+        selectedMetaAccountId
+      });
+    }
     
     console.log('[Dashboard] Campaign level data count:', campaignLevelData.length);
+    console.log('[Dashboard] Campaign level data sample:', campaignLevelData.slice(0, 5).map(d => ({
+      campaign_name: d.campaign_name,
+      date: d.date,
+      impressions: d.impressions,
+      clicks: d.clicks,
+      cost: d.cost,
+      ad_set_name: d.ad_set_name || '(empty)',
+      ad_name: d.ad_name || '(empty)'
+    })));
     
     // 重複チェック: 同じcampaign_name, date, meta_account_idの組み合わせを確認
     const duplicateCheck = new Map<string, number>();
@@ -1943,9 +2053,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     // 日付ごとの重複排除: 同じcampaign_name, date, meta_account_idの組み合わせで最新の1件のみを使用
     const seenDateKeys = new Map<string, CampaignData>();
     campaignLevelData.forEach(d => {
+      // キャンペーン名が空の場合はスキップ
+      if (!d.campaign_name || d.campaign_name.trim() === '') {
+        console.warn('[Dashboard] ⚠️ Campaign name is empty in campaignLevelData, skipping:', d);
+        return;
+      }
+      
       const dateKey = d.meta_account_id 
-        ? `${d.campaign_name}_${d.date}_${d.meta_account_id}`
-        : `${d.campaign_name}_${d.date}`;
+        ? `${d.campaign_name.trim()}_${d.date}_${d.meta_account_id}`
+        : `${d.campaign_name.trim()}_${d.date}`;
       
       // 既存のレコードがない場合、または既存のレコードより新しい場合に更新
       const existing = seenDateKeys.get(dateKey);
@@ -1957,6 +2073,27 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     const deduplicatedData = Array.from(seenDateKeys.values());
     console.log('[Dashboard] Deduplicated campaign level data count:', deduplicatedData.length);
     
+    // デバッグ: 各キャンペーンのデータ数を確認
+    const campaignDataCount = new Map<string, number>();
+    deduplicatedData.forEach(d => {
+      const campaignName = d.campaign_name ? d.campaign_name.trim() : '(empty)';
+      campaignDataCount.set(campaignName, (campaignDataCount.get(campaignName) || 0) + 1);
+    });
+    console.log('[Dashboard] Campaign data count by campaign:', Array.from(campaignDataCount.entries()));
+    
+    // デバッグ: 各キャンペーンのデータサンプルを確認
+    campaignDataCount.forEach((count, campaignName) => {
+      const samples = deduplicatedData.filter(d => (d.campaign_name || '').trim() === campaignName).slice(0, 3);
+      console.log(`[Dashboard] Campaign "${campaignName}" has ${count} records, samples:`, samples.map(s => ({
+        date: s.date,
+        impressions: s.impressions,
+        clicks: s.clicks,
+        cost: s.cost,
+        conversions: s.conversions,
+        conversion_value: s.conversion_value
+      })));
+    });
+    
     // キャンペーン名でグループ化して合算
     const stats: { [key: string]: CampaignData } = {};
     
@@ -1964,22 +2101,40 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     const campaignDateMap = new Map<string, string[]>();
     
     deduplicatedData.forEach(d => {
-      const key = d.campaign_name;
+      // キャンペーン名が空の場合はスキップ
+      if (!d.campaign_name || d.campaign_name.trim() === '') {
+        console.warn('[Dashboard] ⚠️ Campaign name is empty, skipping:', d);
+        return;
+      }
+      
+      const key = d.campaign_name.trim();
       
       if (!stats[key]) {
+        // キャンペーンの基本情報のみをコピーし、数値フィールドは0で初期化
+        // データ0のキャンペーンでも、他キャンペーンのデータが混入しないように、明示的に0で初期化
         stats[key] = { 
-          ...d, 
+          id: d.id,
+          date: d.date,
+          campaign_name: d.campaign_name,
+          meta_account_id: d.meta_account_id,
           impressions: 0, 
           clicks: 0, 
           cost: 0, 
           conversions: 0, 
           conversion_value: 0,
           reach: 0,
+          period_unique_reach: 0,
           engagements: 0,
           link_clicks: 0,
           landing_page_views: 0,
           ad_set_name: '',
-          ad_name: ''
+          ad_name: '',
+          ctr: 0,
+          cpc: 0,
+          cpa: 0,
+          cpm: 0,
+          cvr: 0,
+          roas: 0
         };
         campaignDateMap.set(key, []);
       }
@@ -1992,47 +2147,102 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
       }
       
       // 日付ごとに合算（同じキャンペーンの異なる日付のデータを合算）
+      // データ0のキャンペーンでも、他キャンペーンのデータが混入しないように、このキャンペーンのデータのみを合算
+      // デバッグ: データ0のキャンペーンの場合、ログを出力
+      const isZeroData = (d.impressions || 0) === 0 && (d.clicks || 0) === 0 && (d.cost || 0) === 0 && 
+                         (d.conversions || 0) === 0 && (d.conversion_value || 0) === 0;
+      if (isZeroData) {
+        console.log(`[Dashboard] Processing zero-data record for campaign "${key}":`, {
+          date: d.date,
+          impressions: d.impressions,
+          clicks: d.clicks,
+          cost: d.cost,
+          conversions: d.conversions,
+          conversion_value: d.conversion_value
+        });
+      }
+      
+      // 合算前の値を記録（デバッグ用）
       const beforeImpressions = stats[key].impressions;
-      const beforeReach = stats[key].reach;
       const beforeCost = stats[key].cost;
       
-      stats[key].impressions += d.impressions || 0;
-      stats[key].clicks += d.clicks || 0;
-      stats[key].cost += d.cost || 0;
-      stats[key].conversions += d.conversions || 0;
-      stats[key].conversion_value += d.conversion_value || 0;
-      stats[key].reach += d.reach || 0;
-      stats[key].engagements += d.engagements || 0;
-      stats[key].link_clicks += d.link_clicks || 0;
-      stats[key].landing_page_views += d.landing_page_views || 0;
+      stats[key].impressions += (d.impressions || 0);
+      stats[key].clicks += (d.clicks || 0);
+      stats[key].cost += (d.cost || 0);
+      stats[key].conversions += (d.conversions || 0);
+      stats[key].conversion_value += (d.conversion_value || 0);
+      stats[key].engagements += (d.engagements || 0);
+      stats[key].link_clicks += (d.link_clicks || 0);
+      stats[key].landing_page_views += (d.landing_page_views || 0);
       
-      // デバッグログ: 各レコードの追加を記録
-      console.log(`[Dashboard] キャンペーン "${key}" に日付 ${d.date} のデータを追加:`, {
-        date: d.date,
-        impressions: d.impressions || 0,
-        reach: d.reach || 0,
-        cost: d.cost || 0,
-        clicks: d.clicks || 0,
-        conversions: d.conversions || 0,
-        before: { 
-          impressions: beforeImpressions, 
-          reach: beforeReach, 
-          cost: beforeCost 
-        },
-        after: { 
-          impressions: stats[key].impressions, 
-          reach: stats[key].reach, 
-          cost: stats[key].cost 
-        },
-        added: {
-          impressions: (d.impressions || 0),
-          reach: (d.reach || 0),
-          cost: (d.cost || 0)
+      // デバッグ: データ0のキャンペーンの場合、合算後の値を確認
+      if (isZeroData && (stats[key].impressions !== beforeImpressions || stats[key].cost !== beforeCost)) {
+        console.warn(`[Dashboard] ⚠️ Zero-data campaign "${key}" has non-zero values after aggregation:`, {
+          before: { impressions: beforeImpressions, cost: beforeCost },
+          after: { impressions: stats[key].impressions, cost: stats[key].cost },
+          added: { impressions: d.impressions, cost: d.cost }
+        });
+      }
+      
+      // 期間全体のユニークリーチ数を優先的に使用（DBから取得した値）
+      // period_unique_reachは期間全体のユニークリーチ数なので、同じキャンペーンの複数日付データでは同じ値のはず
+      // 最初に見つかった値を使用（最大値ではなく、DBから取得した値をそのまま使用）
+      if (d.period_unique_reach && d.period_unique_reach > 0) {
+        // まだ設定されていない場合のみ設定（最初に見つかった値を使用）
+        if (!stats[key].period_unique_reach || stats[key].period_unique_reach === 0) {
+          stats[key].period_unique_reach = d.period_unique_reach;
         }
+        // 値が異なる場合は、最新の日付の値を使用（日付が新しい場合のみ更新）
+        else if (d.period_unique_reach !== stats[key].period_unique_reach) {
+          // 日付を比較して、新しい日付の値を使用
+          const currentDate = new Date(d.date);
+          const existingDate = new Date(stats[key].date);
+          if (currentDate > existingDate) {
+            stats[key].period_unique_reach = d.period_unique_reach;
+            stats[key].date = d.date; // 日付も更新
+          }
+        }
+      }
+      
+      // 日次のreachの最大値を使用（フォールバック: period_unique_reachが存在しない場合のみ）
+      if ((!stats[key].period_unique_reach || stats[key].period_unique_reach === 0) && d.reach && d.reach > 0) {
+        if (!stats[key].reach || d.reach > stats[key].reach) {
+          stats[key].reach = d.reach;
+        }
+      }
+    });
+    
+    // デバッグ: 各キャンペーンの集計結果をログ出力
+    console.log('[Dashboard] ===== Campaign stats before final processing =====');
+    Object.entries(stats).forEach(([campaignName, stat]) => {
+      console.log(`[Dashboard] Campaign: ${campaignName}`, {
+        impressions: stat.impressions,
+        clicks: stat.clicks,
+        cost: stat.cost,
+        conversions: stat.conversions,
+        conversion_value: stat.conversion_value,
+        reach: stat.reach,
+        period_unique_reach: stat.period_unique_reach,
+        dataCount: campaignDateMap.get(campaignName)?.length || 0
       });
     });
 
-    const statsArray = Object.values(stats);
+    const statsArray = Object.values(stats).map(s => {
+      // 期間全体のユニークリーチ数を優先的に使用
+      // period_unique_reachが0より大きい場合のみ使用、それ以外はreachの最大値を使用
+      const reach = (s.period_unique_reach !== undefined && s.period_unique_reach !== null && s.period_unique_reach > 0)
+        ? s.period_unique_reach
+        : (s.reach || 0); // フォールバック: 日次リーチの最大値
+      
+      // reachの値を明示的に設定（period_unique_reachが0の場合はreachを使用）
+      s.reach = reach;
+      
+      return {
+        ...s,
+        reach: reach
+      };
+    });
+    
     console.log('[Dashboard] campaignStats count:', statsArray.length);
     console.log('[Dashboard] ===== キャンペーン別集計結果 =====');
     statsArray.forEach(s => {
@@ -2053,6 +2263,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
         // 基本指標
         '1. インプレッション': s.impressions,
         '2. リーチ': s.reach,
+        '2-1. period_unique_reach': s.period_unique_reach || 0,
         '3. フリークエンシー': frequency.toFixed(2),
         '4. クリック数': s.clicks,
         '5. 費用': s.cost,
@@ -2076,6 +2287,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
         date: d.date,
         impressions: d.impressions || 0,
         reach: d.reach || 0,
+        period_unique_reach: d.period_unique_reach || 0,
         cost: d.cost || 0,
         clicks: d.clicks || 0,
         conversions: d.conversions || 0,
@@ -2107,7 +2319,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
         landing_page_views: s.landing_page_views || 0
       };
     });
-  }, [dateFilteredData, summaryData]);
+  }, [filteredData, selectedCampaign, selectedAdSet, selectedAd, selectedMetaAccountId]);
 
   // Scatter Chart Data
   const scatterData = useMemo(() => {
@@ -2146,8 +2358,32 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     setSortConfig({ key, direction });
   };
 
+  // 選択された期間を保持（7日、30日、全期間）
+  const [selectedPeriod, setSelectedPeriod] = useState<number | 'all' | null>(() => {
+    const saved = localStorage.getItem('dashboard_selectedPeriod');
+    if (saved) {
+      try {
+        const parsed = saved === 'all' ? 'all' : parseInt(saved, 10);
+        if (parsed === 'all' || parsed === 7 || parsed === 30) {
+          return parsed;
+        }
+      } catch (e) {
+        // 無視
+      }
+    }
+    return null;
+  });
+
   const setQuickFilter = (days: number | 'all') => {
     setIsInitialLoad(false); // ユーザーが手動で変更した場合は自動更新を無効化
+    
+    // 選択された期間を保存
+    setSelectedPeriod(days);
+    try {
+      localStorage.setItem('dashboard_selectedPeriod', days === 'all' ? 'all' : days.toString());
+    } catch (err) {
+      console.error('[setQuickFilter] localStorage保存エラー:', err);
+    }
     
     let newRange: { start: string; end: string };
 
@@ -2217,7 +2453,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
   };
 
   // 現在選択されているクイックフィルタを判定
+  // selectedPeriodを優先的に使用（キャンペーン変更時も選択状態を維持）
   const getActiveQuickFilter = useMemo(() => {
+    // selectedPeriodが設定されている場合は、それを返す
+    if (selectedPeriod !== null) {
+      return selectedPeriod;
+    }
+    
+    // selectedPeriodが設定されていない場合のみ、dateRangeから判定
     if (data.length === 0) return null;
     
     // dateが存在し、有効な日付であるデータのみをフィルタリング
@@ -2263,7 +2506,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     }
     
     return null;
-  }, [dateRange, data]);
+  }, [dateRange, data, selectedPeriod]);
 
   const handleExportCSV = () => {
     const csv = Papa.unparse(sortedCampaigns);
@@ -2391,11 +2634,25 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
                     className="max-w-md pl-4 pr-12 py-3 border-2 border-indigo-300 dark:border-indigo-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white rounded-lg text-base font-semibold focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 shadow-sm hover:border-indigo-400 dark:hover:border-indigo-500 transition-colors"
                   >
                     <option value="">全アセットを表示</option>
-                    {metaAccounts.map((account) => (
-                      <option key={account.account_id} value={account.account_id}>
-                        {account.name} (キャンペーン: {account.campaign_count || 0}件 / データ: {account.data_count || 0}件)
-                      </option>
-                    ))}
+                    {metaAccounts.map((account) => {
+                      const displayName = account.name || account.account_id || '不明なアセット';
+                      const campaignCount = account.campaign_count ?? 0;
+                      const dataCount = account.data_count ?? 0;
+                      console.log('[Dashboard] Rendering account option:', { 
+                        account_id: account.account_id, 
+                        name: account.name, 
+                        displayName,
+                        campaign_count: account.campaign_count,
+                        data_count: account.data_count,
+                        campaignCount,
+                        dataCount
+                      });
+                      return (
+                        <option key={account.account_id} value={account.account_id}>
+                          {displayName} (キャンペーン: {campaignCount}件 / データ: {dataCount}件)
+                        </option>
+                      );
+                    })}
                   </select>
                   <MousePointer size={20} className="text-indigo-600 dark:text-indigo-400 flex-shrink-0" />
                 </>
@@ -2611,6 +2868,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
                             const newStart = e.target.value;
                             setIsInitialLoad(false); // ユーザーが手動で変更した場合は自動更新を無効化
                             
+                            // 手動で日付を変更した場合は、選択された期間をクリア
+                            setSelectedPeriod(null);
+                            try {
+                                localStorage.removeItem('dashboard_selectedPeriod');
+                            } catch (err) {
+                                // 無視
+                            }
+                            
                             // 開始日が終了日より後の場合は、終了日も調整
                             let newEnd = dateRange.end;
                             if (newStart && newEnd && newStart > newEnd) {
@@ -2638,6 +2903,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
                         onChange={(e) => {
                             const newEnd = e.target.value;
                             setIsInitialLoad(false); // ユーザーが手動で変更した場合は自動更新を無効化
+                            
+                            // 手動で日付を変更した場合は、選択された期間をクリア
+                            setSelectedPeriod(null);
+                            try {
+                                localStorage.removeItem('dashboard_selectedPeriod');
+                            } catch (err) {
+                                // 無視
+                            }
                             
                             // 終了日が開始日より前の場合は、開始日も調整
                             let newStart = dateRange.start;
