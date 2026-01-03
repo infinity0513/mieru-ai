@@ -628,42 +628,42 @@ export const AnomalyDetector: React.FC<AnomalyDetectorProps> = ({
         const uniqueDates = Array.from(new Set(allData.map(d => d.date)));
         const minDate = new Date(Math.min(...uniqueDates.map(d => new Date(d).getTime())));
         const maxDate = new Date(Math.max(...uniqueDates.map(d => new Date(d).getTime())));
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        
+        // 全期間: データの最小日から、データの最大日と今日のうち大きい方まで（今日を含む全期間）
+        const endDate = maxDate > today ? maxDate : today;
         
         newRange = {
           start: minDate.toISOString().split('T')[0],
-          end: maxDate.toISOString().split('T')[0],
+          end: endDate.toISOString().split('T')[0],
         };
       } else {
+        // データがない場合はデフォルト値を使用（今日を含む全期間）
         const today = new Date();
-        const endDate = new Date(today);
-        endDate.setDate(today.getDate() - 1);
+        today.setHours(0, 0, 0, 0);
         newRange = {
           start: new Date(2020, 0, 1).toISOString().split('T')[0],
-          end: endDate.toISOString().split('T')[0],
+          end: today.toISOString().split('T')[0],
         };
       }
     } else {
-      // 7日間 or 30日間（昨日まで）
+      // 7日間 or 30日間（今日を含む）
       const today = new Date();
+      today.setHours(0, 0, 0, 0);
       
-      // 昨日の日付（終了日）
+      // 終了日 = 今日
       const endDate = new Date(today);
-      endDate.setDate(today.getDate() - 1);
       
-      // 開始日 = 昨日 - (days - 1)
-      // 例: 7日間の場合、昨日から6日前が開始日
-      const startDate = new Date(endDate);
-      startDate.setDate(endDate.getDate() - (days - 1));
+      // 開始日 = 今日 - (days - 1)
+      // 例: 7日間の場合、今日から6日前が開始日（今日を含む7日間）
+      const startDate = new Date(today);
+      startDate.setDate(today.getDate() - (days - 1));
       
       newRange = {
         start: startDate.toISOString().split('T')[0],
         end: endDate.toISOString().split('T')[0],
       };
-      
-      console.log('[修正後] 今日:', today.toISOString().split('T')[0]);
-      console.log('[修正後] 昨日（終了日）:', endDate.toISOString().split('T')[0]);
-      console.log('[修正後] 開始日（昨日から' + (days - 1) + '日前）:', startDate.toISOString().split('T')[0]);
-      console.log('[修正後] 計算結果:', newRange);
     }
 
     setDateRange(newRange);
