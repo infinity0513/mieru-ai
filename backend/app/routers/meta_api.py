@@ -620,7 +620,8 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                         campaign_id = campaign.get('id')
                         campaign_name = campaign.get('name', 'Unknown')
                         # 期間全体のユニークリーチ数を取得（time_incrementなしで期間全体の集計データを取得）
-                        period_reach_fields = "campaign_id,campaign_name,reach"
+                        # period_unique_reach, unique_reach, reachの順で試す
+                        period_reach_fields = "campaign_id,campaign_name,period_unique_reach,unique_reach,reach"
                         time_range_encoded = urllib.parse.quote(time_range_json, safe='')
                         # time_incrementを指定しないことで、期間全体の集計データ（1件）を取得
                         relative_url = f"{campaign_id}/insights?fields={period_reach_fields}&time_range={time_range_encoded}&level=campaign&limit=100"
@@ -647,17 +648,40 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                                     period_insights = item_body.get('data', [])
                                     if period_insights:
                                         # time_incrementなしの場合、期間全体のデータは1件のみ
-                                        reach_value = period_insights[0].get('reach', '0')
-                                        period_reach = safe_int(reach_value, 0)
+                                        insight_data = period_insights[0]
+                                        
+                                        # デバッグ: 利用可能なフィールドを確認
+                                        available_fields = list(insight_data.keys())
+                                        print(f"[Meta API] Available fields for '{campaign_name}': {available_fields}")
+                                        
+                                        # フィールドの優先順位: period_unique_reach > unique_reach > reach
+                                        period_unique_reach_value = insight_data.get('period_unique_reach')
+                                        unique_reach_value = insight_data.get('unique_reach')
+                                        reach_value = insight_data.get('reach', '0')
+                                        
+                                        # デバッグ: 各フィールドの値を確認
+                                        print(f"[Meta API] Field values for '{campaign_name}': period_unique_reach={period_unique_reach_value}, unique_reach={unique_reach_value}, reach={reach_value}")
+                                        
+                                        # 優先順位で使用
+                                        if period_unique_reach_value is not None and safe_int(period_unique_reach_value, 0) > 0:
+                                            period_reach = safe_int(period_unique_reach_value, 0)
+                                            print(f"[Meta API] Using 'period_unique_reach' for '{campaign_name}': {period_reach:,}")
+                                        elif unique_reach_value is not None and safe_int(unique_reach_value, 0) > 0:
+                                            period_reach = safe_int(unique_reach_value, 0)
+                                            print(f"[Meta API] Using 'unique_reach' for '{campaign_name}': {period_reach:,}")
+                                        else:
+                                            period_reach = safe_int(reach_value, 0)
+                                            print(f"[Meta API] Using 'reach' for '{campaign_name}': {period_reach:,}")
+                                        
                                         campaign_period_reach_map[campaign_name] = period_reach
                                         print(f"[Meta API] Period unique reach for '{campaign_name}': {period_reach:,}")
                                     else:
-                                        campaign_period_reach_map[campaign_name] = 0
-                                        print(f"[Meta API] ⚠️ No period reach data for '{campaign_name}', using 0")
+                                        print(f"[Meta API] ⚠️ No period reach data for '{campaign_name}' (empty data array)")
+                                        # エラー時は0を設定せず、前回の値を保持（campaign_period_reach_mapに設定しない）
                                 except json.JSONDecodeError as e:
                                     print(f"[Meta API] Error parsing period reach response for {campaign_name}: {str(e)}")
                                     print(f"[Meta API] Response body: {batch_item.get('body', '{}')}")
-                                    campaign_period_reach_map[campaign_name] = 0
+                                    # エラー時は0を設定せず、前回の値を保持（campaign_period_reach_mapに設定しない）
                             else:
                                 error_body = batch_item.get('body', '{}')
                                 try:
@@ -989,12 +1013,15 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                     
                     # 既存データがある場合の処理
                     if existing_campaign:
-                        # キャンペーンレベルのデータで、period_unique_reachが0または未設定の場合は更新
-                        if not ad_set_name and not ad_name and period_unique_reach > 0:
-                            if not existing_campaign.period_unique_reach or existing_campaign.period_unique_reach == 0:
+                        # キャンペーンレベルのデータで、period_unique_reachが0より大きい場合は更新
+                        if not ad_set_name and not ad_name:
+                            if period_unique_reach > 0:
+                                # APIから取得した値が0より大きい場合は常に更新
                                 existing_campaign.period_unique_reach = period_unique_reach
                                 db.commit()
                                 print(f"[Meta API] Updated period_unique_reach for existing record: {campaign_name} on {campaign_date} -> {period_unique_reach:,}")
+                            else:
+                                print(f"[Meta API] Skipping existing record (period_unique_reach is 0): {campaign_name} on {campaign_date}")
                         else:
                             print(f"[Meta API] Skipping existing record: {campaign_name} / {ad_set_name} / {ad_name} on {campaign_date}")
                         continue
