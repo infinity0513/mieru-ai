@@ -772,9 +772,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
       }
     });
     
-    // 各キャンペーンのリーチ数を合計
-    const totalReach = Array.from(campaignReachMap.values()).reduce((sum, reach) => sum + reach, 0) +
-                      Array.from(campaignDailyReachMap.values()).reduce((sum, reach) => sum + reach, 0);
+    // リーチ数（全体）: フィルタリングされた期間の日次reachの合計（他の指標と同じ）
+    const totalReach = filteredData.reduce((sum, d) => sum + (d.reach || 0), 0);
     
     // ユニークリーチ数の合計（period_unique_reachのみ）
     // period_unique_reachが0の場合は、日次のreachの合計を表示（参考値として）
@@ -1043,9 +1042,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
           }
         });
         
-        // 各キャンペーンのリーチ数を合計
-        const totalReach = Array.from(campaignReachMap.values()).reduce((sum, reach) => sum + reach, 0) +
-                          Array.from(campaignDailyReachMap.values()).reduce((sum, reach) => sum + reach, 0);
+        // リーチ数（全体）: フィルタリングされた期間の日次reachの合計（他の指標と同じ）
+        const totalReach = filteredData.reduce((sum, d) => sum + (d.reach || 0), 0);
         
         // ユニークリーチ数の合計（period_unique_reachのみ）
         // period_unique_reachが0の場合は、日次のreachの合計を表示（参考値として）
@@ -1943,21 +1941,47 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     const totalValue = current.reduce((acc, curr) => acc + (curr.conversion_value || 0), 0);
     
     // 追加指標を計算
-    // リーチ数は summaryData から取得（フロントエンドで計算済み）
-    // summaryDataが有効な場合は必ず使用
+    // リーチ数（全体）: フィルタリングされた期間の日次reachの合計（他の指標と同じ）
     const filteredDataSum = current.reduce((acc, curr) => acc + (curr.reach || 0), 0);
     const totalReach = summaryData?.totals?.reach !== undefined && summaryData?.totals?.reach !== null
       ? summaryData.totals.reach 
       : filteredDataSum;
     
-    // ユニークリーチ数は summaryData から取得
-    // period_unique_reachが0の場合は、日次のreachの合計を表示（参考値として）
-    let totalUniqueReach = summaryData?.totals?.unique_reach !== undefined && summaryData?.totals?.unique_reach !== null
-      ? summaryData.totals.unique_reach
-      : 0;
-    // period_unique_reachが0の場合、日次のreachの合計を使用（参考値として）
-    if (totalUniqueReach === 0) {
-      totalUniqueReach = summaryData?.totals?.reach || filteredDataSum;
+    // ユニークリーチ数の計算: summaryDataが有効な場合はそれを使用、そうでない場合はfilteredDataから直接計算
+    let totalUniqueReach = 0;
+    if (summaryData?.totals?.unique_reach !== undefined && summaryData?.totals?.unique_reach !== null) {
+      totalUniqueReach = summaryData.totals.unique_reach;
+    } else {
+      // summaryDataがnullの場合、loadSummaryOnlyと同じロジックで計算
+      // period_unique_reachを優先的に使用（0より大きい場合のみ）
+      const campaignReachMap = new Map<string, number>();
+      current.forEach(d => {
+        const campaignKey = d.campaign_name || 'unknown';
+        // period_unique_reachが存在し、0より大きい場合のみ使用
+        if (d.period_unique_reach && d.period_unique_reach > 0) {
+          // period_unique_reachが設定されている場合は、最初に見つかった値を使用
+          if (!campaignReachMap.has(campaignKey)) {
+            campaignReachMap.set(campaignKey, d.period_unique_reach);
+          }
+        }
+      });
+      
+      // period_unique_reachが未設定または0のキャンペーンについては、日次のreachの合計を使用（フォールバック）
+      const campaignDailyReachMap = new Map<string, number>();
+      current.forEach(d => {
+        const campaignKey = d.campaign_name || 'unknown';
+        if (!campaignReachMap.has(campaignKey)) {
+          // period_unique_reachが未設定または0のキャンペーンの場合、日次のreachの合計を使用
+          const currentDailyReach = campaignDailyReachMap.get(campaignKey) || 0;
+          campaignDailyReachMap.set(campaignKey, currentDailyReach + (d.reach || 0));
+        }
+      });
+      
+      totalUniqueReach = Array.from(campaignReachMap.values()).reduce((sum, reach) => sum + reach, 0);
+      // period_unique_reachが0の場合、日次のreachの合計を使用（参考値として）
+      if (totalUniqueReach === 0) {
+        totalUniqueReach = Array.from(campaignDailyReachMap.values()).reduce((sum, reach) => sum + reach, 0);
+      }
     }
 
     // デバッグログは削除（パフォーマンス向上のため）
