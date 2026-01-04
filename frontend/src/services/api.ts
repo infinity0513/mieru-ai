@@ -1333,6 +1333,77 @@ class ApiClient {
     }
   }
 
+  /**
+   * キャンペーンサマリーを取得（期間全体の集計データ）
+   * @param params - campaign_name: キャンペーン名, period: '7days' | '30days' | 'all'
+   */
+  async getCampaignSummaryByPeriod(params: {
+    campaign_name: string;
+    period: '7days' | '30days' | 'all';
+  }): Promise<{
+    campaign_name: string;
+    period: string;
+    start_date: string;
+    end_date: string;
+    data_source: string;
+    impressions: number;
+    reach: number;
+    clicks: number;
+    cost: number;
+    conversions: number;
+    conversion_value: number;
+    engagements: number;
+    link_clicks: number;
+    landing_page_views: number;
+    ctr: number;
+    cpc: number;
+    cpm: number;
+    cvr: number;
+    cpa: number;
+    roas: number;
+    frequency: number;
+    engagement_rate: number;
+  }> {
+    const token = this.getToken();
+    if (!token) {
+      console.warn("[ApiClient] No token available for getCampaignSummaryByPeriod");
+      throw new Error('認証トークンがありません');
+    }
+    
+    console.log('[Api] getCampaignSummaryByPeriod called:', params);
+    
+    try {
+      const urlParams = new URLSearchParams();
+      urlParams.append('campaign_name', params.campaign_name);
+      urlParams.append('period', params.period);
+      
+      const url = `${this.baseURL}/campaigns/summary?${urlParams}`;
+      const normalizedUrl = ApiClient.normalizeURL(url);
+      console.log('[Api] getCampaignSummaryByPeriod URL:', normalizedUrl);
+      
+      const response = await fetch(normalizedUrl, {
+        credentials: 'include',
+        headers: this.getHeaders(),
+        cache: 'no-store'
+      });
+      
+      if (!response.ok) {
+        if (response.status === 401) {
+          this.handle401Error(response);
+        }
+        const errorText = await response.text();
+        throw new Error(`Failed to get campaign summary: ${response.statusText} - ${errorText}`);
+      }
+      
+      const data = await response.json();
+      console.log('[Api] getCampaignSummaryByPeriod response:', data);
+      return data;
+    } catch (error: any) {
+      console.error('[Api] getCampaignSummaryByPeriod error:', error);
+      throw error;
+    }
+  }
+
   async getCampaignSummary(startDate?: string, endDate?: string, metaAccountId?: string, campaignName?: string, adSetName?: string, adName?: string, forceRefresh = false) {
     const token = this.getToken();
     if (!token) {

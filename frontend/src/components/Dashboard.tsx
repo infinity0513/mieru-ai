@@ -424,6 +424,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
   const [trendsData, setTrendsData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   
+  // 期間別サマリーデータ（Meta APIから取得）
+  const [periodSummaryData, setPeriodSummaryData] = useState<any>(null);
+  const [periodSummaryLoading, setPeriodSummaryLoading] = useState(false);
+  const [periodSummaryError, setPeriodSummaryError] = useState<string | null>(null);
+  
   // データ取得のキャッシュキー（同じパラメータの場合は再取得しない）
   // useRefを使用して、再レンダリングをトリガーせずにキャッシュキーを管理
   const lastFetchParamsRef = React.useRef<{
@@ -1975,35 +1980,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     return deduplicated;
   }, [dateFilteredData, selectedCampaign, selectedAdSet, selectedAd]);
 
-  // Aggregate for KPI Cards - 常にfilteredDataから計算（AnomalyDetectorと整合性を保つため）
+  // Aggregate for KPI Cards - 期間別サマリーデータを優先的に使用
   const kpiData = useMemo(() => {
-    // filteredDataから直接計算（API summaryは使用しない）
-    const current = filteredData;
-    
-    // デバッグ用: windowオブジェクトにデータを公開（コンソールで確認用）
-    if (typeof window !== 'undefined') {
-      (window as any).apiData = current;
-      (window as any).filteredData = current;
-    }
-    
-    // 基本指標を計算
-    const totalCost = current.reduce((acc, curr) => acc + (curr.cost || 0), 0);
-    const totalImpressions = current.reduce((acc, curr) => acc + (curr.impressions || 0), 0);
-    // クリック数はlink_clicksを使用（Meta広告マネージャの「リンクのクリック」に相当）
-    // link_clicksが存在する場合はそれを使用、なければclicksを使用
-    const totalClicks = current.reduce((acc, curr) => {
-      const linkClicks = curr.link_clicks || 0;
-      const clicks = curr.clicks || 0;
-      return acc + (linkClicks > 0 ? linkClicks : clicks);
-    }, 0);
-    const totalConversions = current.reduce((acc, curr) => acc + (curr.conversions || 0), 0);
-    const totalValue = current.reduce((acc, curr) => acc + (curr.conversion_value || 0), 0);
-    
-    // 追加指標を計算
-    // リーチ数（全体）: 全期間データから指定期間の日次reachの合計
-    // allApiDataから指定期間（dateRange.start ～ dateRange.end）の日別データで集計
-    // キャンペーン/広告セット/広告のフィルタリングも適用
-    const reachSourceData = allApiData.length > 0 ? allApiData : current;
+    // リーチ数（全体）の計算: 全期間データから指定期間の日次reachの合計
+    const reachSourceData = allApiData.length > 0 ? allApiData : filteredData;
     const campaignNameParam = selectedCampaign && selectedCampaign !== 'all' ? selectedCampaign : undefined;
     const adSetNameParam = selectedAdSet && selectedAdSet !== 'all' ? selectedAdSet : undefined;
     const adNameParam = selectedAd && selectedAd !== 'all' ? selectedAd : undefined;
@@ -2026,28 +2006,75 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     
     const totalReach = reachFilteredData.reduce((acc, curr) => acc + (curr.reach || 0), 0);
     
-    // ユニークリーチ数: 取得したデータをそのまま反映（期間全体のユニークリーチ数が含まれている）
-    // 期間指定のAPIから取得したデータには、その期間全体のユニークリーチ数が含まれている
-    // period_unique_reachが存在する場合はそれを使用、なければreachを使用
-    // キャンペーンごとに集計（同じキャンペーンの複数日付データでは同じ値のはず）
-    const campaignUniqueReachMap = new Map<string, number>();
-    current.forEach(d => {
-      const campaignKey = d.campaign_name || 'unknown';
-      // period_unique_reachが存在し、0より大きい場合のみ使用
-      if (d.period_unique_reach && d.period_unique_reach > 0) {
-        if (!campaignUniqueReachMap.has(campaignKey)) {
-          campaignUniqueReachMap.set(campaignKey, d.period_unique_reach);
-        }
-      } else if (d.reach && d.reach > 0) {
-        // period_unique_reachが存在しない場合は、reachを使用（期間全体のユニークリーチ数）
-        if (!campaignUniqueReachMap.has(campaignKey)) {
+    // 期間別サマリーデータ（Meta APIから取得）がある場合はそれを使用
+    if (periodSummaryData) {
+      console.log('[Dashboard] Using period summary data for KPI:', periodSummaryData);
+      return {
+        totalCost: periodSummaryData.cost || 0,
+        totalImpressions: periodSummaryData.impressions || 0,
+        totalClicks: periodSummaryData.link_clicks || periodSummaryData.clicks || 0,
+        totalConversions: periodSummaryData.conversions || 0,
+        totalValue: periodSummaryData.conversion_value || 0,
+        totalReach: totalReach, // リーチ数（全体）は全期間データから指定期間の日次reachの合計
+        totalUniqueReach: periodSummaryData.reach || 0,
+        totalEngagements: periodSummaryData.engagements || 0,
+        totalLinkClicks: periodSummaryData.link_clicks || 0,
+        totalLandingPageViews: periodSummaryData.landing_page_views || 0,
+        avgRoas: periodSummaryData.roas || 0,
+        avgCpa: periodSummaryData.cpa || 0,
+        ctr: periodSummaryData.ctr || 0,
+        cpc: periodSummaryData.cpc || 0,
+        cpm: periodSummaryData.cpm || 0,
+        cvr: periodSummaryData.cvr || 0,
+        frequency: periodSummaryData.frequency || 0,
+        engagementRate: periodSummaryData.engagement_rate || 0,
+        costTrend: 0,
+        roasTrend: 0,
+        cvTrend: 0,
+      };
+    }
+    
+    // フォールバック: filteredDataから直接計算（既存のロジック）
+    const current = filteredData;
+    
+    // デバッグ用: windowオブジェクトにデータを公開（コンソールで確認用）
+    if (typeof window !== 'undefined') {
+      (window as any).apiData = current;
+      (window as any).filteredData = current;
+    }
+    
+    // 基本指標を計算
+    const totalCost = current.reduce((acc, curr) => acc + (curr.cost || 0), 0);
+    const totalImpressions = current.reduce((acc, curr) => acc + (curr.impressions || 0), 0);
+    // クリック数はlink_clicksを使用（Meta広告マネージャの「リンクのクリック」に相当）
+    // link_clicksが存在する場合はそれを使用、なければclicksを使用
+    const totalClicks = current.reduce((acc, curr) => {
+      const linkClicks = curr.link_clicks || 0;
+      const clicks = curr.clicks || 0;
+      return acc + (linkClicks > 0 ? linkClicks : clicks);
+    }, 0);
+    const totalConversions = current.reduce((acc, curr) => acc + (curr.conversions || 0), 0);
+    const totalValue = current.reduce((acc, curr) => acc + (curr.conversion_value || 0), 0);
+    
+    // 追加指標を計算（リーチ数（全体）は既に計算済みのtotalReachを使用）
+    
+    // ユニークリーチ数: 期間別サマリーデータ（Meta APIから取得）を優先的に使用
+    let totalUniqueReach = 0;
+    if (periodSummaryData && periodSummaryData.reach) {
+      // 期間別サマリーデータから直接取得
+      totalUniqueReach = periodSummaryData.reach;
+      console.log('[Dashboard] Using period summary data for unique reach:', totalUniqueReach);
+    } else {
+      // フォールバック: 既存の計算ロジック
+      const campaignUniqueReachMap = new Map<string, number>();
+      current.forEach(d => {
+        const campaignKey = d.campaign_name || 'unknown';
+        if (d.reach && d.reach > 0 && !campaignUniqueReachMap.has(campaignKey)) {
           campaignUniqueReachMap.set(campaignKey, d.reach);
         }
-      }
-    });
-    
-    // キャンペーンごとのユニークリーチ数の合計
-    const totalUniqueReach = Array.from(campaignUniqueReachMap.values()).reduce((sum, reach) => sum + reach, 0);
+      });
+      totalUniqueReach = Array.from(campaignUniqueReachMap.values()).reduce((sum, reach) => sum + reach, 0);
+    }
 
     // デバッグログは削除（パフォーマンス向上のため）
     const totalEngagements = current.reduce((acc, curr) => acc + (curr.engagements || 0), 0);
@@ -2104,7 +2131,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
       cpcTrend: (Math.random() * 5) - 2.5,
       cvrTrend: (Math.random() * 3) - 1.5
     };
-  }, [filteredData, allApiData, dateRange.start, dateRange.end, selectedCampaign, selectedAdSet, selectedAd, summaryData]); // allApiData, selectedAdSet, selectedAdを追加（リーチ数（全体）計算用）
+  }, [filteredData, allApiData, dateRange.start, dateRange.end, selectedCampaign, selectedAdSet, selectedAd, summaryData, periodSummaryData]); // periodSummaryDataを追加（期間別サマリーデータ使用用）
 
   // Group by Date for Trend Chart - use calculated trendsData
   const trendData = useMemo(() => {
