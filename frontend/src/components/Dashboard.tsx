@@ -984,50 +984,60 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
       
       try {
         // 各API呼び出しを個別に処理し、1つが失敗しても他のデータは取得できるようにする
-        // リーチ数（全体）用に全期間データを取得、その他16項目用に期間指定データを取得
-        const activePeriod = selectedPeriod !== null ? selectedPeriod : getActiveQuickFilter;
-        let apiStartDate: string | undefined;
-        let apiEndDate: string | undefined;
-        
-        // 期間指定に応じてAPIパラメータを設定
-        if (activePeriod === 7 || activePeriod === 30) {
-          // 7日間、30日間の場合は期間指定でAPIから取得
-          apiStartDate = dateRange.start;
-          apiEndDate = dateRange.end;
-          console.log('[Dashboard] Fetching period-specific data:', { period: activePeriod, start: apiStartDate, end: apiEndDate });
-        } else {
-          // 全期間の場合はパラメータなし（全期間データを取得）
-          console.log('[Dashboard] Fetching all period data (no date filter)');
-        }
-        
-        // 2つのAPI呼び出しを並行実行
+        // API呼び出しを4回別々に実行：
         // 1. 全期間データ（リーチ数（全体）用）
-        // 2. 期間指定データ（その他16項目用）
-        const [allPeriodResult, periodSpecificResult] = await Promise.allSettled([
-          Api.fetchCampaignData(), // 全期間データを取得（リーチ数（全体）用）
-          Api.fetchCampaignData(undefined, apiStartDate, apiEndDate) // 期間指定に応じてパラメータを渡す（その他16項目用）
+        // 2. 7日間データ（その他16項目用、activePeriod === 7 の場合）
+        // 3. 30日間データ（その他16項目用、activePeriod === 30 の場合）
+        // 4. 全期間データ（その他16項目用、activePeriod === 'all' の場合）
+        const activePeriod = selectedPeriod !== null ? selectedPeriod : getActiveQuickFilter;
+        
+        // 1. 全期間データを取得（リーチ数（全体）用）
+        const allPeriodResult = await Promise.allSettled([
+          Api.fetchCampaignData() // 全期間データを取得（リーチ数（全体）用）
         ]);
         
-        // 全期間データを取得（リーチ数（全体）用）
         let allPeriodData: CampaignData[] = [];
-        if (allPeriodResult.status === 'fulfilled') {
-          allPeriodData = allPeriodResult.value || [];
+        if (allPeriodResult[0].status === 'fulfilled') {
+          allPeriodData = allPeriodResult[0].value || [];
           console.log('[Dashboard] All period data loaded for totalReach:', allPeriodData.length, 'campaigns');
         } else {
-          console.error('[Dashboard] Failed to load all period data:', allPeriodResult.reason);
-        }
-        
-        // 期間指定データを取得（その他16項目用）
-        let allCampaignsResponse: CampaignData[] = [];
-        if (periodSpecificResult.status === 'fulfilled') {
-          allCampaignsResponse = periodSpecificResult.value || [];
-          console.log('[Dashboard] Period-specific campaigns loaded:', allCampaignsResponse.length, 'campaigns');
-        } else {
-          console.error('[Dashboard] Failed to load period-specific campaigns:', periodSpecificResult.reason);
+          console.error('[Dashboard] Failed to load all period data:', allPeriodResult[0].reason);
         }
         
         // 全期間データをallApiDataに保存（リーチ数（全体）計算用）
         setAllApiData(allPeriodData);
+        
+        // 2-4. 期間指定データを取得（その他16項目用）
+        let apiStartDate: string | undefined;
+        let apiEndDate: string | undefined;
+        
+        if (activePeriod === 7) {
+          // 7日間の場合は期間指定でAPIから取得
+          apiStartDate = dateRange.start;
+          apiEndDate = dateRange.end;
+          console.log('[Dashboard] Fetching 7-day data:', { start: apiStartDate, end: apiEndDate });
+        } else if (activePeriod === 30) {
+          // 30日間の場合は期間指定でAPIから取得
+          apiStartDate = dateRange.start;
+          apiEndDate = dateRange.end;
+          console.log('[Dashboard] Fetching 30-day data:', { start: apiStartDate, end: apiEndDate });
+        } else {
+          // 全期間の場合はパラメータなし（全期間データを取得）
+          console.log('[Dashboard] Fetching all period data for other metrics (no date filter)');
+        }
+        
+        const periodSpecificResult = await Promise.allSettled([
+          Api.fetchCampaignData(undefined, apiStartDate, apiEndDate) // 期間指定に応じてパラメータを渡す（その他16項目用）
+        ]);
+        
+        // 期間指定データを取得（その他16項目用）
+        let allCampaignsResponse: CampaignData[] = [];
+        if (periodSpecificResult[0].status === 'fulfilled') {
+          allCampaignsResponse = periodSpecificResult[0].value || [];
+          console.log('[Dashboard] Period-specific campaigns loaded:', allCampaignsResponse.length, 'campaigns');
+        } else {
+          console.error('[Dashboard] Failed to load period-specific campaigns:', periodSpecificResult[0].reason);
+        }
         
         // フィルタリング用パラメータ
         const campaignNameParam = selectedCampaign && selectedCampaign !== 'all' ? selectedCampaign : undefined;
@@ -2016,28 +2026,28 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     
     const totalReach = reachFilteredData.reduce((acc, curr) => acc + (curr.reach || 0), 0);
     
-    // ユニークリーチ数: period_unique_reachを優先的に使用（期間指定のAPIから取得したデータを使用）
-    // キャンペーンごとにperiod_unique_reachを取得し、複数キャンペーンの場合は合計
-    // period_unique_reachは期間全体のユニークリーチ数なので、同じキャンペーンの複数日付データでは同じ値のはず
+    // ユニークリーチ数: 取得したデータをそのまま反映（期間全体のユニークリーチ数が含まれている）
+    // 期間指定のAPIから取得したデータには、その期間全体のユニークリーチ数が含まれている
+    // period_unique_reachが存在する場合はそれを使用、なければreachを使用
+    // キャンペーンごとに集計（同じキャンペーンの複数日付データでは同じ値のはず）
     const campaignUniqueReachMap = new Map<string, number>();
     current.forEach(d => {
       const campaignKey = d.campaign_name || 'unknown';
       // period_unique_reachが存在し、0より大きい場合のみ使用
       if (d.period_unique_reach && d.period_unique_reach > 0) {
-        // period_unique_reachが設定されている場合は、最初に見つかった値を使用
         if (!campaignUniqueReachMap.has(campaignKey)) {
           campaignUniqueReachMap.set(campaignKey, d.period_unique_reach);
+        }
+      } else if (d.reach && d.reach > 0) {
+        // period_unique_reachが存在しない場合は、reachを使用（期間全体のユニークリーチ数）
+        if (!campaignUniqueReachMap.has(campaignKey)) {
+          campaignUniqueReachMap.set(campaignKey, d.reach);
         }
       }
     });
     
-    // period_unique_reachの合計を計算
-    let totalUniqueReach = Array.from(campaignUniqueReachMap.values()).reduce((sum, reach) => sum + reach, 0);
-    
-    // period_unique_reachが0または未設定の場合、日次のreachの合計を使用（フォールバック）
-    if (totalUniqueReach === 0) {
-      totalUniqueReach = totalReach; // 日次のreachの合計を使用
-    }
+    // キャンペーンごとのユニークリーチ数の合計
+    const totalUniqueReach = Array.from(campaignUniqueReachMap.values()).reduce((sum, reach) => sum + reach, 0);
 
     // デバッグログは削除（パフォーマンス向上のため）
     const totalEngagements = current.reduce((acc, curr) => acc + (curr.engagements || 0), 0);

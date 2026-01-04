@@ -1283,7 +1283,7 @@ async def get_meta_accounts(
                                         account_names[account_id] = account_name
                                         print(f"[Meta Accounts] Fetched name for {account_id}: {account_name}")
                                     else:
-                                        account_name = account_id
+                    account_name = account_id
                                 else:
                                     account_name = account_id
                         except Exception as e:
@@ -1657,9 +1657,9 @@ async def get_meta_insights(
                 }
                 
                 try:
-                    insights_response = await client.get(insights_url, params=insights_params)
-                    insights_response.raise_for_status()
-                    insights_data = insights_response.json()
+                insights_response = await client.get(insights_url, params=insights_params)
+                insights_response.raise_for_status()
+                insights_data = insights_response.json()
                     page_insights = insights_data.get('data', [])
                     all_insights.extend(page_insights)
                     
@@ -1681,7 +1681,7 @@ async def get_meta_insights(
                 "insights": all_insights,
                 "total": len(all_insights),
                 "period": {
-                    "since": since,
+                "since": since,
                     "until": until
                 }
             }
