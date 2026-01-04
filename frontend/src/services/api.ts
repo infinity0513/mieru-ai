@@ -2368,7 +2368,7 @@ ${anomalyReport}
           const role = h.role === 'user' ? 'user' as const : 'assistant' as const;
           return {
             role: role,
-            content: h.text
+          content: h.text
           };
         }).filter((msg): msg is { role: 'user' | 'assistant'; content: string } => msg !== null),
         { role: 'user' as const, content: message }
@@ -2378,7 +2378,7 @@ ${anomalyReport}
       if (messages.length === 0) {
         throw new Error("メッセージが生成できませんでした。");
       }
-
+      
       const response = await aiInstance.chat.completions.create({
         model: 'gpt-4o',
         messages: messages,
@@ -2389,7 +2389,7 @@ ${anomalyReport}
       if (!response.choices || response.choices.length === 0) {
         throw new Error("AIからの応答が空です。");
       }
-
+      
       return response.choices[0]?.message?.content || "申し訳ありません、回答を生成できませんでした。";
     } catch (error: any) {
       console.error("Chat API Error:", error);

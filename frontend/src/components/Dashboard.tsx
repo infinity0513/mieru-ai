@@ -487,16 +487,17 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
       };
     }
 
-    // データがない場合は7日間（今日を含む）
+    // データがない場合は7日間（昨日まで）
     const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const endDate = new Date(today);
+    endDate.setDate(today.getDate() - 1);
     
-    const startDate = new Date(today);
-    startDate.setDate(today.getDate() - 6); // 今日から6日前（今日を含む7日間）
+    const startDate = new Date(endDate);
+    startDate.setDate(endDate.getDate() - 6); // 昨日から6日前
 
     return {
       start: startDate.toISOString().split('T')[0],
-      end: today.toISOString().split('T')[0],
+      end: endDate.toISOString().split('T')[0],
     };
   });
   const [selectedCampaign, setSelectedCampaign] = useState<string | null>(() => {
@@ -774,34 +775,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     // リーチ数（全体）: フィルタリングされた期間の日次reachの合計（他の指標と同じ）
     const totalReach = filteredData.reduce((sum, d) => sum + (d.reach || 0), 0);
     
-    // 現在の日付範囲が7日・30日か全期間かを判定
-    const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    today.setHours(0, 0, 0, 0);
-    const todayStr = today.toISOString().split('T')[0];
-    const sevenDaysAgo = new Date(today);
-    sevenDaysAgo.setDate(today.getDate() - 6);
-    const sevenDaysAgoStr = sevenDaysAgo.toISOString().split('T')[0];
-    const thirtyDaysAgo = new Date(today);
-    thirtyDaysAgo.setDate(today.getDate() - 29);
-    const thirtyDaysAgoStr = thirtyDaysAgo.toISOString().split('T')[0];
-    const is7Days = dateRange.start === sevenDaysAgoStr && dateRange.end === todayStr;
-    const is30Days = dateRange.start === thirtyDaysAgoStr && dateRange.end === todayStr;
-    
-    // ユニークリーチ数の計算
-    // 7日・30日の場合は、フィルタリングされた期間の日次reachの合計を使用（集計期間を他の項目と合わせる）
-    // 全期間の場合は、period_unique_reachを優先的に使用
-    let totalUniqueReach = 0;
-    if (is7Days || is30Days) {
-      // 7日・30日: フィルタリングされた期間の日次reachの合計（他の指標と同じ）
-      totalUniqueReach = filteredData.reduce((sum, d) => sum + (d.reach || 0), 0);
-    } else {
-      // 全期間: period_unique_reachを優先的に使用
-      totalUniqueReach = Array.from(campaignReachMap.values()).reduce((sum, reach) => sum + reach, 0);
-      // period_unique_reachが0の場合、日次のreachの合計を使用（参考値として）
-      if (totalUniqueReach === 0) {
-        totalUniqueReach = Array.from(campaignDailyReachMap.values()).reduce((sum, reach) => sum + reach, 0);
-      }
+    // ユニークリーチ数の合計（period_unique_reachのみ）
+    // period_unique_reachが0の場合は、日次のreachの合計を表示（参考値として）
+    let totalUniqueReach = Array.from(campaignReachMap.values()).reduce((sum, reach) => sum + reach, 0);
+    // period_unique_reachが0の場合、日次のreachの合計を使用（参考値として）
+    if (totalUniqueReach === 0) {
+      totalUniqueReach = Array.from(campaignDailyReachMap.values()).reduce((sum, reach) => sum + reach, 0);
     }
     
     const totalEngagements = filteredData.reduce((sum, d) => sum + (d.engagements || 0), 0);
@@ -1066,34 +1045,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
         // リーチ数（全体）: フィルタリングされた期間の日次reachの合計（他の指標と同じ）
         const totalReach = filteredData.reduce((sum, d) => sum + (d.reach || 0), 0);
         
-        // 現在の日付範囲が7日・30日か全期間かを判定
-        const now = new Date();
-        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        today.setHours(0, 0, 0, 0);
-        const todayStr = today.toISOString().split('T')[0];
-        const sevenDaysAgo = new Date(today);
-        sevenDaysAgo.setDate(today.getDate() - 6);
-        const sevenDaysAgoStr = sevenDaysAgo.toISOString().split('T')[0];
-        const thirtyDaysAgo = new Date(today);
-        thirtyDaysAgo.setDate(today.getDate() - 29);
-        const thirtyDaysAgoStr = thirtyDaysAgo.toISOString().split('T')[0];
-        const is7Days = dateRange.start === sevenDaysAgoStr && dateRange.end === todayStr;
-        const is30Days = dateRange.start === thirtyDaysAgoStr && dateRange.end === todayStr;
-        
-        // ユニークリーチ数の計算
-        // 7日・30日の場合は、フィルタリングされた期間の日次reachの合計を使用（集計期間を他の項目と合わせる）
-        // 全期間の場合は、period_unique_reachを優先的に使用
-        let totalUniqueReach = 0;
-        if (is7Days || is30Days) {
-          // 7日・30日: フィルタリングされた期間の日次reachの合計（他の指標と同じ）
-          totalUniqueReach = filteredData.reduce((sum, d) => sum + (d.reach || 0), 0);
-        } else {
-          // 全期間: period_unique_reachを優先的に使用
-          totalUniqueReach = Array.from(campaignReachMap.values()).reduce((sum, reach) => sum + reach, 0);
-          // period_unique_reachが0の場合、日次のreachの合計を使用（参考値として）
-          if (totalUniqueReach === 0) {
-            totalUniqueReach = Array.from(campaignDailyReachMap.values()).reduce((sum, reach) => sum + reach, 0);
-          }
+        // ユニークリーチ数の合計（period_unique_reachのみ）
+        // period_unique_reachが0の場合は、日次のreachの合計を表示（参考値として）
+        let totalUniqueReach = Array.from(campaignReachMap.values()).reduce((sum, reach) => sum + reach, 0);
+        // period_unique_reachが0の場合、日次のreachの合計を使用（参考値として）
+        if (totalUniqueReach === 0) {
+          totalUniqueReach = Array.from(campaignDailyReachMap.values()).reduce((sum, reach) => sum + reach, 0);
         }
         
         const totalEngagements = filteredData.reduce((sum, d) => sum + (d.engagements || 0), 0);
@@ -1985,72 +1942,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     
     // 追加指標を計算
     // リーチ数（全体）: フィルタリングされた期間の日次reachの合計（他の指標と同じ）
-    const filteredDataSum = current.reduce((acc, curr) => acc + (curr.reach || 0), 0);
+    const totalReach = current.reduce((acc, curr) => acc + (curr.reach || 0), 0);
     
-    // summaryDataが現在の日付範囲と一致しているかチェック
-    const isSummaryDataValid = summaryData && 
-      summaryData.period?.start === dateRange.start && 
-      summaryData.period?.end === dateRange.end;
-    
-    const totalReach = isSummaryDataValid && summaryData?.totals?.reach !== undefined && summaryData?.totals?.reach !== null
-      ? summaryData.totals.reach 
-      : filteredDataSum;
-    
-    // 現在の日付範囲が7日・30日か全期間かを判定
-    const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    today.setHours(0, 0, 0, 0);
-    const todayStr = today.toISOString().split('T')[0];
-    const sevenDaysAgo = new Date(today);
-    sevenDaysAgo.setDate(today.getDate() - 6);
-    const sevenDaysAgoStr = sevenDaysAgo.toISOString().split('T')[0];
-    const thirtyDaysAgo = new Date(today);
-    thirtyDaysAgo.setDate(today.getDate() - 29);
-    const thirtyDaysAgoStr = thirtyDaysAgo.toISOString().split('T')[0];
-    const is7Days = dateRange.start === sevenDaysAgoStr && dateRange.end === todayStr;
-    const is30Days = dateRange.start === thirtyDaysAgoStr && dateRange.end === todayStr;
-    
-    // ユニークリーチ数の計算: summaryDataが有効で現在の日付範囲と一致する場合はそれを使用、そうでない場合はfilteredDataから直接計算
-    let totalUniqueReach = 0;
-    if (isSummaryDataValid && summaryData?.totals?.unique_reach !== undefined && summaryData?.totals?.unique_reach !== null) {
-      totalUniqueReach = summaryData.totals.unique_reach;
-    } else {
-      // summaryDataがnullの場合、loadSummaryOnlyと同じロジックで計算
-      if (is7Days || is30Days) {
-        // 7日・30日: フィルタリングされた期間の日次reachの合計（他の指標と同じ）
-        totalUniqueReach = filteredDataSum;
-      } else {
-        // 全期間: period_unique_reachを優先的に使用（0より大きい場合のみ）
-        const campaignReachMap = new Map<string, number>();
-        current.forEach(d => {
-          const campaignKey = d.campaign_name || 'unknown';
-          // period_unique_reachが存在し、0より大きい場合のみ使用
-          if (d.period_unique_reach && d.period_unique_reach > 0) {
-            // period_unique_reachが設定されている場合は、最初に見つかった値を使用
-            if (!campaignReachMap.has(campaignKey)) {
-              campaignReachMap.set(campaignKey, d.period_unique_reach);
-            }
-          }
-        });
-        
-        // period_unique_reachが未設定または0のキャンペーンについては、日次のreachの合計を使用（フォールバック）
-        const campaignDailyReachMap = new Map<string, number>();
-        current.forEach(d => {
-          const campaignKey = d.campaign_name || 'unknown';
-          if (!campaignReachMap.has(campaignKey)) {
-            // period_unique_reachが未設定または0のキャンペーンの場合、日次のreachの合計を使用
-            const currentDailyReach = campaignDailyReachMap.get(campaignKey) || 0;
-            campaignDailyReachMap.set(campaignKey, currentDailyReach + (d.reach || 0));
-          }
-        });
-        
-        totalUniqueReach = Array.from(campaignReachMap.values()).reduce((sum, reach) => sum + reach, 0);
-        // period_unique_reachが0の場合、日次のreachの合計を使用（参考値として）
-        if (totalUniqueReach === 0) {
-          totalUniqueReach = Array.from(campaignDailyReachMap.values()).reduce((sum, reach) => sum + reach, 0);
-        }
-      }
-    }
+    // ユニークリーチ数: フィルタリングされた期間の日次reachの合計（他の指標と同じ）
+    const totalUniqueReach = current.reduce((acc, curr) => acc + (curr.reach || 0), 0);
 
     // デバッグログは削除（パフォーマンス向上のため）
     const totalEngagements = current.reduce((acc, curr) => acc + (curr.engagements || 0), 0);
@@ -2569,46 +2464,42 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
         if (validDates.length > 0) {
           const minDate = new Date(Math.min(...validDates));
           const maxDate = new Date(Math.max(...validDates));
-          const today = new Date();
-          today.setHours(0, 0, 0, 0);
-          
-          // 全期間: データの最小日から、データの最大日と今日のうち大きい方まで（今日を含む全期間）
-          const endDate = maxDate > today ? maxDate : today;
         
         newRange = {
           start: minDate.toISOString().split('T')[0],
-          end: endDate.toISOString().split('T')[0],
+          end: maxDate.toISOString().split('T')[0],
         };
         } else {
-          // 有効な日付がない場合はデフォルト値を使用（今日を含む全期間）
+          // 有効な日付がない場合はデフォルト値を使用
           const today = new Date();
-          today.setHours(0, 0, 0, 0);
+          const endDate = new Date(today);
+          endDate.setDate(today.getDate() - 1);
           newRange = {
             start: new Date(2020, 0, 1).toISOString().split('T')[0],
-            end: today.toISOString().split('T')[0],
+            end: endDate.toISOString().split('T')[0],
           };
         }
       } else {
-        // データがない場合はデフォルト値を使用（今日を含む全期間）
         const today = new Date();
-        today.setHours(0, 0, 0, 0);
+        const endDate = new Date(today);
+        endDate.setDate(today.getDate() - 1);
         newRange = {
           start: new Date(2020, 0, 1).toISOString().split('T')[0],
-          end: today.toISOString().split('T')[0],
+          end: endDate.toISOString().split('T')[0],
         };
       }
     } else {
-      // 7日間 or 30日間（今日を含む）
+      // 7日間 or 30日間（昨日まで）
       const today = new Date();
-      today.setHours(0, 0, 0, 0);
       
-      // 終了日 = 今日
+      // 昨日の日付（終了日）
       const endDate = new Date(today);
+      endDate.setDate(today.getDate() - 1);
       
-      // 開始日 = 今日 - (days - 1)
-      // 例: 7日間の場合、今日から6日前が開始日（今日を含む7日間）
-      const startDate = new Date(today);
-      startDate.setDate(today.getDate() - (days - 1));
+      // 開始日 = 昨日 - (days - 1)
+      // 例: 7日間の場合、昨日から6日前が開始日
+      const startDate = new Date(endDate);
+      startDate.setDate(endDate.getDate() - (days - 1));
       
       newRange = {
         start: startDate.toISOString().split('T')[0],
@@ -2649,14 +2540,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     today.setHours(0, 0, 0, 0);
     const todayStr = today.toISOString().split('T')[0];
     
-    // 全期間チェック（データの最小日から、データの最大日と今日のうち大きい方まで）
+    // 全期間チェック（データの最小日から最大日まで）
     const minDate = new Date(Math.min(...validDates));
     const maxDate = new Date(Math.max(...validDates));
-    const endDate = maxDate > today ? maxDate : today;
     const minDateStr = minDate.toISOString().split('T')[0];
-    const endDateStr = endDate.toISOString().split('T')[0];
+    const maxDateStr = maxDate.toISOString().split('T')[0];
     
-    if (dateRange.start === minDateStr && dateRange.end === endDateStr) {
+    if (dateRange.start === minDateStr && dateRange.end === maxDateStr) {
       return 'all';
     }
     

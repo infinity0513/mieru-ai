@@ -20,7 +20,7 @@ if [ -d "venv" ]; then
     python3 -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 &
 else
     echo "⚠️  仮想環境が見つかりません。venvディレクトリを確認してください。"
-    python3 -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 &
+python3 -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 &
 fi
 
 # 起動を待機
