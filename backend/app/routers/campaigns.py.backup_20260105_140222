@@ -1427,7 +1427,7 @@ async def get_campaign_summary(
     db: Session = Depends(get_db)
 ):
     """
-    指定期間のキャンペーンサマリーをデータベースから集計
+    指定期間のキャンペーンサマリーをMeta APIから取得
     
     Args:
         campaign_name: キャンペーン名
@@ -1452,6 +1452,9 @@ async def get_campaign_summary(
     logger.info(f"{'='*60}\n")
     
     # Step 1: 期間を計算
+    yesterday_str = yesterday.strftime("%Y-%m-%d")
+    
+    # 期間計算
     if period == "7days":
         start_date = yesterday - timedelta(days=6)
         end_date = yesterday
@@ -1470,95 +1473,327 @@ async def get_campaign_summary(
     
     logger.info(f"[Summary] 📅 Calculated date range: {start_date} ~ {end_date}")
     
-    # Step 2: データベースから該当期間のデータを取得
-    db_records = db.query(Campaign).filter(
+    # ⚠️ デバッグ：DBに該当期間のデータが存在するか確認
+    db_check_query = db.query(Campaign).filter(
         Campaign.campaign_name == campaign_name,
         Campaign.user_id == current_user.id,
         Campaign.date >= start_date,
         Campaign.date <= end_date
-    ).all()
+    )
     
-    logger.info(f"[Summary] 🗄️ DB records found: {len(db_records)}")
+    db_count = db_check_query.count()
+    logger.info(f"[Summary] 🗄️ DB records in this period: {db_count}")
     
-    if not db_records:
-        logger.error(f"[Summary] ❌ No DB records found")
-        raise HTTPException(
-            status_code=404, 
-            detail=f"No data found for campaign '{campaign_name}' in period {period} ({start_date} ~ {end_date})"
-        )
+    if db_count > 0:
+        # 日付のリストを表示
+        db_dates = [r.date for r in db_check_query.limit(10).all()]
+        logger.info(f"[Summary] 📆 Sample dates in DB: {db_dates}")
+    else:
+        logger.warning(f"[Summary] ⚠️ WARNING: No DB records found for this period!")
     
-    # 日付のリストを表示
-    db_dates = sorted(set(r.date for r in db_records))
-    logger.info(f"[Summary] 📆 DB dates used: {db_dates}")
-    
-    # Step 3: データを集計
-    total_impressions = sum(r.impressions or 0 for r in db_records)
-    total_clicks = sum(r.clicks or 0 for r in db_records)
-    total_spend = sum(r.cost or 0 for r in db_records)
-    total_conversions = sum(r.conversions or 0 for r in db_records)
-    total_conversion_value = sum(r.conversion_value or 0 for r in db_records)
-    total_engagements = sum(r.engagements or 0 for r in db_records)
-    total_link_clicks = sum(r.link_clicks or 0 for r in db_records)
-    total_landing_page_views = sum(r.landing_page_views or 0 for r in db_records)
-    
-    # リーチの計算：period_unique_reachフィールドを使用（期間全体のユニークリーチ）
-    # 同じキャンペーンの複数日付データではperiod_unique_reachは同じ値のはずなので、最初に見つかった値を使用
-    db_reach = 0
-    for r in db_records:
-        if r.period_unique_reach and r.period_unique_reach > 0:
-            db_reach = r.period_unique_reach
-            break
-    
-    # period_unique_reachが0または存在しない場合は、日次データの最大値を使用（フォールバック）
-    if db_reach == 0:
-        db_reach = max((r.reach or 0 for r in db_records), default=0)
-    
-    logger.info(f"[Summary] 📊 DB Aggregation Results:")
-    logger.info(f"[Summary]   Reach (unique): {db_reach}")
-    logger.info(f"[Summary]   Impressions: {total_impressions}")
-    logger.info(f"[Summary]   Clicks: {total_clicks}")
-    logger.info(f"[Summary]   Spend: ¥{total_spend:.0f}")
-    logger.info(f"[Summary]   Conversions: {total_conversions}")
-    
-    # Step 4: 指標計算
-    ctr = (total_clicks / total_impressions * 100) if total_impressions > 0 else 0
-    cpc = (total_spend / total_clicks) if total_clicks > 0 else 0
-    cpm = (total_spend / total_impressions * 1000) if total_impressions > 0 else 0
-    cvr = (total_conversions / total_clicks * 100) if total_clicks > 0 else 0
-    cpa = (total_spend / total_conversions) if total_conversions > 0 else 0
-    roas = (total_conversion_value / total_spend * 100) if total_spend > 0 else 0
-    frequency = (total_impressions / db_reach) if db_reach > 0 else 0
-    engagement_rate = (total_engagements / total_impressions * 100) if total_impressions > 0 else 0
-    
-    # 文字列に変換
+    # 文字列に変換（Meta API用）
     start_date_str = start_date.strftime("%Y-%m-%d")
     end_date_str = end_date.strftime("%Y-%m-%d")
     
-    logger.info(f"[Summary] ✅ Returning DB aggregation results")
-    logger.info(f"{'='*60}\n")
+    # Step 2: キャンペーンIDを取得（Meta APIから検索）
+    # DBから meta_account_id を取得
+    first_record = db.query(Campaign).filter(
+        Campaign.user_id == current_user.id,
+        Campaign.campaign_name == campaign_name
+    ).first()
     
-    # Step 5: レスポンス
-    return {
-        "campaign_name": campaign_name,
-        "period": period,
-        "start_date": start_date_str,
-        "end_date": end_date_str,
-        "data_source": "database",
-        "reach": db_reach,
-        "impressions": total_impressions,
-        "clicks": total_clicks,
-        "cost": total_spend,
-        "conversions": total_conversions,
-        "conversion_value": total_conversion_value,
-        "engagements": total_engagements,
-        "link_clicks": total_link_clicks,
-        "landing_page_views": total_landing_page_views,
-        "ctr": round(ctr, 2),
-        "cpc": round(cpc, 2),
-        "cpm": round(cpm, 2),
-        "cvr": round(cvr, 2),
-        "cpa": round(cpa, 2),
-        "roas": round(roas, 2),
-        "frequency": round(frequency, 2),
-        "engagement_rate": round(engagement_rate, 2)
-    }
+    if not first_record:
+        raise HTTPException(status_code=404, detail=f"Campaign '{campaign_name}' not found in database")
+    
+    meta_account_id = first_record.meta_account_id
+    if not meta_account_id:
+        raise HTTPException(status_code=400, detail=f"Campaign '{campaign_name}' has no meta_account_id")
+    
+    logger.info(f"[Summary] 🏢 Meta Account ID: {meta_account_id}")
+    
+    # ユーザーのMetaアクセストークンを確認
+    if not current_user.meta_access_token:
+        raise HTTPException(status_code=400, detail="Meta access token is not set. Please configure Meta account in settings.")
+    
+    account_id = meta_account_id.replace("act_", "") if meta_account_id.startswith("act_") else meta_account_id
+    logger.info(f"[Summary] Meta account ID: act_{account_id}")
+    
+    # Meta APIでキャンペーンIDを検索
+    campaign_id = None
+    try:
+        search_params = {
+            "access_token": current_user.meta_access_token,
+            "fields": "id,name",
+            "filtering": json.dumps([{
+                "field": "name",
+                "operator": "EQUAL",
+                "value": campaign_name
+            }])
+        }
+        
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            logger.info(f"[Summary] Searching for campaign in Meta API...")
+            search_response = await client.get(
+                f"https://graph.facebook.com/v18.0/act_{account_id}/campaigns",
+                params=search_params
+            )
+            search_response.raise_for_status()
+            search_data = search_response.json()
+            
+            logger.info(f"[Summary] Search response: {search_data}")
+            
+            if search_data.get("data") and len(search_data["data"]) > 0:
+                campaign_id = search_data["data"][0]["id"]
+                logger.info(f"[Summary] ✅ Found campaign_id: {campaign_id}")
+            else:
+                raise HTTPException(status_code=404, detail=f"Campaign '{campaign_name}' not found in Meta API")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[Summary] ❌ Error searching campaign: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to find campaign in Meta: {str(e)}")
+    
+    # Step 3: Meta APIから期間全体の集計データを取得
+    try:
+        # time_rangeパラメータをJSON文字列として作成
+        time_range_json = json.dumps({
+            "since": start_date_str,
+            "until": end_date_str
+        }, separators=(',', ':'))
+        
+        # httpxのparamsに渡す（httpxが自動的にURLエンコードする）
+        # ただし、time_rangeはJSON文字列として渡す必要がある
+        insights_params = {
+            "access_token": current_user.meta_access_token,
+            "fields": "reach,impressions,clicks,spend,actions,action_values",
+            "time_range": time_range_json
+            # ⚠️ time_increment を指定しない = 期間全体の集計データ（1件）を取得
+        }
+        
+        logger.info(f"[Summary] Calling Meta API insights endpoint...")
+        logger.info(f"[Summary] URL: https://graph.facebook.com/v18.0/{campaign_id}/insights")
+        logger.info(f"[Summary] time_range JSON: {time_range_json}")
+        logger.info(f"[Summary] time_range: {start_date_str} ~ {end_date_str}")
+        logger.info(f"[Summary] time_increment: NOT SPECIFIED (period-wide aggregation)")
+        
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            # URLを構築して、time_rangeを手動でエンコード
+            base_url = f"https://graph.facebook.com/v18.0/{campaign_id}/insights"
+            # time_rangeをURLエンコード（safe=''で全ての特殊文字をエンコード）
+            time_range_encoded = urllib.parse.quote(time_range_json, safe='')
+            # 他のパラメータをエンコード
+            other_params = urllib.parse.urlencode({
+                "access_token": current_user.meta_access_token,
+                "fields": "reach,impressions,clicks,spend,actions,action_values"
+            })
+            # time_rangeは既にエンコードされているので、直接追加
+            full_url = f"{base_url}?{other_params}&time_range={time_range_encoded}"
+            
+            logger.info(f"[Summary] Full URL (first 300 chars): {full_url[:300]}")
+            
+            response = await client.get(full_url)
+            
+            # ⚠️ 400エラーの場合はDBの集計値を使用（フォールバック）
+            if response.status_code == 400:
+                logger.warning(f"[Summary] ⚠️ Meta API returned 400 (no data for this period)")
+                logger.warning(f"[Summary] Response: {response.text}")
+                logger.info(f"[Summary] 🔄 Falling back to database aggregation")
+                
+                # DBから集計
+                db_records = db.query(Campaign).filter(
+                    Campaign.campaign_name == campaign_name,
+                    Campaign.user_id == current_user.id,
+                    Campaign.date >= start_date,
+                    Campaign.date <= end_date
+                ).all()
+                
+                logger.info(f"[Summary] 🗄️ DB records found: {len(db_records)}")
+                
+                if not db_records:
+                    logger.error(f"[Summary] ❌ No DB records found for fallback")
+                    raise HTTPException(
+                        status_code=404, 
+                        detail=f"No data found for campaign '{campaign_name}' in period {period} ({start_date} ~ {end_date})"
+                    )
+                
+                # 日付のリストを表示
+                db_dates = sorted(set(r.date for r in db_records))
+                logger.info(f"[Summary] 📆 DB dates used: {db_dates}")
+                
+                # 集計
+                total_impressions = sum(r.impressions or 0 for r in db_records)
+                total_clicks = sum(r.clicks or 0 for r in db_records)
+                total_spend = sum(r.cost or 0 for r in db_records)
+                total_conversions = sum(r.conversions or 0 for r in db_records)
+                total_conversion_value = sum(r.conversion_value or 0 for r in db_records)
+                total_engagements = sum(r.engagements or 0 for r in db_records)
+                total_link_clicks = sum(r.link_clicks or 0 for r in db_records)
+                total_landing_page_views = sum(r.landing_page_views or 0 for r in db_records)
+                
+                # ⚠️ リーチの計算修正：日次合計ではなく、最大値を使用
+                # （ユニークリーチの簡易的な推定）
+                db_reach = max((r.reach or 0 for r in db_records), default=0)
+                
+                logger.info(f"[Summary] 📊 DB Aggregation Results:")
+                logger.info(f"[Summary]   Reach (max): {db_reach}")
+                logger.info(f"[Summary]   Impressions: {total_impressions}")
+                logger.info(f"[Summary]   Clicks: {total_clicks}")
+                logger.info(f"[Summary]   Spend: ¥{total_spend:,.0f}")
+                logger.info(f"[Summary]   Conversions: {total_conversions}")
+                
+                # 指標計算
+                ctr = (total_clicks / total_impressions * 100) if total_impressions > 0 else 0
+                cpc = (total_spend / total_clicks) if total_clicks > 0 else 0
+                cpm = (total_spend / total_impressions * 1000) if total_impressions > 0 else 0
+                cvr = (total_conversions / total_clicks * 100) if total_clicks > 0 else 0
+                cpa = (total_spend / total_conversions) if total_conversions > 0 else 0
+                roas = (total_conversion_value / total_spend * 100) if total_spend > 0 else 0
+                frequency = (total_impressions / db_reach) if db_reach > 0 else 0
+                engagement_rate = (total_engagements / total_impressions * 100) if total_impressions > 0 else 0
+                
+                logger.info(f"[Summary] ✅ Returning DB aggregation results")
+                logger.info(f"{'='*60}\n")
+                
+                return {
+                    "campaign_name": campaign_name,
+                    "period": period,
+                    "start_date": start_date_str,
+                    "end_date": end_date_str,
+                    "data_source": "database",
+                    "reach": db_reach,
+                    "impressions": total_impressions,
+                    "clicks": total_clicks,
+                    "cost": total_spend,
+                    "conversions": total_conversions,
+                    "conversion_value": total_conversion_value,
+                    "engagements": total_engagements,
+                    "link_clicks": total_link_clicks,
+                    "landing_page_views": total_landing_page_views,
+                    "ctr": round(ctr, 2),
+                    "cpc": round(cpc, 2),
+                    "cpm": round(cpm, 2),
+                    "cvr": round(cvr, 2),
+                    "cpa": round(cpa, 2),
+                    "roas": round(roas, 2),
+                    "frequency": round(frequency, 2),
+                    "engagement_rate": round(engagement_rate, 2)
+                }
+            
+            # 200以外のその他のエラー
+            if response.status_code != 200:
+                error_detail = response.text
+                logger.error(f"[Summary] ❌ Failed to fetch insights: {response.status_code} - {error_detail}")
+                raise HTTPException(
+                    status_code=500, 
+                    detail=f"Failed to fetch data from Meta API: {error_detail[:500]}"
+                )
+            
+            response.raise_for_status()
+            data = response.json()
+        
+        logger.info(f"[Summary] Meta API response status: {response.status_code}")
+        logger.info(f"[Summary] Meta API response data: {data}")
+        
+        if not data.get("data") or len(data["data"]) == 0:
+            logger.warning(f"[Summary] ⚠️ No insights data returned (empty array)")
+            raise HTTPException(status_code=404, detail="No insights data available for this period")
+        
+        # 期間全体の集計データ（1件のみ）
+        insight = data["data"][0]
+        
+        logger.info(f"[Summary] ✅ Meta API returned 1 record for period {start_date_str} ~ {end_date_str}")
+        reach_value = insight.get('reach', 0)
+        logger.info(f"[Summary] Reach (unique): {reach_value}")
+        impressions_value = insight.get('impressions', 0)
+        logger.info(f"[Summary] Impressions: {impressions_value}")
+        clicks_value = insight.get('clicks', 0)
+        logger.info(f"[Summary] Clicks: {clicks_value}")
+        logger.info(f"[Summary] Spend: {insight.get('spend', 0)}")
+        
+        # Step 4: データを解析
+        reach = int(insight.get("reach", 0))
+        impressions = int(insight.get("impressions", 0))
+        clicks = int(insight.get("clicks", 0))
+        spend = float(insight.get("spend", 0))
+        
+        # アクション（コンバージョン）を解析
+        conversions = 0
+        conversion_value = 0.0
+        engagements = 0
+        link_clicks = int(insight.get("inline_link_clicks", 0) or insight.get("clicks", 0))
+        landing_page_views = 0
+        
+        if "actions" in insight:
+            for action in insight["actions"]:
+                action_type = action.get("action_type", "")
+                value = int(action.get("value", 0))
+                
+                if action_type in ["offsite_conversion.fb_pixel_purchase", "purchase", "offsite_conversion"]:
+                    conversions += value
+                elif action_type == "post_engagement":
+                    engagements += value
+                elif action_type == "landing_page_view":
+                    landing_page_views += value
+        
+        if "action_values" in insight:
+            for value_obj in insight["action_values"]:
+                action_type = value_obj.get("action_type", "")
+                if action_type in ["offsite_conversion.fb_pixel_purchase", "purchase", "offsite_conversion"]:
+                    conversion_value += float(value_obj.get("value", 0))
+        
+        logger.info(f"[Summary] Parsed actions - Conversions: {conversions}, Engagements: {engagements}, LP Views: {landing_page_views}")
+        
+        # Step 5: 計算指標
+        ctr = (clicks / impressions * 100) if impressions > 0 else 0
+        cpc = (spend / clicks) if clicks > 0 else 0
+        cpm = (spend / impressions * 1000) if impressions > 0 else 0
+        cvr = (conversions / clicks * 100) if clicks > 0 else 0
+        cpa = (spend / conversions) if conversions > 0 else 0
+        roas = (conversion_value / spend * 100) if spend > 0 else 0
+        frequency = (impressions / reach) if reach > 0 else 0
+        engagement_rate = (engagements / impressions * 100) if impressions > 0 else 0
+        
+        logger.info(f"[Summary] Calculated metrics - CTR: {ctr:.2f}%, CPC: {cpc:.2f}, Frequency: {frequency:.2f}")
+        logger.info(f"[Summary] ✅ Meta API unique reach: {reach}")
+        logger.info(f"[Summary] Impressions: {impressions}, Clicks: {clicks}, Spend: ¥{spend:.0f}")
+        logger.info(f"[Summary] Frequency: {frequency:.2f}, CTR: {ctr:.2f}%, CVR: {cvr:.2f}%")
+        
+        # Step 6: レスポンス
+        return {
+            "campaign_name": campaign_name,
+            "period": period,
+            "start_date": start_date_str,
+            "end_date": end_date_str,
+            "data_source": "meta_api",
+            
+            # 基本指標
+            "impressions": impressions,
+            "reach": reach,  # ✅ 期間全体のユニークリーチ
+            "clicks": clicks,
+            "cost": spend,
+            "conversions": conversions,
+            "conversion_value": conversion_value,
+            "engagements": engagements,
+            "link_clicks": link_clicks,
+            "landing_page_views": landing_page_views,
+            
+            # 計算指標
+            "ctr": round(ctr, 2),
+            "cpc": round(cpc, 2),
+            "cpm": round(cpm, 2),
+            "cvr": round(cvr, 2),
+            "cpa": round(cpa, 2),
+            "roas": round(roas, 2),
+            "frequency": round(frequency, 2),
+            "engagement_rate": round(engagement_rate, 2)
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[Summary] ❌ Error fetching from Meta API: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to fetch data from Meta API: {str(e)}")

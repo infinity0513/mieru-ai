@@ -2151,25 +2151,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
         totalUniqueReach = 0;
         console.log(`[Dashboard] 📊 No data available (${currentPeriod}):`, totalUniqueReach);
       } else {
-        // キャンペーンが「全体」の場合、各キャンペーンの期間別period_unique_reachを合計
+        // キャンペーンが「全体」の場合、各キャンペーンのperiod_unique_reachを合計
         if (selectedCampaign === 'all' || selectedCampaign === '全体' || !selectedCampaign) {
-          // 期間に応じたフィールド名を決定
-          const reachFieldName = currentPeriod === '7days' ? 'period_unique_reach_7days' :
-                                 currentPeriod === '30days' ? 'period_unique_reach_30days' :
-                                 'period_unique_reach_all';
-          
-          // 各キャンペーンの期間別period_unique_reachを合計（同じキャンペーンの複数日付データではperiod_unique_reachは同じ値のはずなので、キャンペーンごとに1回だけカウント）
+          // 各キャンペーンのperiod_unique_reachを合計（同じキャンペーンの複数日付データではperiod_unique_reachは同じ値のはずなので、キャンペーンごとに1回だけカウント）
           const campaignReachMap = new Map<string, number>();
           for (const record of current) {
             const campaignName = record.campaign_name || '';
-            // 期間に応じたフィールドから値を取得
-            const reachValue = currentPeriod === '7days' ? record.period_unique_reach_7days :
-                              currentPeriod === '30days' ? record.period_unique_reach_30days :
-                              record.period_unique_reach_all || record.period_unique_reach;  // 後方互換性
-            
-            if (campaignName && reachValue && reachValue > 0) {
+            if (campaignName && record.period_unique_reach && record.period_unique_reach > 0) {
               if (!campaignReachMap.has(campaignName)) {
-                campaignReachMap.set(campaignName, reachValue);
+                campaignReachMap.set(campaignName, record.period_unique_reach);
               }
             }
           }
@@ -2181,9 +2171,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
             totalUniqueReach = totalReach;
           }
           
-          console.log(`[Dashboard] 📊 Using ${reachFieldName} from DB (${currentPeriod}, all campaigns):`, totalUniqueReach, 'campaigns:', Array.from(campaignReachMap.keys()));
+          console.log(`[Dashboard] 📊 Using period_unique_reach from DB (${currentPeriod}, all campaigns):`, totalUniqueReach, 'campaigns:', Array.from(campaignReachMap.keys()));
         } else {
-          // 特定のキャンペーンが選択されている場合、そのキャンペーンの期間別period_unique_reachを取得
+          // 特定のキャンペーンが選択されている場合、そのキャンペーンのperiod_unique_reachを取得
           // キャンペーンで検索した結果のみを使用（currentは既にキャンペーンレベルのデータのみで、選択したキャンペーンでフィルタリング済み）
           // 同じキャンペーンの複数日付データではperiod_unique_reachは同じ値のはずなので、最初に見つかった値を使用
           // ただし、データの不整合を考慮して最大値を使用
@@ -2195,19 +2185,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
             ? current.filter(d => d.campaign_name === campaignNameParam)
             : current;
           
-          // 期間に応じたフィールドから値を取得
           for (const record of campaignFilteredData) {
-            const reachValue = currentPeriod === '7days' ? record.period_unique_reach_7days :
-                              currentPeriod === '30days' ? record.period_unique_reach_30days :
-                              record.period_unique_reach_all || record.period_unique_reach;  // 後方互換性
-            
-            if (reachValue && reachValue > 0) {
-              reachValues.push(reachValue);
+            if (record.period_unique_reach && record.period_unique_reach > 0) {
+              reachValues.push(record.period_unique_reach);
               reachRecords.push({
                 campaign: record.campaign_name || '',
                 date: record.date || '',
                 reach: record.reach || 0,
-                period_unique_reach: reachValue
+                period_unique_reach: record.period_unique_reach
               });
             }
           }
@@ -2663,17 +2648,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
           totalUniqueReach = 0;
           console.log(`[Dashboard] ✅ No data available for ${s.campaign_name} (${currentPeriod}):`, totalUniqueReach);
         } else {
-          // データベースから集計したデータ（dateData配列）から直接期間別period_unique_reachを取得
+          // データベースから集計したデータ（dateData配列）から直接period_unique_reachを取得
           // 同じキャンペーンの複数日付データではperiod_unique_reachは同じ値のはずだが、データの不整合を考慮して最大値を使用
           const reachValues: number[] = [];
           for (const record of dateData) {
-            // 期間に応じたフィールドから値を取得
-            const reachValue = currentPeriod === '7days' ? record.period_unique_reach_7days :
-                              currentPeriod === '30days' ? record.period_unique_reach_30days :
-                              record.period_unique_reach_all || record.period_unique_reach;  // 後方互換性
-            
-            if (reachValue && reachValue > 0) {
-              reachValues.push(reachValue);
+            if (record.period_unique_reach && record.period_unique_reach > 0) {
+              reachValues.push(record.period_unique_reach);
             }
           }
           

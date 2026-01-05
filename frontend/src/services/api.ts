@@ -3,6 +3,32 @@ import { User, CampaignData, AIAnalysisResult, ChatMessage, AdCopyParams, Genera
 import { MOCK_CAMPAIGNS, MOCK_ANALYSIS_RESULT } from '../constants';
 import OpenAI from 'openai';
 
+// 期間別サマリーの型定義
+export interface CampaignSummary {
+  campaign_name: string;
+  period: '7days' | '30days' | 'all';
+  start_date: string;
+  end_date: string;
+  data_source: 'meta_api';
+  reach: number;
+  impressions: number;
+  clicks: number;
+  cost: number;
+  conversions: number;
+  conversion_value: number;
+  engagements: number;
+  link_clicks: number;
+  landing_page_views: number;
+  ctr: number;
+  cpc: number;
+  cpm: number;
+  cvr: number;
+  cpa: number;
+  roas: number;
+  frequency: number;
+  engagement_rate: number;
+}
+
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 // Initialize OpenAI API Client (lazy initialization)
@@ -1270,7 +1296,10 @@ class ApiClient {
           cvr: Number(c.cvr || 0),
           // Additional engagement metrics
           reach: Number(c.reach || 0),
-          period_unique_reach: Number(c.period_unique_reach || 0),  // 期間全体のユニークリーチ数
+          period_unique_reach: Number(c.period_unique_reach || 0),  // 後方互換性（全期間の値）
+          period_unique_reach_7days: Number(c.period_unique_reach_7days || 0),  // 7日間のユニークリーチ数
+          period_unique_reach_30days: Number(c.period_unique_reach_30days || 0),  // 30日間のユニークリーチ数
+          period_unique_reach_all: Number(c.period_unique_reach_all || 0),  // 全期間のユニークリーチ数
           engagements: Number(c.engagements || 0),
           link_clicks: Number(c.link_clicks || 0),
           landing_page_views: Number(c.landing_page_views || 0)
@@ -1340,30 +1369,7 @@ class ApiClient {
   async getCampaignSummaryByPeriod(params: {
     campaign_name: string;
     period: '7days' | '30days' | 'all';
-  }): Promise<{
-    campaign_name: string;
-    period: string;
-    start_date: string;
-    end_date: string;
-    data_source: string;
-    impressions: number;
-    reach: number;
-    clicks: number;
-    cost: number;
-    conversions: number;
-    conversion_value: number;
-    engagements: number;
-    link_clicks: number;
-    landing_page_views: number;
-    ctr: number;
-    cpc: number;
-    cpm: number;
-    cvr: number;
-    cpa: number;
-    roas: number;
-    frequency: number;
-    engagement_rate: number;
-  }> {
+  }): Promise<CampaignSummary> {
     const token = this.getToken();
     if (!token) {
       console.warn("[ApiClient] No token available for getCampaignSummaryByPeriod");
@@ -3661,3 +3667,11 @@ const apiClient = new ApiClient(API_BASE_URL);
 
 // Export Api object
 export const Api = apiClient;
+
+// 期間別サマリー取得関数（エクスポート）
+export const getCampaignSummary = async (params: {
+  campaign_name: string;
+  period: '7days' | '30days' | 'all';
+}): Promise<CampaignSummary> => {
+  return await apiClient.getCampaignSummaryByPeriod(params);
+};

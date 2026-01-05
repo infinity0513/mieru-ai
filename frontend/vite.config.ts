@@ -28,6 +28,7 @@ export default defineConfig(({ mode }) => {
       server: {
         port: 3000,
         host: '0.0.0.0',
+        strictPort: true, // ポート3000で確実に起動（使用中の場合はエラー）
       },
       plugins: [react()],
       define: {

@@ -37,7 +37,11 @@ class Campaign(Base):
     conversions = Column(Integer, default=0)
     conversion_value = Column(Numeric(10, 2), default=0)
     reach = Column(Integer, default=0)  # 日次のリーチ数
-    period_unique_reach = Column(Integer, default=0)  # 期間全体のユニークリーチ数
+    period_unique_reach = Column(Integer, default=0)  # 全期間のユニークリーチ数（後方互換性のため残す）
+    # 期間別のユニークリーチ数（マイグレーション実行後に有効化）
+    period_unique_reach_7days = Column(Integer, default=0, nullable=True)  # 7日間のユニークリーチ数
+    period_unique_reach_30days = Column(Integer, default=0, nullable=True)  # 30日間のユニークリーチ数
+    period_unique_reach_all = Column(Integer, default=0, nullable=True)  # 全期間のユニークリーチ数
     engagements = Column(Integer, default=0)
     link_clicks = Column(Integer, default=0)
     landing_page_views = Column(Integer, default=0)

@@ -47,7 +47,10 @@ export interface CampaignData {
   cvr?: number;
   // Optional fields for future expansion
   reach?: number;
-  period_unique_reach?: number;  // 期間全体のユニークリーチ数
+  period_unique_reach?: number;  // 後方互換性のため残す（全期間の値）
+  period_unique_reach_7days?: number;  // 7日間のユニークリーチ数
+  period_unique_reach_30days?: number;  // 30日間のユニークリーチ数
+  period_unique_reach_all?: number;  // 全期間のユニークリーチ数
   frequency?: number;
   engagements?: number;
   engagement_rate?: number;
