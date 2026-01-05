@@ -94,6 +94,14 @@ const debugLogin = (_phase: string, _data: any = {}) => {
 
 class ApiClient {
   private baseURL: string;
+  
+  // JST基準で日付文字列を生成（YYYY-MM-DD形式）
+  private formatDateJST(date: Date): string {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
   private cache: Map<string, { data: any; timestamp: number }>;
   private readonly CACHE_TTL = 30 * 60 * 1000; // 30分（5分から延長）
 
@@ -1905,7 +1913,7 @@ class ApiClient {
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    const dateStr = startDate && endDate ? `${startDate}_${endDate}` : new Date().toISOString().split('T')[0];
+    const dateStr = startDate && endDate ? `${startDate}_${endDate}` : this.formatDateJST(new Date());
     a.download = `meta_ad_report_${dateStr}.xlsx`;
     document.body.appendChild(a);
     a.click();
@@ -1932,7 +1940,7 @@ class ApiClient {
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    const dateStr = startDate && endDate ? `${startDate}_${endDate}` : new Date().toISOString().split('T')[0];
+    const dateStr = startDate && endDate ? `${startDate}_${endDate}` : this.formatDateJST(new Date());
     a.download = `campaigns_report_${dateStr}.csv`;
     document.body.appendChild(a);
     a.click();
@@ -2182,10 +2190,10 @@ ${bottomCampaigns.map(c => `- ${c.name}: ROAS ${c.roas.toFixed(0)}%, CPA ¥${c.c
       return "データがロードされていません。「データ管理」からデータをアップロードしてください。";
     }
 
-    // 日付範囲を取得
+    // 日付範囲を取得（JST基準）
     const dates = campaigns.map(c => new Date(c.date)).sort((a, b) => a.getTime() - b.getTime());
-    const startDate = dates.length > 0 ? dates[0].toISOString().split('T')[0] : '';
-    const endDate = dates.length > 0 ? dates[dates.length - 1].toISOString().split('T')[0] : '';
+    const startDate = dates.length > 0 ? this.formatDateJST(dates[0]) : '';
+    const endDate = dates.length > 0 ? this.formatDateJST(dates[dates.length - 1]) : '';
 
     // 基本指標を計算（16項目すべて）
     const totalCost = campaigns.reduce((sum, c) => sum + (c.cost || 0), 0);

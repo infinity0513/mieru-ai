@@ -39,12 +39,19 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
     db.add(upload)
     db.flush()  # upload.idを取得するためにflush
     
-    # 現在のUTC時刻を取得してログ出力（デバッグ用）
-    current_utc = datetime.utcnow()
-    print(f"[Meta API] Current UTC time: {current_utc.strftime('%Y-%m-%d %H:%M:%S')}")
+    # JST（日本時間）で昨日を計算
+    from datetime import timezone
+    jst = timezone(timedelta(hours=9))  # JST = UTC+9
+    current_jst = datetime.now(jst)
+    today_jst = current_jst.date()
+    yesterday = today_jst - timedelta(days=1)
+    
+    print(f"[Meta API] Current JST time: {current_jst.strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"[Meta API] Today (JST): {today_jst}")
+    print(f"[Meta API] Yesterday (JST): {yesterday}")
     
     # 昨日までのデータを取得（未来の日付を指定すると400エラーになるため）
-    until_dt = current_utc - timedelta(days=1)
+    until_dt = yesterday
     until = until_dt.strftime('%Y-%m-%d')
     
     # 取得期間の決定
@@ -67,8 +74,8 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
         print(f"[Meta API] Date validation: since={since} (year={since_dt.year}), until={until} (year={until_dt.year})")
         
         # 未来の日付が含まれている場合は警告
-        if since_dt > current_utc or until_dt > current_utc:
-            print(f"[Meta API] WARNING: Date range includes future dates! Current UTC: {current_utc.strftime('%Y-%m-%d')}, Since: {since}, Until: {until}")
+        if since_dt > today_jst or until_dt > today_jst:
+            print(f"[Meta API] WARNING: Date range includes future dates! Today (JST): {today_jst}, Since: {since}, Until: {until}")
     
     try:
         async with httpx.AsyncClient() as client:
@@ -133,8 +140,8 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                 current_until = datetime.strptime(until, '%Y-%m-%d')
                 print(f"[Meta API] Full period sync: Using pre-calculated date range (days=None)")
             else:
-                # 部分取得: 昨日までのデータを取得（UTCを使用して未来の日付を避ける）
-                current_until = datetime.utcnow() - timedelta(days=1)
+                # 部分取得: 昨日までのデータを取得（JSTを使用して未来の日付を避ける）
+                current_until = yesterday
                 current_since = datetime.strptime(since, '%Y-%m-%d')
             
             # Meta APIの期間制限を確認
@@ -393,6 +400,14 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
             # 全期間: 既存のtime_rangeを使用
             # time_range_encodedは既に計算済み
             
+            # time_rangeの情報をログ出力（全期間の場合）
+            print(f"[Meta API] 🔍 DEBUG: Time range for 'all' period:")
+            print(f"[Meta API]   time_range_dict: {time_range_dict}")
+            print(f"[Meta API]   time_range_json: {time_range_json}")
+            print(f"[Meta API]   time_range_encoded: {time_range_encoded}")
+            print(f"[Meta API]   start_date_str: {start_date_str}")
+            print(f"[Meta API]   end_date_str: {end_date_str}")
+            
             # 期間別のマップとtime_rangeのペア
             period_configs = [
                 ("7days", campaign_period_reach_7days_map, time_range_7days_encoded),
@@ -415,9 +430,18 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                     batch_requests = []
                     for campaign in batch_campaigns:
                         campaign_id = campaign.get('id')
+                        campaign_name_check = campaign.get('name', 'Unknown')
                         # 期間別のユニークリーチ数を取得（time_incrementなし）
                         period_reach_fields = "campaign_id,campaign_name,reach"
                         relative_url = f"{campaign_id}/insights?fields={period_reach_fields}&time_range={period_time_range_encoded}&level=campaign&limit=100"
+                        
+                        # 「ハイブリッドマーケティング」キャンペーンの場合、リクエストURLをログ出力
+                        if 'ハイブリッドマーケティング' in campaign_name_check and period_name == 'all':
+                            print(f"[Meta API] 🔍 DEBUG: Request URL for {campaign_name_check} ({period_name}):")
+                            print(f"[Meta API]   Campaign ID: {campaign_id}")
+                            print(f"[Meta API]   Time Range Encoded: {period_time_range_encoded}")
+                            print(f"[Meta API]   Relative URL: {relative_url}")
+                        
                         batch_requests.append({
                             "method": "GET",
                             "relative_url": relative_url
@@ -445,11 +469,26 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                                     
                                     if len(period_insights) > 0:
                                         # 期間全体のデータは1件のみ（time_incrementなしの場合）
-                                        period_reach = safe_int(period_insights[0].get('reach'), 0)
+                                        insight_data = period_insights[0]
+                                        period_reach = safe_int(insight_data.get('reach'), 0)
                                         period_map[campaign_name] = period_reach
                                         print(f"[Meta API] {period_name} unique reach for {campaign_name}: {period_reach:,}")
+                                        
+                                        # 「ハイブリッドマーケティング」キャンペーンの場合、レスポンスの全データをログ出力
+                                        if 'ハイブリッドマーケティング' in campaign_name and period_name == 'all':
+                                            print(f"[Meta API] 🔍 DEBUG: Full response data for {campaign_name} ({period_name}):")
+                                            print(f"[Meta API]   Raw insight_data: {json.dumps(insight_data, indent=2, ensure_ascii=False)}")
+                                            print(f"[Meta API]   Reach value (raw): {insight_data.get('reach')}")
+                                            print(f"[Meta API]   Reach value (parsed): {period_reach:,}")
+                                            print(f"[Meta API]   Campaign ID: {insight_data.get('campaign_id')}")
+                                            print(f"[Meta API]   Campaign Name: {insight_data.get('campaign_name')}")
+                                            print(f"[Meta API]   All keys in insight_data: {list(insight_data.keys())}")
                                     else:
                                         print(f"[Meta API] ⚠️ No {period_name} reach data for {campaign_name}")
+                                        # 「ハイブリッドマーケティング」キャンペーンの場合、レスポンス全体をログ出力
+                                        if 'ハイブリッドマーケティング' in campaign_name and period_name == 'all':
+                                            print(f"[Meta API] 🔍 DEBUG: Empty response for {campaign_name} ({period_name}):")
+                                            print(f"[Meta API]   Response body: {json.dumps(item_body, indent=2, ensure_ascii=False)}")
                                 except json.JSONDecodeError as e:
                                     print(f"[Meta API] Error parsing {period_name} reach response for {campaign_name}: {str(e)}")
                             else:
@@ -664,6 +703,14 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
             # 全期間: 既存のtime_rangeを使用
             time_range_encoded = urllib.parse.quote(time_range_json, safe='')
             
+            # time_rangeの情報をログ出力（全期間の場合）
+            print(f"[Meta API] 🔍 DEBUG: Time range for 'all' period (second location):")
+            print(f"[Meta API]   time_range_dict: {time_range_dict}")
+            print(f"[Meta API]   time_range_json: {time_range_json}")
+            print(f"[Meta API]   time_range_encoded: {time_range_encoded}")
+            print(f"[Meta API]   start_date_str: {start_date_str}")
+            print(f"[Meta API]   end_date_str: {end_date_str}")
+            
             # 期間別のマップとtime_rangeのペア
             period_configs = [
                 ("7days", campaign_period_reach_7days_map, time_range_7days_encoded),
@@ -694,6 +741,14 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                             period_reach_fields = "campaign_id,campaign_name,reach"
                             # time_incrementを指定しないことで、期間全体の集計データ（1件）を取得
                             relative_url = f"{campaign_id}/insights?fields={period_reach_fields}&time_range={period_time_range_encoded}&level=campaign&limit=100"
+                            
+                            # 「ハイブリッドマーケティング」キャンペーンの場合、リクエストURLをログ出力
+                            if 'ハイブリッドマーケティング' in campaign_name and period_name == 'all':
+                                print(f"[Meta API] 🔍 DEBUG: Request URL for '{campaign_name}' ({period_name}):")
+                                print(f"[Meta API]   Campaign ID: {campaign_id}")
+                                print(f"[Meta API]   Time Range Encoded: {period_time_range_encoded}")
+                                print(f"[Meta API]   Relative URL: {relative_url}")
+                            
                             batch_requests.append({
                                 "method": "GET",
                                 "relative_url": relative_url
@@ -723,8 +778,22 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                                             period_reach = safe_int(insight_data.get('reach', 0), 0)
                                             period_map[campaign_name] = period_reach
                                             print(f"[Meta API] {period_name} unique reach for '{campaign_name}': {period_reach:,}")
+                                            
+                                            # 「ハイブリッドマーケティング」キャンペーンの場合、レスポンスの全データをログ出力
+                                            if 'ハイブリッドマーケティング' in campaign_name and period_name == 'all':
+                                                print(f"[Meta API] 🔍 DEBUG: Full response data for '{campaign_name}' ({period_name}):")
+                                                print(f"[Meta API]   Raw insight_data: {json.dumps(insight_data, indent=2, ensure_ascii=False)}")
+                                                print(f"[Meta API]   Reach value (raw): {insight_data.get('reach')}")
+                                                print(f"[Meta API]   Reach value (parsed): {period_reach:,}")
+                                                print(f"[Meta API]   Campaign ID: {insight_data.get('campaign_id')}")
+                                                print(f"[Meta API]   Campaign Name: {insight_data.get('campaign_name')}")
+                                                print(f"[Meta API]   All keys in insight_data: {list(insight_data.keys())}")
                                         else:
                                             print(f"[Meta API] ⚠️ No {period_name} reach data for '{campaign_name}' (empty data array)")
+                                            # 「ハイブリッドマーケティング」キャンペーンの場合、レスポンス全体をログ出力
+                                            if 'ハイブリッドマーケティング' in campaign_name and period_name == 'all':
+                                                print(f"[Meta API] 🔍 DEBUG: Empty response for '{campaign_name}' ({period_name}):")
+                                                print(f"[Meta API]   Response body: {json.dumps(item_body, indent=2, ensure_ascii=False)}")
                                     except json.JSONDecodeError as e:
                                         print(f"[Meta API] Error parsing {period_name} reach response for {campaign_name}: {str(e)}")
                                         print(f"[Meta API] Response body: {batch_item.get('body', '{}')}")
@@ -1691,12 +1760,18 @@ async def get_meta_insights(
         )
     
     # デフォルトの日付範囲（最近37ヶ月間、未来の日付を避ける）
+    # JST（日本時間）で昨日を計算
+    from datetime import timezone
+    jst = timezone(timedelta(hours=9))  # JST = UTC+9
+    today_jst = datetime.now(jst).date()
+    yesterday = today_jst - timedelta(days=1)
+    
     if not since:
-        until_dt = datetime.utcnow() - timedelta(days=1)
+        until_dt = yesterday
         since_dt = until_dt - timedelta(days=1095)  # 37ヶ月
         since = since_dt.strftime('%Y-%m-%d')
     if not until:
-        until = (datetime.utcnow() - timedelta(days=1)).strftime('%Y-%m-%d')
+        until = yesterday.strftime('%Y-%m-%d')
     
     # Meta APIの期間制限を確認
     campaign_fields = "campaign_id,campaign_name,date_start,spend,impressions,clicks,inline_link_clicks,reach,actions,conversions,action_values,frequency"
@@ -1721,8 +1796,8 @@ async def get_meta_insights(
             print(f"[Meta API] Date range limited to {max_days} days: {since} to {until}")
     except Exception as e:
         print(f"[Meta API] Error parsing dates: {e}")
-        # デフォルトで最近37ヶ月間
-        until_dt = datetime.utcnow() - timedelta(days=1)
+        # デフォルトで最近37ヶ月間（JST基準）
+        until_dt = yesterday
         since_dt = until_dt - timedelta(days=1095)  # 37ヶ月
         since = since_dt.strftime('%Y-%m-%d')
         until = until_dt.strftime('%Y-%m-%d')

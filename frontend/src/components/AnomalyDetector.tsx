@@ -28,6 +28,13 @@ export const AnomalyDetector: React.FC<AnomalyDetectorProps> = ({
   dateRange: propDateRange,
   searchQuery: propSearchQuery = '' 
 }) => {
+  // JST基準で日付文字列を生成（YYYY-MM-DD形式）
+  const formatDateJST = (date: Date): string => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [selectedIncident, setSelectedIncident] = useState<Incident | null>(null);
   const [analysisLoading, setAnalysisLoading] = useState(false);
@@ -76,23 +83,22 @@ export const AnomalyDetector: React.FC<AnomalyDetectorProps> = ({
     } catch (e) {
       // 無視
     }
-    // デフォルト値（昨日を基準に7日間）
+    // デフォルト値（昨日を基準に7日間）- JST基準
     const now = new Date();
-    const yesterday = new Date(now);
-    yesterday.setDate(now.getDate() - 1);
-    yesterday.setHours(23, 59, 59, 999);
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const yesterday = new Date(today);
+    yesterday.setDate(today.getDate() - 1);
 
     const startDate = new Date(yesterday);
     startDate.setDate(yesterday.getDate() - 6); // 昨日から6日前
-    startDate.setHours(0, 0, 0, 0);
 
     const defaultRange = {
-      start: startDate.toISOString().split('T')[0],
-      end: yesterday.toISOString().split('T')[0],
+      start: formatDateJST(startDate),
+      end: formatDateJST(yesterday),
     };
 
     console.log('[AnomalyDetector初期化] デフォルト値:', defaultRange);
-    console.log('[AnomalyDetector初期化] 実際の今日:', now.toISOString().split('T')[0]);
+    console.log('[AnomalyDetector初期化] 実際の今日:', formatDateJST(today));
     return defaultRange;
   });
   
@@ -551,10 +557,10 @@ export const AnomalyDetector: React.FC<AnomalyDetectorProps> = ({
     if (!dateRange || data.length === 0) return null;
     
     const now = new Date();
-    const yesterday = new Date(now);
-    yesterday.setDate(now.getDate() - 1); // 昨日
-    yesterday.setHours(0, 0, 0, 0);
-    const yesterdayStr = yesterday.toISOString().split('T')[0];
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const yesterday = new Date(today);
+    yesterday.setDate(today.getDate() - 1);
+    const yesterdayStr = formatDateJST(yesterday);
     
     // 全期間チェック（データの最小日から最大日まで）
     const allData = [...(data || []), ...(propData || [])];
@@ -562,8 +568,8 @@ export const AnomalyDetector: React.FC<AnomalyDetectorProps> = ({
       const uniqueDates = Array.from(new Set(allData.map(d => d.date)));
       const minDate = new Date(Math.min(...uniqueDates.map(d => new Date(d).getTime())));
       const maxDate = new Date(Math.max(...uniqueDates.map(d => new Date(d).getTime())));
-      const minDateStr = minDate.toISOString().split('T')[0];
-      const maxDateStr = maxDate.toISOString().split('T')[0];
+      const minDateStr = formatDateJST(minDate);
+      const maxDateStr = formatDateJST(maxDate);
       
       if (dateRange.start === minDateStr && dateRange.end === maxDateStr) {
         return 'all';
@@ -573,7 +579,7 @@ export const AnomalyDetector: React.FC<AnomalyDetectorProps> = ({
     // 7日間チェック（ダッシュボードと同じ: 昨日から6日前まで）
     const sevenDaysAgo = new Date(yesterday);
     sevenDaysAgo.setDate(yesterday.getDate() - (7 - 1));
-    const sevenDaysAgoStr = sevenDaysAgo.toISOString().split('T')[0];
+    const sevenDaysAgoStr = formatDateJST(sevenDaysAgo);
     
     if (dateRange.start === sevenDaysAgoStr && dateRange.end === yesterdayStr) {
       return 7;
@@ -582,7 +588,7 @@ export const AnomalyDetector: React.FC<AnomalyDetectorProps> = ({
     // 30日間チェック（ダッシュボードと同じ: 昨日から29日前まで）
     const thirtyDaysAgo = new Date(yesterday);
     thirtyDaysAgo.setDate(yesterday.getDate() - (30 - 1));
-    const thirtyDaysAgoStr = thirtyDaysAgo.toISOString().split('T')[0];
+    const thirtyDaysAgoStr = formatDateJST(thirtyDaysAgo);
     
     if (dateRange.start === thirtyDaysAgoStr && dateRange.end === yesterdayStr) {
       return 30;
@@ -630,35 +636,37 @@ export const AnomalyDetector: React.FC<AnomalyDetectorProps> = ({
         const maxDate = new Date(Math.max(...uniqueDates.map(d => new Date(d).getTime())));
         
         newRange = {
-          start: minDate.toISOString().split('T')[0],
-          end: maxDate.toISOString().split('T')[0],
+          start: formatDateJST(minDate),
+          end: formatDateJST(maxDate),
         };
       } else {
-        // データがない場合はデフォルト値を使用
-        const today = new Date();
-        const endDate = new Date(today);
-        endDate.setDate(today.getDate() - 1);
+        // データがない場合はデフォルト値を使用 - JST基準
+        const now = new Date();
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const yesterday = new Date(today);
+        yesterday.setDate(today.getDate() - 1);
         newRange = {
-          start: new Date(2020, 0, 1).toISOString().split('T')[0],
-          end: endDate.toISOString().split('T')[0],
+          start: formatDateJST(new Date(2020, 0, 1)),
+          end: formatDateJST(yesterday),
         };
       }
     } else {
-      // 7日間 or 30日間（昨日まで）
-      const today = new Date();
+      // 7日間 or 30日間（昨日まで）- JST基準
+      const now = new Date();
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
       
       // 昨日の日付（終了日）
-      const endDate = new Date(today);
-      endDate.setDate(today.getDate() - 1);
+      const yesterday = new Date(today);
+      yesterday.setDate(today.getDate() - 1);
       
       // 開始日 = 昨日 - (days - 1)
       // 例: 7日間の場合、昨日から6日前が開始日
-      const startDate = new Date(endDate);
-      startDate.setDate(endDate.getDate() - (days - 1));
+      const startDate = new Date(yesterday);
+      startDate.setDate(yesterday.getDate() - (days - 1));
       
       newRange = {
-        start: startDate.toISOString().split('T')[0],
-        end: endDate.toISOString().split('T')[0],
+        start: formatDateJST(startDate),
+        end: formatDateJST(yesterday),
       };
     }
 

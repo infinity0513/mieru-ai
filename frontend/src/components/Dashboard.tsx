@@ -411,6 +411,14 @@ const CampaignDetailModal = ({ campaignName, allData, onClose }: { campaignName:
 
 export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
   const { isDark } = useContext(ThemeContext);
+  
+  // JST基準で日付文字列を生成（YYYY-MM-DD形式）
+  const formatDateJST = (date: Date): string => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
 
   // State for API data
   const [apiData, setApiData] = useState<CampaignData[]>([]); // 日付範囲でフィルタリングされたデータ（表示用）
@@ -458,6 +466,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
   const prevPropDataRef = React.useRef<CampaignData[] | null>(null);
   // summaryDataが取得された時のキャンペーン名を保存（不一致チェック用）
   const summaryDataCampaignRef = React.useRef<string | null>(null);
+  
+  // デバッグログの重複を防ぐためのref
+  const lastKpiDataLogRef = React.useRef<string>('');
+  
+  // periodSummary取得の重複を防ぐためのref
+  const lastPeriodSummaryParamsRef = React.useRef<{campaign: string | null, period: string | null} | null>(null);
 
   // 選択された期間を保持（7日、30日、全期間）
   const [selectedPeriod, setSelectedPeriod] = useState<number | 'all' | null>(() => {
@@ -497,22 +511,23 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
       const maxDate = new Date(Math.max(...uniqueDates.map(d => new Date(d).getTime())));
       
       return {
-        start: minDate.toISOString().split('T')[0],
-        end: maxDate.toISOString().split('T')[0],
+        start: formatDateJST(minDate),
+        end: formatDateJST(maxDate),
       };
     }
 
-    // データがない場合は7日間（昨日まで）
-    const today = new Date();
-    const endDate = new Date(today);
-    endDate.setDate(today.getDate() - 1);
+    // データがない場合は7日間（昨日まで）- JST基準
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const yesterday = new Date(today);
+    yesterday.setDate(today.getDate() - 1);
     
-    const startDate = new Date(endDate);
-    startDate.setDate(endDate.getDate() - 6); // 昨日から6日前
+    const startDate = new Date(yesterday);
+    startDate.setDate(yesterday.getDate() - 6); // 昨日から6日前
 
     return {
-      start: startDate.toISOString().split('T')[0],
-      end: endDate.toISOString().split('T')[0],
+      start: formatDateJST(startDate),
+      end: formatDateJST(yesterday),
     };
   });
   const [selectedCampaign, setSelectedCampaign] = useState<string | null>(() => {
@@ -945,24 +960,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
       
       setLoading(true);
       
-      // 期間別サマリーデータを取得
-      if (selectedCampaign && selectedCampaign !== 'all' && selectedCampaign !== '全体') {
-        const period = selectedPeriod === '7days' ? '7days' : selectedPeriod === '30days' ? '30days' : selectedPeriod === 'all' || selectedPeriod === null ? 'all' : 'all';
-        try {
-          console.log(`[Dashboard] 📡 Loading period summary: ${selectedCampaign} ${period}`);
-          const summary = await Api.getCampaignSummaryByPeriod({
-            campaign_name: selectedCampaign,
-            period: period as '7days' | '30days' | 'all'
-          });
-          console.log(`[Dashboard] ✅ Period summary loaded:`, summary);
-          setPeriodSummary(summary);
-        } catch (error) {
-          console.error(`[Dashboard] ❌ Failed to load period summary:`, error);
-          setPeriodSummary(null);
-        }
-      } else {
-        setPeriodSummary(null);
-      }
+      // 期間別サマリーデータの取得はuseEffectで行うため、ここでは削除
+      // (1447行目のuseEffectで統一して取得)
       
       console.log('[Dashboard] ===== Loading data =====');
       console.log('[Dashboard] Loading data with params:', {
@@ -1448,7 +1447,18 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     
     const loadPeriodSummary = async () => {
       if (selectedCampaign && selectedCampaign !== 'all' && selectedCampaign !== '全体') {
-        const period = selectedPeriod === '7days' ? '7days' : selectedPeriod === '30days' ? '30days' : selectedPeriod === 'all' || selectedPeriod === null ? 'all' : 'all';
+        const period = selectedPeriod === 7 ? '7days' : selectedPeriod === 30 ? '30days' : selectedPeriod === 'all' || selectedPeriod === null ? 'all' : 'all';
+        
+        // 前回と同じパラメータの場合はスキップ（重複呼び出しを防ぐ）
+        const lastParams = lastPeriodSummaryParamsRef.current;
+        if (lastParams && lastParams.campaign === selectedCampaign && lastParams.period === period) {
+          console.log(`[Dashboard] ⏭️ Skipping period summary load (same params): ${selectedCampaign} ${period}`);
+          return;
+        }
+        
+        // パラメータを記録
+        lastPeriodSummaryParamsRef.current = { campaign: selectedCampaign, period };
+        
         try {
           console.log(`[Dashboard] 📡 Loading period summary (useEffect): ${selectedCampaign} ${period}`);
           const summary = await Api.getCampaignSummaryByPeriod({
@@ -1460,10 +1470,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
         } catch (error) {
           console.error(`[Dashboard] ❌ Failed to load period summary (useEffect):`, error);
           setPeriodSummary(null);
+          // エラー時はパラメータをリセットして再試行可能にする
+          lastPeriodSummaryParamsRef.current = null;
         }
       } else {
         // キャンペーンが選択されていない場合はnullにする
         setPeriodSummary(null);
+        lastPeriodSummaryParamsRef.current = null;
       }
     };
     
@@ -1756,8 +1769,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
       const minDate = new Date(Math.min(...dates)); // Use actual minimum date in data
       
       const initialRange = {
-        start: minDate.toISOString().split('T')[0],
-        end: maxDate.toISOString().split('T')[0]
+        start: formatDateJST(minDate),
+        end: formatDateJST(maxDate)
       };
       setDateRange(initialRange);
       setIsInitialLoad(false); // 初回ロード完了後は自動更新しない
@@ -2023,7 +2036,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     
     // 期間選択（7日/30日/全期間）の場合は、period_unique_reachフィールドから直接取得
     // 期間指定（日別データ）の場合は、日付範囲でフィルタリング
-    const currentPeriod = selectedPeriod === '7days' ? '7days' : selectedPeriod === '30days' ? '30days' : selectedPeriod === 'all' || selectedPeriod === null ? 'all' : null;
+    const currentPeriod = selectedPeriod === 7 ? '7days' : selectedPeriod === 30 ? '30days' : selectedPeriod === 'all' || selectedPeriod === null ? 'all' : null;
     
     let reachFilteredData: CampaignData[] = [];
     
@@ -2031,23 +2044,29 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
       // 期間選択（7日/30日/全期間）の場合
       // period_unique_reachはその期間全体の値なので、日付範囲でフィルタリングせず、全データから取得
       // ただし、期間に応じた適切なデータを取得するため、期間に応じた日付範囲を計算
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const todayStr = today.toISOString().split('T')[0];
+      // JST（日本時間）基準で計算
+      const now = new Date();
+      // JST基準で今日の日付を取得（ローカル時刻を使用）
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      // 昨日を計算
+      const yesterday = new Date(today);
+      yesterday.setDate(today.getDate() - 1);
+      
+      const yesterdayStr = formatDateJST(yesterday);
       
       let periodStartDate: string;
-      let periodEndDate: string = todayStr;
+      let periodEndDate: string = yesterdayStr;
       
       if (currentPeriod === '7days') {
         // 7日間：昨日から6日前まで
-        const sevenDaysAgo = new Date(today);
-        sevenDaysAgo.setDate(today.getDate() - 6);
-        periodStartDate = sevenDaysAgo.toISOString().split('T')[0];
+        const sevenDaysAgo = new Date(yesterday);
+        sevenDaysAgo.setDate(yesterday.getDate() - 6);
+        periodStartDate = formatDateJST(sevenDaysAgo);
       } else if (currentPeriod === '30days') {
         // 30日間：昨日から29日前まで
-        const thirtyDaysAgo = new Date(today);
-        thirtyDaysAgo.setDate(today.getDate() - 29);
-        periodStartDate = thirtyDaysAgo.toISOString().split('T')[0];
+        const thirtyDaysAgo = new Date(yesterday);
+        thirtyDaysAgo.setDate(yesterday.getDate() - 29);
+        periodStartDate = formatDateJST(thirtyDaysAgo);
       } else {
         // 全期間：データの最小日から最大日まで
         const allDates = reachSourceData
@@ -2058,9 +2077,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
         
         if (allDates.length > 0) {
           const minDate = new Date(Math.min(...allDates));
-          periodStartDate = minDate.toISOString().split('T')[0];
+          periodStartDate = formatDateJST(minDate);
           const maxDate = new Date(Math.max(...allDates));
-          periodEndDate = maxDate.toISOString().split('T')[0];
+          periodEndDate = formatDateJST(maxDate);
         } else {
           periodStartDate = '2020-01-01';
         }
@@ -2100,19 +2119,36 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     // キャンペーンで検索した結果を使用（reachFilteredDataは既にキャンペーンレベルのデータのみで、キャンペーン/広告セット/広告でフィルタリング済み）
     const current = reachFilteredData;
     
-    // デバッグ: 使用しているデータを確認
-    console.log(`[Dashboard] 🔍 kpiData - current data:`, {
-      selectedCampaign,
-      campaignNameParam,
-      currentLength: current.length,
-      currentCampaigns: Array.from(new Set(current.map(d => d.campaign_name))),
-      currentData: current.map(d => ({
-        campaign_name: d.campaign_name,
-        date: d.date,
-        reach: d.reach,
-        period_unique_reach: d.period_unique_reach
-      }))
-    });
+    // デバッグ: 使用しているデータを確認（重複ログを防ぐため、変更があった場合のみ出力）
+    if (current.length > 0 && (selectedCampaign === 'ハイブリッドマーケティング' || selectedCampaign === 'all' || !selectedCampaign)) {
+      const sampleData = current[0];
+      const logKey = `${selectedCampaign}-${selectedPeriod}-${currentPeriod}-${current.length}-${sampleData?.period_unique_reach_30days}`;
+      
+      // 前回と同じ内容の場合はログを出力しない
+      if (lastKpiDataLogRef.current !== logKey) {
+        lastKpiDataLogRef.current = logKey;
+        console.log(`[Dashboard] 🔍 kpiData - current data (single log):`, {
+          selectedCampaign,
+          campaignNameParam,
+          selectedPeriod,
+          currentPeriod,
+          currentLength: current.length,
+          currentCampaigns: Array.from(new Set(current.map(d => d.campaign_name))),
+          sampleRecord: {
+            campaign_name: sampleData?.campaign_name,
+            date: sampleData?.date,
+            reach: sampleData?.reach,
+            period_unique_reach: sampleData?.period_unique_reach,
+            period_unique_reach_7days: sampleData?.period_unique_reach_7days,
+            period_unique_reach_30days: sampleData?.period_unique_reach_30days,
+            period_unique_reach_all: sampleData?.period_unique_reach_all,
+            has_7days: sampleData?.hasOwnProperty('period_unique_reach_7days'),
+            has_30days: sampleData?.hasOwnProperty('period_unique_reach_30days'),
+            has_all: sampleData?.hasOwnProperty('period_unique_reach_all')
+          }
+        });
+      }
+    }
     
     // デバッグ用: windowオブジェクトにデータを公開（コンソールで確認用）
     if (typeof window !== 'undefined') {
@@ -2175,12 +2211,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
           }
           totalUniqueReach = Array.from(campaignReachMap.values()).reduce((sum, reach) => sum + reach, 0);
           
-          // period_unique_reachが0または存在しない場合は、日次リーチの合計を使用（フォールバック）
-          // ただし、データが存在する場合のみフォールバック（データが存在しない場合は0のまま）
-          if (totalUniqueReach === 0 && totalReach > 0) {
-            totalUniqueReach = totalReach;
-          }
-          
           console.log(`[Dashboard] 📊 Using ${reachFieldName} from DB (${currentPeriod}, all campaigns):`, totalUniqueReach, 'campaigns:', Array.from(campaignReachMap.keys()));
         } else {
           // 特定のキャンペーンが選択されている場合、そのキャンペーンの期間別period_unique_reachを取得
@@ -2232,13 +2262,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
             if (uniqueValues.length > 1) {
               console.warn(`[Dashboard] ⚠️ Different period_unique_reach values found for campaign "${selectedCampaign}":`, uniqueValues, reachRecords);
             }
-          }
-          
-          // period_unique_reachが0または存在しない場合は、日次リーチの合計を使用（フォールバック）
-          // ただし、データが存在する場合のみフォールバック（データが存在しない場合は0のまま）
-          if (totalUniqueReach === 0 && totalReach > 0) {
-            totalUniqueReach = totalReach;
-            console.log(`[Dashboard] ⚠️ Using totalReach as fallback for campaign "${selectedCampaign}":`, totalReach);
           }
           
           console.log(`[Dashboard] 📊 Using period_unique_reach from DB (${currentPeriod}) for campaign "${selectedCampaign}":`, totalUniqueReach);
@@ -2600,7 +2623,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     const statsArray = Object.values(stats);
     
     // 7日間/30日間/全期間選択時は、選択中のキャンペーンのreachをperiodSummaryから取得
-    const currentPeriod = selectedPeriod === '7days' ? '7days' : selectedPeriod === '30days' ? '30days' : selectedPeriod === 'all' || selectedPeriod === null ? 'all' : null;
+    const currentPeriod = selectedPeriod === 7 ? '7days' : selectedPeriod === 30 ? '30days' : selectedPeriod === 'all' || selectedPeriod === null ? 'all' : null;
     
     if (currentPeriod &&
         selectedCampaign && 
@@ -2655,7 +2678,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
       
       // リーチ数（ユニーク）: 期間選択（7日/30日/全期間）の場合はperiod_unique_reachフィールドから直接取得、それ以外は日次リーチの合計
       let totalUniqueReach = totalReach;
-      const currentPeriod = selectedPeriod === '7days' ? '7days' : selectedPeriod === '30days' ? '30days' : selectedPeriod === 'all' || selectedPeriod === null ? 'all' : null;
+      const currentPeriod = selectedPeriod === 7 ? '7days' : selectedPeriod === 30 ? '30days' : selectedPeriod === 'all' || selectedPeriod === null ? 'all' : null;
       
       if (currentPeriod) {
         // データが存在しない場合は、0を表示（フォールバックしない）
@@ -2708,7 +2731,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
         });
       }
       
-      const periodStrForLog = selectedPeriod === '7days' ? '7days' : selectedPeriod === '30days' ? '30days' : selectedPeriod === 'all' || selectedPeriod === null ? 'all' : 'unknown';
+      const periodStrForLog = selectedPeriod === 7 ? '7days' : selectedPeriod === 30 ? '30days' : selectedPeriod === 'all' || selectedPeriod === null ? 'all' : 'unknown';
       
       console.log(`[Dashboard] キャンペーン: ${s.campaign_name} - ${periodStrForLog}データ`, {
         dates: dates.sort(),
@@ -2847,44 +2870,48 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
           const maxDate = new Date(Math.max(...validDates));
         
         newRange = {
-          start: minDate.toISOString().split('T')[0],
-          end: maxDate.toISOString().split('T')[0],
+          start: formatDateJST(minDate),
+          end: formatDateJST(maxDate),
         };
         } else {
-          // 有効な日付がない場合はデフォルト値を使用
-          const today = new Date();
-          const endDate = new Date(today);
-          endDate.setDate(today.getDate() - 1);
+          // 有効な日付がない場合はデフォルト値を使用 - JST基準
+          const now = new Date();
+          const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+          const yesterday = new Date(today);
+          yesterday.setDate(today.getDate() - 1);
           newRange = {
-            start: new Date(2020, 0, 1).toISOString().split('T')[0],
-            end: endDate.toISOString().split('T')[0],
+            start: formatDateJST(new Date(2020, 0, 1)),
+            end: formatDateJST(yesterday),
           };
         }
       } else {
-        const today = new Date();
-        const endDate = new Date(today);
-        endDate.setDate(today.getDate() - 1);
+        // JST基準
+        const now = new Date();
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const yesterday = new Date(today);
+        yesterday.setDate(today.getDate() - 1);
         newRange = {
-          start: new Date(2020, 0, 1).toISOString().split('T')[0],
-          end: endDate.toISOString().split('T')[0],
+          start: formatDateJST(new Date(2020, 0, 1)),
+          end: formatDateJST(yesterday),
         };
       }
     } else {
-      // 7日間 or 30日間（昨日まで）
-      const today = new Date();
+      // 7日間 or 30日間（昨日まで）- JST基準
+      const now = new Date();
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
       
       // 昨日の日付（終了日）
-      const endDate = new Date(today);
-      endDate.setDate(today.getDate() - 1);
+      const yesterday = new Date(today);
+      yesterday.setDate(today.getDate() - 1);
       
       // 開始日 = 昨日 - (days - 1)
       // 例: 7日間の場合、昨日から6日前が開始日
-      const startDate = new Date(endDate);
-      startDate.setDate(endDate.getDate() - (days - 1));
+      const startDate = new Date(yesterday);
+      startDate.setDate(yesterday.getDate() - (days - 1));
       
       newRange = {
-        start: startDate.toISOString().split('T')[0],
-        end: endDate.toISOString().split('T')[0],
+        start: formatDateJST(startDate),
+        end: formatDateJST(yesterday),
       };
     }
 
@@ -2916,36 +2943,38 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     
     if (validDates.length === 0) return null;
     
+    // JST基準で計算
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    today.setHours(0, 0, 0, 0);
-    const todayStr = today.toISOString().split('T')[0];
+    const yesterday = new Date(today);
+    yesterday.setDate(today.getDate() - 1);
+    const yesterdayStr = formatDateJST(yesterday);
     
     // 全期間チェック（データの最小日から最大日まで）
     const minDate = new Date(Math.min(...validDates));
     const maxDate = new Date(Math.max(...validDates));
-    const minDateStr = minDate.toISOString().split('T')[0];
-    const maxDateStr = maxDate.toISOString().split('T')[0];
+    const minDateStr = formatDateJST(minDate);
+    const maxDateStr = formatDateJST(maxDate);
     
     if (dateRange.start === minDateStr && dateRange.end === maxDateStr) {
       return 'all';
     }
     
-    // 7日間チェック
-    const sevenDaysAgo = new Date(today);
-    sevenDaysAgo.setDate(today.getDate() - 6);
-    const sevenDaysAgoStr = sevenDaysAgo.toISOString().split('T')[0];
+    // 7日間チェック（昨日から6日前まで）
+    const sevenDaysAgo = new Date(yesterday);
+    sevenDaysAgo.setDate(yesterday.getDate() - 6);
+    const sevenDaysAgoStr = formatDateJST(sevenDaysAgo);
     
-    if (dateRange.start === sevenDaysAgoStr && dateRange.end === todayStr) {
+    if (dateRange.start === sevenDaysAgoStr && dateRange.end === yesterdayStr) {
       return 7;
     }
     
-    // 30日間チェック
-    const thirtyDaysAgo = new Date(today);
-    thirtyDaysAgo.setDate(today.getDate() - 29);
-    const thirtyDaysAgoStr = thirtyDaysAgo.toISOString().split('T')[0];
+    // 30日間チェック（昨日から29日前まで）
+    const thirtyDaysAgo = new Date(yesterday);
+    thirtyDaysAgo.setDate(yesterday.getDate() - 29);
+    const thirtyDaysAgoStr = formatDateJST(thirtyDaysAgo);
     
-    if (dateRange.start === thirtyDaysAgoStr && dateRange.end === todayStr) {
+    if (dateRange.start === thirtyDaysAgoStr && dateRange.end === yesterdayStr) {
       return 30;
     }
     
@@ -2958,7 +2987,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.setAttribute('href', url);
-    link.setAttribute('download', `campaign_export_${new Date().toISOString().slice(0,10)}.csv`);
+    link.setAttribute('download', `campaign_export_${formatDateJST(new Date())}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -3082,15 +3111,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
                       const displayName = account.name || account.account_id || '不明なアセット';
                       const campaignCount = account.campaign_count ?? 0;
                       const dataCount = account.data_count ?? 0;
-                      console.log('[Dashboard] Rendering account option:', { 
-                        account_id: account.account_id, 
-                        name: account.name, 
-                        displayName,
-                        campaign_count: account.campaign_count,
-                        data_count: account.data_count,
-                        campaignCount,
-                        dataCount
-                      });
                       return (
                       <option key={account.account_id} value={account.account_id}>
                           {displayName} (キャンペーン: {campaignCount}件 / データ: {dataCount}件)

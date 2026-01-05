@@ -12,6 +12,13 @@ interface AnalysisProps {
 }
 
 export const Analysis: React.FC<AnalysisProps> = ({ data }) => {
+  // JST基準で日付文字列を生成（YYYY-MM-DD形式）
+  const formatDateJST = (date: Date): string => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
   const [result, setResult] = useState<AIAnalysisResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -49,8 +56,8 @@ export const Analysis: React.FC<AnalysisProps> = ({ data }) => {
           const rawData = a.raw_data || {};
           if (!rawData.period && (a.analysis_period_start || a.analysis_period_end)) {
             rawData.period = {
-              start_date: a.analysis_period_start ? new Date(a.analysis_period_start).toISOString().split('T')[0] : null,
-              end_date: a.analysis_period_end ? new Date(a.analysis_period_end).toISOString().split('T')[0] : null
+              start_date: a.analysis_period_start ? formatDateJST(new Date(a.analysis_period_start)) : null,
+              end_date: a.analysis_period_end ? formatDateJST(new Date(a.analysis_period_end)) : null
             };
           }
           
@@ -92,8 +99,8 @@ export const Analysis: React.FC<AnalysisProps> = ({ data }) => {
       const maxDate = new Date(Math.max(...dates));
       const minDate = new Date(Math.min(...dates)); // データの最小日付を使用
       
-      setStartDate(minDate.toISOString().split('T')[0]);
-      setEndDate(maxDate.toISOString().split('T')[0]);
+      setStartDate(formatDateJST(minDate));
+      setEndDate(formatDateJST(maxDate));
     }
   }, [data]);
 
@@ -122,7 +129,7 @@ export const Analysis: React.FC<AnalysisProps> = ({ data }) => {
       
       const convertedResult: AIAnalysisResult = {
         id: String(completedAnalysis.id),
-        date: completedAnalysis.created_at || new Date().toISOString(),
+        date: completedAnalysis.created_at || new Date().toISOString(), // ISO形式のタイムスタンプはそのまま
         campaign_name: completedAnalysis.campaign_name || null,
         overall_rating: completedAnalysis.overall_rating || 0,
         overall_comment: completedAnalysis.overall_comment || '',
@@ -146,8 +153,8 @@ export const Analysis: React.FC<AnalysisProps> = ({ data }) => {
         const rawData = a.raw_data || {};
         if (!rawData.period && (a.analysis_period_start || a.analysis_period_end)) {
           rawData.period = {
-            start_date: a.analysis_period_start ? new Date(a.analysis_period_start).toISOString().split('T')[0] : null,
-            end_date: a.analysis_period_end ? new Date(a.analysis_period_end).toISOString().split('T')[0] : null
+            start_date: a.analysis_period_start ? formatDateJST(new Date(a.analysis_period_start)) : null,
+            end_date: a.analysis_period_end ? formatDateJST(new Date(a.analysis_period_end)) : null
           };
         }
         
@@ -509,7 +516,7 @@ export const Analysis: React.FC<AnalysisProps> = ({ data }) => {
       pdf.addImage(imgData, 'JPEG', x, y, finalWidth, finalHeight);
       
       // PDFを保存
-      const filename = `分析レポート_${new Date(result.date).toISOString().split('T')[0]}.pdf`;
+      const filename = `分析レポート_${formatDateJST(new Date(result.date))}.pdf`;
       pdf.save(filename);
       
       // 非表示にした要素を元に戻す
