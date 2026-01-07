@@ -646,8 +646,8 @@ def debug_clicks(
 
 @router.get("/")
 def get_campaigns(
-    start_date: Optional[date] = Query(None),
-    end_date: Optional[date] = Query(None),
+    start_date: Optional[date] = Query(None, description="開始日 (YYYY-MM-DD, JST 0時基準)"),
+    end_date: Optional[date] = Query(None, description="終了日 (YYYY-MM-DD, JST 0時基準)"),
     campaign_name: Optional[str] = Query(None),
     meta_account_id: Optional[str] = Query(None, description="Meta広告アカウントIDでフィルタリング"),
     level: Optional[str] = Query(None, description="データレベル: 'campaign', 'adset', 'ad'"),
@@ -1562,3 +1562,225 @@ async def get_campaign_summary(
         "frequency": round(frequency, 2),
         "engagement_rate": round(engagement_rate, 2)
     }
+
+@router.get("/debug/reach-comparison")
+def debug_reach_comparison(
+    campaign_name: Optional[str] = Query(None, description="キャンペーン名（指定しない場合は全キャンペーン）"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    データベースに保存されているperiod_unique_reach_allと日次リーチの合計を比較
+    period_unique_reach_allが日次リーチの合計で計算されていないか確認
+    """
+    try:
+        # キャンペーンレベルのデータのみを取得
+        query = db.query(Campaign).filter(
+            Campaign.user_id == current_user.id,
+            or_(Campaign.ad_set_name == '', Campaign.ad_set_name.is_(None)),
+            or_(Campaign.ad_name == '', Campaign.ad_name.is_(None))
+        )
+        
+        if campaign_name:
+            query = query.filter(Campaign.campaign_name == campaign_name)
+        
+        campaigns = query.order_by(Campaign.campaign_name, Campaign.date.desc()).all()
+        
+        if len(campaigns) == 0:
+            return {
+                "message": "データが見つかりませんでした。",
+                "campaigns": []
+            }
+        
+        # キャンペーンごとに集計
+        campaign_stats = {}
+        for c in campaigns:
+            key = c.campaign_name
+            if key not in campaign_stats:
+                campaign_stats[key] = {
+                    "campaign_name": c.campaign_name,
+                    "meta_account_id": c.meta_account_id,
+                    "latest_date": str(c.date),
+                    "period_unique_reach_all": c.period_unique_reach_all or 0,
+                    "period_unique_reach_30days": c.period_unique_reach_30days or 0,
+                    "period_unique_reach_7days": c.period_unique_reach_7days or 0,
+                    "period_unique_reach": c.period_unique_reach or 0,
+                    "daily_reach_sum": 0,
+                    "daily_reach_records": [],
+                    "record_count": 0
+                }
+            
+            campaign_stats[key]["daily_reach_sum"] += c.reach or 0
+            campaign_stats[key]["daily_reach_records"].append({
+                "date": str(c.date),
+                "reach": c.reach or 0
+            })
+            campaign_stats[key]["record_count"] += 1
+        
+        # 結果を整理
+        results = []
+        for campaign_name_key, stats in campaign_stats.items():
+            period_unique_reach_all = stats["period_unique_reach_all"]
+            daily_reach_sum = stats["daily_reach_sum"]
+            difference = period_unique_reach_all - daily_reach_sum
+            is_match = period_unique_reach_all == daily_reach_sum
+            
+            results.append({
+                "campaign_name": campaign_name_key,
+                "meta_account_id": stats["meta_account_id"],
+                "latest_date": stats["latest_date"],
+                "period_unique_reach_all": period_unique_reach_all,
+                "period_unique_reach_30days": stats["period_unique_reach_30days"],
+                "period_unique_reach_7days": stats["period_unique_reach_7days"],
+                "period_unique_reach": stats["period_unique_reach"],
+                "daily_reach_sum": daily_reach_sum,
+                "difference": difference,
+                "is_match": is_match,
+                "warning": is_match and period_unique_reach_all > 0,  # 一致している場合は警告
+                "record_count": stats["record_count"],
+                "sample_dates": sorted(set([r["date"] for r in stats["daily_reach_records"]]))[:10]  # 最初の10日付
+            })
+        
+        return {
+            "message": "確認完了",
+            "total_campaigns": len(results),
+            "campaigns": results
+        }
+    except Exception as e:
+        import traceback
+        logger.error(f"[Debug Reach Comparison] Error: {str(e)}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(
+            status_code=500,
+            detail=f"確認エラー: {str(e)}"
+        )
+
+@router.get("/debug/duplicate-check")
+def debug_duplicate_check(
+    campaign_name: Optional[str] = Query(None, description="キャンペーン名（指定しない場合は全キャンペーン）"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    データの重複や不整合を確認
+    - 同じキャンペーン名、同じ日付で複数のレコードが存在するか
+    - 同じキャンペーンの異なる日付のレコードで、period_unique_reach_7days、period_unique_reach_30days、period_unique_reach_allの値が異なるか
+    - 更新処理がすべてのレコードに適用されているか
+    """
+    try:
+        # キャンペーンレベルのデータのみを取得
+        query = db.query(Campaign).filter(
+            Campaign.user_id == current_user.id,
+            or_(Campaign.ad_set_name == '', Campaign.ad_set_name.is_(None)),
+            or_(Campaign.ad_name == '', Campaign.ad_name.is_(None))
+        )
+        
+        if campaign_name:
+            query = query.filter(Campaign.campaign_name == campaign_name)
+        
+        campaigns = query.order_by(Campaign.campaign_name, Campaign.date).all()
+        
+        if len(campaigns) == 0:
+            return {
+                "message": "データが見つかりませんでした。",
+                "duplicates": [],
+                "inconsistencies": []
+            }
+        
+        # 1. 重複チェック: 同じ(campaign_name, date, meta_account_id)の組み合わせで複数のレコードが存在するか
+        from collections import defaultdict
+        record_map = defaultdict(list)
+        for c in campaigns:
+            key = (
+                c.campaign_name,
+                str(c.date),
+                c.meta_account_id or ''
+            )
+            record_map[key].append({
+                "id": str(c.id),
+                "date": str(c.date),
+                "campaign_name": c.campaign_name,
+                "meta_account_id": c.meta_account_id,
+                "period_unique_reach_7days": c.period_unique_reach_7days or 0,
+                "period_unique_reach_30days": c.period_unique_reach_30days or 0,
+                "period_unique_reach_all": c.period_unique_reach_all or 0,
+                "reach": c.reach or 0,
+                "created_at": str(c.created_at) if c.created_at else None
+            })
+        
+        duplicates = []
+        for key, records in record_map.items():
+            if len(records) > 1:
+                duplicates.append({
+                    "campaign_name": key[0],
+                    "date": key[1],
+                    "meta_account_id": key[2],
+                    "count": len(records),
+                    "records": records
+                })
+        
+        # 2. 不整合チェック: 同じキャンペーンの異なる日付のレコードで、period_unique_reach_7days、period_unique_reach_30days、period_unique_reach_allの値が異なるか
+        campaign_groups = defaultdict(list)
+        for c in campaigns:
+            campaign_groups[c.campaign_name].append({
+                "date": str(c.date),
+                "period_unique_reach_7days": c.period_unique_reach_7days or 0,
+                "period_unique_reach_30days": c.period_unique_reach_30days or 0,
+                "period_unique_reach_all": c.period_unique_reach_all or 0,
+                "reach": c.reach or 0
+            })
+        
+        inconsistencies = []
+        for campaign_name_key, records in campaign_groups.items():
+            # 同じキャンペーンの異なる日付で、period_unique_reach_7days、period_unique_reach_30days、period_unique_reach_allの値が異なるか確認
+            unique_7days = set(r["period_unique_reach_7days"] for r in records)
+            unique_30days = set(r["period_unique_reach_30days"] for r in records)
+            unique_all = set(r["period_unique_reach_all"] for r in records)
+            
+            # 0以外の値が複数存在する場合は不整合
+            non_zero_7days = [v for v in unique_7days if v > 0]
+            non_zero_30days = [v for v in unique_30days if v > 0]
+            non_zero_all = [v for v in unique_all if v > 0]
+            
+            if len(non_zero_7days) > 1 or len(non_zero_30days) > 1 or len(non_zero_all) > 1:
+                inconsistencies.append({
+                    "campaign_name": campaign_name_key,
+                    "issue": "異なる日付のレコードでperiod_unique_reachの値が異なる",
+                    "period_unique_reach_7days_values": sorted(non_zero_7days) if len(non_zero_7days) > 1 else None,
+                    "period_unique_reach_30days_values": sorted(non_zero_30days) if len(non_zero_30days) > 1 else None,
+                    "period_unique_reach_all_values": sorted(non_zero_all) if len(non_zero_all) > 1 else None,
+                    "records": records
+                })
+            
+            # すべてのレコードでperiod_unique_reach_allが0の場合、または一部だけ0の場合も不整合の可能性
+            all_zero = all(r["period_unique_reach_all"] == 0 for r in records)
+            some_zero = any(r["period_unique_reach_all"] == 0 for r in records) and any(r["period_unique_reach_all"] > 0 for r in records)
+            
+            if some_zero:
+                inconsistencies.append({
+                    "campaign_name": campaign_name_key,
+                    "issue": "一部のレコードでperiod_unique_reach_allが0",
+                    "records_with_zero": [r for r in records if r["period_unique_reach_all"] == 0],
+                    "records_with_value": [r for r in records if r["period_unique_reach_all"] > 0]
+                })
+        
+        return {
+            "message": "確認完了",
+            "total_campaigns": len(campaign_groups),
+            "total_records": len(campaigns),
+            "duplicates": duplicates,
+            "inconsistencies": inconsistencies,
+            "summary": {
+                "duplicate_count": len(duplicates),
+                "inconsistency_count": len(inconsistencies),
+                "affected_campaigns": list(set([d["campaign_name"] for d in duplicates] + [i["campaign_name"] for i in inconsistencies]))
+            }
+        }
+    except Exception as e:
+        import traceback
+        logger.error(f"[Debug Duplicate Check] Error: {str(e)}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(
+            status_code=500,
+            detail=f"確認エラー: {str(e)}"
+        )

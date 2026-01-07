@@ -16,6 +16,20 @@ export const DailyData: React.FC<DailyDataProps> = ({ data: propData }) => {
   const [isSyncing, setIsSyncing] = useState(false);
   const { addToast } = useToast();
   
+  // JST基準で日付文字列を生成（YYYY-MM-DD形式）
+  const formatDateJST = (date: Date): string => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+  
+  // JST基準（0時）で日付文字列をパース（YYYY-MM-DD形式）
+  const parseDateJST = (dateStr: string): Date => {
+    const [year, month, day] = dateStr.split('-').map(Number);
+    return new Date(year, month - 1, day); // ローカル時刻（JST）で作成
+  };
+  
   // Asset selection state
   const [metaAccounts, setMetaAccounts] = useState<Array<{ account_id: string; name: string; data_count: number; latest_date: string | null }>>([]);
   const [selectedMetaAccountId, setSelectedMetaAccountId] = useState<string | null>(() => {
@@ -156,9 +170,10 @@ export const DailyData: React.FC<DailyDataProps> = ({ data: propData }) => {
     // Filter by date range
     if (selectedDateRange) {
       filtered = filtered.filter(d => {
-        const date = new Date(d.date);
-        const start = new Date(selectedDateRange.start);
-        const end = new Date(selectedDateRange.end);
+        // JST基準（0時）で日付文字列をパース
+        const date = parseDateJST(d.date);
+        const start = parseDateJST(selectedDateRange.start);
+        const end = parseDateJST(selectedDateRange.end);
         return date >= start && date <= end;
       });
     }
@@ -169,7 +184,7 @@ export const DailyData: React.FC<DailyDataProps> = ({ data: propData }) => {
     }
 
     // Sort by date descending
-    return filtered.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    return filtered.sort((a, b) => parseDateJST(b.date).getTime() - parseDateJST(a.date).getTime());
   }, [data, selectedDateRange, selectedCampaign]);
 
   // Group by date and calculate daily totals
@@ -269,7 +284,8 @@ export const DailyData: React.FC<DailyDataProps> = ({ data: propData }) => {
 
     return Array.from(grouped.values()).sort((a, b) => {
       // 日付でソート、同じ日付の場合はキャンペーン名、広告セット名、広告名でソート
-      const dateCompare = new Date(b.date).getTime() - new Date(a.date).getTime();
+      // JST基準（0時）で日付文字列をパース
+      const dateCompare = parseDateJST(b.date).getTime() - parseDateJST(a.date).getTime();
       if (dateCompare !== 0) return dateCompare;
       
       const campaignCompare = (a.campaign_name || '').localeCompare(b.campaign_name || '');
@@ -285,12 +301,13 @@ export const DailyData: React.FC<DailyDataProps> = ({ data: propData }) => {
   // Set default date range (last 30 days or all data)
   const setDefaultDateRange = () => {
     if (data.length === 0) return;
-    const dates = data.map(d => new Date(d.date).getTime());
+    // JST基準（0時）で日付文字列をパース
+    const dates = data.map(d => parseDateJST(d.date).getTime());
     const maxDate = new Date(Math.max(...dates));
     const minDate = new Date(Math.min(...dates));
     setSelectedDateRange({
-      start: minDate.toISOString().split('T')[0],
-      end: maxDate.toISOString().split('T')[0],
+      start: formatDateJST(minDate),
+      end: formatDateJST(maxDate),
     });
   };
 
@@ -823,7 +840,7 @@ export const DailyData: React.FC<DailyDataProps> = ({ data: propData }) => {
                 dailyData.map((row, idx) => (
                   <tr key={`${row.date}_${row.campaign_name}_${row.ad_set_name || ''}_${row.ad_name || ''}_${idx}`} className="hover:bg-gray-50 dark:hover:bg-gray-700">
                     <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white sticky left-0 bg-white dark:bg-gray-800 z-10">
-                      {new Date(row.date).toLocaleDateString('ja-JP')}
+                      {parseDateJST(row.date).toLocaleDateString('ja-JP')}
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white sticky left-16 bg-white dark:bg-gray-800 z-10">
                       {row.campaign_name}

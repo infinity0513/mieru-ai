@@ -34,6 +34,7 @@ export interface CampaignData {
   campaign_name: string;
   ad_set_name?: string;
   ad_name?: string;
+  meta_account_id?: string | null;  // MetaアカウントID
   impressions: number;
   clicks: number;
   cost: number;

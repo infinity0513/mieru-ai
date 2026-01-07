@@ -1418,6 +1418,169 @@ class ApiClient {
     }
   }
 
+  /**
+   * リーチ数の比較データを取得（デバッグ用）
+   * period_unique_reach_allが日次リーチの合計で計算されていないか確認
+   * @param campaign_name - キャンペーン名（指定しない場合は全キャンペーン）
+   */
+  async getReachComparison(campaign_name?: string): Promise<{
+    message: string;
+    total_campaigns: number;
+    campaigns: Array<{
+      campaign_name: string;
+      meta_account_id: string | null;
+      latest_date: string;
+      period_unique_reach_all: number;
+      period_unique_reach_30days: number;
+      period_unique_reach_7days: number;
+      period_unique_reach: number;
+      daily_reach_sum: number;
+      difference: number;
+      is_match: boolean;
+      warning: boolean;
+      record_count: number;
+      sample_dates: string[];
+    }>;
+  }> {
+    const token = this.getToken();
+    if (!token) {
+      console.warn("[ApiClient] No token available for getReachComparison");
+      throw new Error('認証トークンがありません');
+    }
+    
+    try {
+      const urlParams = new URLSearchParams();
+      if (campaign_name) {
+        urlParams.append('campaign_name', campaign_name);
+      }
+      
+      const url = `${this.baseURL}/campaigns/debug/reach-comparison?${urlParams}`;
+      const normalizedUrl = ApiClient.normalizeURL(url);
+      console.log('[Api] getReachComparison URL:', normalizedUrl);
+      
+      const response = await fetch(normalizedUrl, {
+        credentials: 'include',
+        headers: this.getHeaders(),
+        cache: 'no-store'
+      });
+      
+      if (!response.ok) {
+        if (response.status === 401) {
+          this.handle401Error(response);
+        }
+        const errorText = await response.text();
+        throw new Error(`Failed to get reach comparison: ${response.statusText} - ${errorText}`);
+      }
+      
+      const data = await response.json();
+      console.log('[Api] getReachComparison response:', data);
+      return data;
+    } catch (error: any) {
+      console.error('[Api] getReachComparison error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * データの重複や不整合を確認（デバッグ用）
+   * - 同じキャンペーン名、同じ日付で複数のレコードが存在するか
+   * - 同じキャンペーンの異なる日付のレコードで、period_unique_reachの値が異なるか
+   * @param campaign_name - キャンペーン名（指定しない場合は全キャンペーン）
+   */
+  async getDuplicateCheck(campaign_name?: string): Promise<{
+    message: string;
+    total_campaigns: number;
+    total_records: number;
+    duplicates: Array<{
+      campaign_name: string;
+      date: string;
+      meta_account_id: string;
+      count: number;
+      records: Array<{
+        id: string;
+        date: string;
+        campaign_name: string;
+        meta_account_id: string | null;
+        period_unique_reach_7days: number;
+        period_unique_reach_30days: number;
+        period_unique_reach_all: number;
+        reach: number;
+        created_at: string | null;
+      }>;
+    }>;
+    inconsistencies: Array<{
+      campaign_name: string;
+      issue: string;
+      period_unique_reach_7days_values?: number[] | null;
+      period_unique_reach_30days_values?: number[] | null;
+      period_unique_reach_all_values?: number[] | null;
+      records?: Array<{
+        date: string;
+        period_unique_reach_7days: number;
+        period_unique_reach_30days: number;
+        period_unique_reach_all: number;
+        reach: number;
+      }>;
+      records_with_zero?: Array<{
+        date: string;
+        period_unique_reach_7days: number;
+        period_unique_reach_30days: number;
+        period_unique_reach_all: number;
+        reach: number;
+      }>;
+      records_with_value?: Array<{
+        date: string;
+        period_unique_reach_7days: number;
+        period_unique_reach_30days: number;
+        period_unique_reach_all: number;
+        reach: number;
+      }>;
+    }>;
+    summary: {
+      duplicate_count: number;
+      inconsistency_count: number;
+      affected_campaigns: string[];
+    };
+  }> {
+    const token = this.getToken();
+    if (!token) {
+      console.warn("[ApiClient] No token available for getDuplicateCheck");
+      throw new Error('認証トークンがありません');
+    }
+    
+    try {
+      const urlParams = new URLSearchParams();
+      if (campaign_name) {
+        urlParams.append('campaign_name', campaign_name);
+      }
+      
+      const url = `${this.baseURL}/campaigns/debug/duplicate-check?${urlParams}`;
+      const normalizedUrl = ApiClient.normalizeURL(url);
+      console.log('[Api] getDuplicateCheck URL:', normalizedUrl);
+      
+      const response = await fetch(normalizedUrl, {
+        credentials: 'include',
+        headers: this.getHeaders(),
+        cache: 'no-store'
+      });
+      
+      if (!response.ok) {
+        if (response.status === 401) {
+          this.handle401Error(response);
+        }
+        const errorText = await response.text();
+        throw new Error(`Failed to get duplicate check: ${response.statusText} - ${errorText}`);
+      }
+      
+      const data = await response.json();
+      console.log('[Api] getDuplicateCheck response:', data);
+      return data;
+    } catch (error: any) {
+      console.error('[Api] getDuplicateCheck error:', error);
+      throw error;
+    }
+  }
+
   async getCampaignSummary(startDate?: string, endDate?: string, metaAccountId?: string, campaignName?: string, adSetName?: string, adName?: string, forceRefresh = false) {
     const token = this.getToken();
     if (!token) {
@@ -3682,4 +3845,12 @@ export const getCampaignSummary = async (params: {
   period: '7days' | '30days' | 'all';
 }): Promise<CampaignSummary> => {
   return await apiClient.getCampaignSummaryByPeriod(params);
+};
+
+export const getReachComparison = async (campaign_name?: string) => {
+  return await apiClient.getReachComparison(campaign_name);
+};
+
+export const getDuplicateCheck = async (campaign_name?: string) => {
+  return await apiClient.getDuplicateCheck(campaign_name);
 };

@@ -8,6 +8,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y \
     gcc \
     postgresql-client \
+    tzdata \
     && rm -rf /var/lib/apt/lists/*
 
 # requirements.txtをコピーして依存関係をインストール
@@ -26,6 +27,8 @@ RUN chmod +x start_server.py
 # 環境変数を設定
 ENV PYTHONPATH=/app/backend
 ENV PYTHONUNBUFFERED=1
+ENV TZ=Asia/Tokyo
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
 # ポートを公開（Railwayが自動設定するポート番号を使用、デフォルトは8000）
 EXPOSE 8000

@@ -822,10 +822,25 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                 campaign_period_reach_map = {}
             
             # InsightsデータをCampaignテーブルに保存（キャンペーン/広告セット/広告レベル）
-            # 既存データの削除は行わない（新規データのみ追加する方式に変更）
-            # 過去の日付のデータは確定後は変更されないため、更新処理は不要
-            # 新規データのみを追加する実装
-            print(f"[Meta API] Starting data sync for account {account_id} (adding new data only, not deleting existing data)")
+            # 全上書き方式：既存データを削除してから新規作成（データの一貫性を保つため）
+            print(f"[Meta API] Starting data sync for account {account_id} (full overwrite mode: deleting existing data before sync)")
+            
+            # 既存データを削除（このアカウントのキャンペーンレベルのデータのみ）
+            try:
+                delete_count = db.query(Campaign).filter(
+                    Campaign.user_id == user.id,
+                    Campaign.meta_account_id == account_id,
+                    or_(Campaign.ad_set_name == '', Campaign.ad_set_name.is_(None)),
+                    or_(Campaign.ad_name == '', Campaign.ad_name.is_(None))
+                ).delete(synchronize_session=False)
+                db.commit()
+                print(f"[Meta API] Deleted {delete_count} existing records for account {account_id} before sync")
+            except Exception as e:
+                import traceback
+                print(f"[Meta API] Error deleting existing data for account {account_id}: {str(e)}")
+                print(f"[Meta API] Error details: {traceback.format_exc()}")
+                db.rollback()
+                # 削除エラーが発生しても同期処理は続行
             
             saved_count = 0
             # 重複チェック用のセット（campaign_name, date, meta_account_idの組み合わせ）
@@ -1128,16 +1143,6 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                         continue
                     seen_records.add(record_key)
                     
-                    # 既存データの確認（同じcampaign_name, ad_set_name, ad_name, date, meta_account_idの組み合わせ）
-                    existing_campaign = db.query(Campaign).filter(
-                        Campaign.user_id == user.id,
-                        Campaign.meta_account_id == account_id,
-                        Campaign.campaign_name == campaign_name,
-                        Campaign.ad_set_name == ad_set_name,
-                        Campaign.ad_name == ad_name,
-                        Campaign.date == campaign_date
-                    ).first()
-                    
                     # 期間別のユニークリーチ数を取得（キャンペーンレベルのデータのみ）
                     # マイグレーション実行前は、period_unique_reachのみを使用
                     period_unique_reach = 0
@@ -1166,29 +1171,7 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                             period_unique_reach = reach
                             print(f"[Meta API] Using daily reach as period_unique_reach (fallback) for '{campaign_name}': {period_unique_reach:,}")
                     
-                    # 既存データがある場合の処理
-                    if existing_campaign:
-                        # キャンペーンレベルのデータで、期間別のperiod_unique_reachを更新（0でも更新）
-                        if not ad_set_name and not ad_name:
-                            # 期間別の値を更新
-                            existing_campaign.period_unique_reach = period_unique_reach  # 後方互換性
-                            
-                            # 新しいカラムが存在する場合のみ更新（マイグレーション実行後に有効化）
-                            try:
-                                existing_campaign.period_unique_reach_7days = period_unique_reach_7days
-                                existing_campaign.period_unique_reach_30days = period_unique_reach_30days
-                                existing_campaign.period_unique_reach_all = period_unique_reach_all
-                            except AttributeError:
-                                # カラムが存在しない場合は無視（念のため）
-                                pass
-                            
-                            db.commit()
-                            print(f"[Meta API] Updated period_unique_reach for existing record: {campaign_name} on {campaign_date} -> 7days:{period_unique_reach_7days:,}, 30days:{period_unique_reach_30days:,}, all:{period_unique_reach_all:,}")
-                        else:
-                            print(f"[Meta API] Skipping existing record: {campaign_name} / {ad_set_name} / {ad_name} on {campaign_date}")
-                        continue
-                    
-                    # 新規作成（既存データがない場合のみ）
+                    # 全上書き方式のため、既存データの更新処理は不要（すべて新規作成）
                     campaign = Campaign(
                         user_id=user.id,
                         upload_id=upload.id,

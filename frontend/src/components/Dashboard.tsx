@@ -52,11 +52,17 @@ const KPICard = ({ title, value, subtext, trend, icon: Icon, format = (v: any) =
 const CampaignDetailModal = ({ campaignName, allData, onClose }: { campaignName: string, allData: CampaignData[], onClose: () => void }) => {
   const { isDark } = useContext(ThemeContext);
 
+  // JST基準（0時）で日付文字列をパース（YYYY-MM-DD形式）
+  const parseDateJST = (dateStr: string): Date => {
+    const [year, month, day] = dateStr.split('-').map(Number);
+    return new Date(year, month - 1, day); // ローカル時刻（JST）で作成
+  };
+
   // Filter and Sort Data for this campaign
   const campaignHistory = useMemo(() => {
     return allData
       .filter(d => d.campaign_name === campaignName)
-      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      .sort((a, b) => parseDateJST(a.date).getTime() - parseDateJST(b.date).getTime());
   }, [campaignName, allData]);
 
   // Calculate Aggregates
@@ -419,6 +425,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     const day = String(date.getDate()).padStart(2, '0');
     return `${year}-${month}-${day}`;
   };
+  
+  // JST基準（0時）で日付文字列をパース（YYYY-MM-DD形式）
+  const parseDateJST = (dateStr: string): Date => {
+    const [year, month, day] = dateStr.split('-').map(Number);
+    return new Date(year, month - 1, day); // ローカル時刻（JST）で作成
+  };
 
   // State for API data
   const [apiData, setApiData] = useState<CampaignData[]>([]); // 日付範囲でフィルタリングされたデータ（表示用）
@@ -507,8 +519,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     const allData = [...(apiData.length > 0 ? apiData : propData || [])];
     if (allData.length > 0) {
       const uniqueDates = Array.from(new Set(allData.map(d => d.date)));
-      const minDate = new Date(Math.min(...uniqueDates.map(d => new Date(d).getTime())));
-      const maxDate = new Date(Math.max(...uniqueDates.map(d => new Date(d).getTime())));
+      // JST基準（0時）で日付文字列をパース
+      const minDate = new Date(Math.min(...uniqueDates.map(d => parseDateJST(d).getTime())));
+      const maxDate = new Date(Math.max(...uniqueDates.map(d => parseDateJST(d).getTime())));
       
       return {
         start: formatDateJST(minDate),
@@ -741,9 +754,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     }
     
     // 日付範囲でフィルタリング
+    // JST基準（0時）で日付をパースして比較
+    const startDate = parseDateJST(dateRange.start);
+    const endDate = parseDateJST(dateRange.end);
     let filteredData = sourceData.filter((d: CampaignData) => {
       if (!d.date) return false;
-      return d.date >= dateRange.start && d.date <= dateRange.end;
+      const dataDate = parseDateJST(d.date);
+      return dataDate >= startDate && dataDate <= endDate;
     });
     
     // フィルタリング（キャンペーン/広告セット/広告）
@@ -1037,15 +1054,19 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
         }
         
         // フィルタリング用パラメータ
-        const campaignNameParam = selectedCampaign && selectedCampaign !== 'all' ? selectedCampaign : undefined;
+        const campaignNameParam = selectedCampaign && selectedCampaign !== 'all' && selectedCampaign !== '全体' ? selectedCampaign : undefined;
         const adSetNameParam = selectedAdSet && selectedAdSet !== 'all' ? selectedAdSet : undefined;
         const adNameParam = selectedAd && selectedAd !== 'all' ? selectedAd : undefined;
         
         // 期間指定で取得したデータは既に日付範囲でフィルタリングされているが、
         // 念のため再度フィルタリング（キャッシュやタイミングの問題を考慮）
+        // JST基準（0時）で日付をパースして比較
+        const startDate = parseDateJST(dateRange.start);
+        const endDate = parseDateJST(dateRange.end);
         const dateFilteredData = allCampaignsResponse.filter((d: CampaignData) => {
           if (!d.date) return false;
-          return d.date >= dateRange.start && d.date <= dateRange.end;
+          const dataDate = parseDateJST(d.date);
+          return dataDate >= startDate && dataDate <= endDate;
         });
         
         // フィルタリング（キャンペーン/広告セット/広告）
@@ -1385,9 +1406,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
         const sourceData = allApiData.length > 0 ? allApiData : propData || [];
         
         // 日付範囲でフィルタリング
+        // JST基準（0時）で日付をパースして比較
+        const startDate = parseDateJST(dateRange.start);
+        const endDate = parseDateJST(dateRange.end);
         const dateFiltered = sourceData.filter((d: CampaignData) => {
           if (!d.date) return false;
-          return d.date >= dateRange.start && d.date <= dateRange.end;
+          const dataDate = parseDateJST(d.date);
+          return dataDate >= startDate && dataDate <= endDate;
         });
         
         // アセットでフィルタリング
@@ -1605,9 +1630,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     }
     
     
+    // JST基準（0時）で日付をパースして比較
+    const startDate = parseDateJST(startDateStr);
+    const endDate = parseDateJST(endDateStr);
     const filtered = sourceData.filter((d: CampaignData) => {
       if (!d.date) return false;
-      return d.date >= startDateStr && d.date <= endDateStr;
+      const dataDate = parseDateJST(d.date);
+      return dataDate >= startDate && dataDate <= endDate;
     });
     
     
@@ -1764,7 +1793,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     // 初回ロード時のみ、かつlocalStorageに保存されていない場合のみ自動設定
     if (isInitialLoad && data.length > 0) {
       // Find actual min and max dates in data (use actual data range, not calculated 30 days ago)
-      const dates = data.map(d => new Date(d.date).getTime());
+      // JST基準（0時）で日付文字列をパース
+      const dates = data.map(d => parseDateJST(d.date).getTime());
       const maxDate = new Date(Math.max(...dates));
       const minDate = new Date(Math.min(...dates)); // Use actual minimum date in data
       
@@ -1881,7 +1911,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     let filtered = dateFilteredData;
     
     // キャンペーンフィルタ
-    if (selectedCampaign) {
+    if (selectedCampaign && selectedCampaign !== 'all' && selectedCampaign !== '全体') {
       const beforeCampaignFilter = filtered.length;
       const beforeCampaignFilterData = [...filtered]; // フィルタリング前のデータを保存
       filtered = filtered.filter(d => d.campaign_name === selectedCampaign);
@@ -1902,18 +1932,19 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     
     // 期間フィルターが適用されているか確認
     if (dateRange.start || dateRange.end) {
+      // JST基準（0時）で日付をパースして比較
+      const startDate = dateRange.start ? parseDateJST(dateRange.start) : null;
+      const endDate = dateRange.end ? parseDateJST(dateRange.end) : null;
       const filteredByDate = filtered.filter(d => {
         if (!d.date) return false;
-        const date = new Date(d.date);
-        const start = dateRange.start ? new Date(dateRange.start) : null;
-        const end = dateRange.end ? new Date(dateRange.end) : null;
+        const dataDate = parseDateJST(d.date);
         
-        if (start && end) {
-          return date >= start && date <= end;
-        } else if (start) {
-          return date >= start;
-        } else if (end) {
-          return date <= end;
+        if (startDate && endDate) {
+          return dataDate >= startDate && dataDate <= endDate;
+        } else if (startDate) {
+          return dataDate >= startDate;
+        } else if (endDate) {
+          return dataDate <= endDate;
         }
         return true;
       });
@@ -2029,8 +2060,28 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
   // Aggregate for KPI Cards - 期間別サマリーデータを優先的に使用
   const kpiData = useMemo(() => {
     // リーチ数（全体）の計算: 全期間データから指定期間の日次reachの合計
-    const reachSourceData = allApiData.length > 0 ? allApiData : filteredData;
-    const campaignNameParam = selectedCampaign && selectedCampaign !== 'all' ? selectedCampaign : undefined;
+    // allApiDataを使う場合は、selectedMetaAccountIdでフィルタリングする必要がある
+    let reachSourceData: CampaignData[];
+    if (allApiData.length > 0) {
+      // allApiDataが存在する場合、selectedMetaAccountIdでフィルタリング
+      if (selectedMetaAccountId && selectedMetaAccountId !== 'all') {
+        // データベースには act_ プレフィックス付きで保存されているので、それに合わせて比較
+        const selectedAccountIdWithPrefix = selectedMetaAccountId.startsWith('act_') 
+          ? selectedMetaAccountId 
+          : `act_${selectedMetaAccountId}`;
+        reachSourceData = allApiData.filter(d => {
+          const accountId = d.meta_account_id || (d as any).meta_account_id;
+          return accountId === selectedAccountIdWithPrefix || accountId === selectedMetaAccountId;
+        });
+      } else {
+        // 全アセットを表示する場合
+        reachSourceData = allApiData;
+      }
+    } else {
+      // allApiDataがない場合はfilteredDataを使用（既にselectedMetaAccountIdでフィルタリング済み）
+      reachSourceData = filteredData;
+    }
+    const campaignNameParam = selectedCampaign && selectedCampaign !== 'all' && selectedCampaign !== '全体' ? selectedCampaign : undefined;
     const adSetNameParam = selectedAdSet && selectedAdSet !== 'all' ? selectedAdSet : undefined;
     const adNameParam = selectedAd && selectedAd !== 'all' ? selectedAd : undefined;
     
@@ -2069,10 +2120,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
         periodStartDate = formatDateJST(thirtyDaysAgo);
       } else {
         // 全期間：データの最小日から最大日まで
+        // JST基準（0時）で日付文字列をパース
         const allDates = reachSourceData
           .map(d => d.date)
           .filter(date => date && typeof date === 'string')
-          .map(date => new Date(date).getTime())
+          .map(date => parseDateJST(date).getTime())
           .filter(time => !isNaN(time));
         
         if (allDates.length > 0) {
@@ -2082,19 +2134,28 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
           periodEndDate = formatDateJST(maxDate);
         } else {
           periodStartDate = '2020-01-01';
+          periodEndDate = yesterdayStr;
         }
       }
       
       // 期間に応じた日付範囲でフィルタリング
+      // JST基準（0時）で日付をパースして比較
+      const periodStart = parseDateJST(periodStartDate);
+      const periodEnd = parseDateJST(periodEndDate);
       reachFilteredData = reachSourceData.filter((d: CampaignData) => {
         if (!d.date) return false;
-        return d.date >= periodStartDate && d.date <= periodEndDate;
+        const dataDate = parseDateJST(d.date);
+        return dataDate >= periodStart && dataDate <= periodEnd;
       });
     } else {
       // 期間指定（日別データ）の場合、dateRangeでフィルタリング
+      // JST基準（0時）で日付をパースして比較
+      const startDate = parseDateJST(dateRange.start);
+      const endDate = parseDateJST(dateRange.end);
       reachFilteredData = reachSourceData.filter((d: CampaignData) => {
         if (!d.date) return false;
-        return d.date >= dateRange.start && d.date <= dateRange.end;
+        const dataDate = parseDateJST(d.date);
+        return dataDate >= startDate && dataDate <= endDate;
       });
     }
     
@@ -2264,6 +2325,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
             }
           }
           
+          // period_unique_reachが0または存在しない場合は、日次リーチの合計を使用（フォールバック）
+          // ただし、データが存在する場合のみフォールバック（データが存在しない場合は0のまま）
+          if (totalUniqueReach === 0 && totalReach > 0) {
+            totalUniqueReach = totalReach;
+          }
+          
           console.log(`[Dashboard] 📊 Using period_unique_reach from DB (${currentPeriod}) for campaign "${selectedCampaign}":`, totalUniqueReach);
         }
       }
@@ -2329,7 +2396,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
       cpcTrend: (Math.random() * 5) - 2.5,
       cvrTrend: (Math.random() * 3) - 1.5
     };
-  }, [filteredData, allApiData, dateRange.start, dateRange.end, selectedCampaign, selectedAdSet, selectedAd, summaryData, selectedPeriod, periodSummary]);
+  }, [filteredData, allApiData, dateRange.start, dateRange.end, selectedCampaign, selectedAdSet, selectedAd, summaryData, selectedPeriod, periodSummary, selectedMetaAccountId]);
 
   // Group by Date for Trend Chart - use calculated trendsData
   const trendData = useMemo(() => {
@@ -2658,6 +2725,56 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     
     console.log('[Dashboard] campaignStats count:', statsArray.length);
     console.log('[Dashboard] ===== キャンペーン別集計結果 =====');
+    
+    // 期間選択（7日/30日/全期間）の場合は、期間に応じた日付範囲を直接計算（JST基準）
+    // kpiDataと同様のロジックを使用して統一性を保つ
+    let periodStartDate: string | null = null;
+    let periodEndDate: string | null = null;
+    
+    if (currentPeriod) {
+      // JST（日本時間）基準で計算
+      const now = new Date();
+      // JST基準で今日の日付を取得（ローカル時刻を使用）
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      // 昨日を計算
+      const yesterday = new Date(today);
+      yesterday.setDate(today.getDate() - 1);
+      
+      const yesterdayStr = formatDateJST(yesterday);
+      
+      if (currentPeriod === '7days') {
+        // 7日間：昨日から6日前まで
+        const sevenDaysAgo = new Date(yesterday);
+        sevenDaysAgo.setDate(yesterday.getDate() - 6);
+        periodStartDate = formatDateJST(sevenDaysAgo);
+        periodEndDate = yesterdayStr;
+      } else if (currentPeriod === '30days') {
+        // 30日間：昨日から29日前まで
+        const thirtyDaysAgo = new Date(yesterday);
+        thirtyDaysAgo.setDate(yesterday.getDate() - 29);
+        periodStartDate = formatDateJST(thirtyDaysAgo);
+        periodEndDate = yesterdayStr;
+      } else {
+        // 全期間：データの最小日から最大日まで
+        // JST基準（0時）で日付文字列をパース
+        const allDates = deduplicatedData
+          .map(d => d.date)
+          .filter(date => date && typeof date === 'string')
+          .map(date => parseDateJST(date).getTime())
+          .filter(time => !isNaN(time));
+        
+        if (allDates.length > 0) {
+          const minDate = new Date(Math.min(...allDates));
+          periodStartDate = formatDateJST(minDate);
+          const maxDate = new Date(Math.max(...allDates));
+          periodEndDate = formatDateJST(maxDate);
+        } else {
+          periodStartDate = '2020-01-01';
+          periodEndDate = yesterdayStr;
+        }
+      }
+    }
+    
     statsArray.forEach(s => {
       const dates = campaignDateMap.get(s.campaign_name) || [];
       // 16項目すべてを計算
@@ -2671,14 +2788,36 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
       const engagement_rate = s.impressions > 0 ? ((s.engagements || 0) / s.impressions * 100) : 0;
       
       // 各日付のデータを取得（リーチ数計算用）
-      const dateData = deduplicatedData.filter(d => d.campaign_name === s.campaign_name);
+      // 期間選択（7日/30日/全期間）の場合は、期間に応じた日付範囲でフィルタリング
+      let dateData = deduplicatedData.filter(d => d.campaign_name === s.campaign_name);
+      
+      if (currentPeriod && periodStartDate && periodEndDate) {
+        // 期間に応じた日付範囲でフィルタリング（kpiDataと同様のロジック）
+        // JST基準（0時）で日付をパースして比較
+        const periodStart = parseDateJST(periodStartDate);
+        const periodEnd = parseDateJST(periodEndDate);
+        dateData = dateData.filter((d: CampaignData) => {
+          if (!d.date) return false;
+          const dataDate = parseDateJST(d.date);
+          return dataDate >= periodStart && dataDate <= periodEnd;
+        });
+      } else if (!currentPeriod) {
+        // 期間指定（日別データ）の場合は、dateRangeでフィルタリング
+        // JST基準（0時）で日付をパースして比較
+        const startDate = parseDateJST(dateRange.start);
+        const endDate = parseDateJST(dateRange.end);
+        dateData = dateData.filter((d: CampaignData) => {
+          if (!d.date) return false;
+          const dataDate = parseDateJST(d.date);
+          return dataDate >= startDate && dataDate <= endDate;
+        });
+      }
       
       // リーチ数（全体）: 日次リーチの合計
       const totalReach = dateData.reduce((sum, d) => sum + (d.reach || 0), 0);
       
       // リーチ数（ユニーク）: 期間選択（7日/30日/全期間）の場合はperiod_unique_reachフィールドから直接取得、それ以外は日次リーチの合計
       let totalUniqueReach = totalReach;
-      const currentPeriod = selectedPeriod === 7 ? '7days' : selectedPeriod === 30 ? '30days' : selectedPeriod === 'all' || selectedPeriod === null ? 'all' : null;
       
       if (currentPeriod) {
         // データが存在しない場合は、0を表示（フォールバックしない）
@@ -2859,10 +2998,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
       const allData = [...(data || []), ...(propData || [])];
       if (allData.length > 0) {
         // dateが存在し、有効な日付であるデータのみをフィルタリング
+        // JST基準（0時）で日付文字列をパース
         const validDates = allData
           .map(d => d.date)
           .filter(date => date && typeof date === 'string' && date.length >= 10)
-          .map(date => new Date(date).getTime())
+          .map(date => parseDateJST(date).getTime())
           .filter(time => !isNaN(time));
         
         if (validDates.length > 0) {
@@ -2935,10 +3075,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     if (data.length === 0) return null;
     
     // dateが存在し、有効な日付であるデータのみをフィルタリング
+    // JST基準（0時）で日付文字列をパース
     const validDates = data
       .map(d => d.date)
       .filter(date => date && typeof date === 'string' && date.length >= 10)
-      .map(date => new Date(date).getTime())
+      .map(date => parseDateJST(date).getTime())
       .filter(time => !isNaN(time));
     
     if (validDates.length === 0) return null;
@@ -2951,6 +3092,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     const yesterdayStr = formatDateJST(yesterday);
     
     // 全期間チェック（データの最小日から最大日まで）
+    // JST基準（0時）で日付を取得
     const minDate = new Date(Math.min(...validDates));
     const maxDate = new Date(Math.max(...validDates));
     const minDateStr = formatDateJST(minDate);
@@ -3329,7 +3471,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
                         value={dateRange.start || ''}
                         max={dateRange.end || undefined}
                         onChange={(e) => {
-                            const newStart = e.target.value;
+                            const newStart = e.target.value; // YYYY-MM-DD形式の文字列
                             setIsInitialLoad(false); // ユーザーが手動で変更した場合は自動更新を無効化
                             
                             // 手動で日付を変更した場合は、選択された期間をクリア
@@ -3340,13 +3482,16 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
                                 // 無視
                             }
                             
+                            // JST基準（0時）で日付をパースして再フォーマットすることで統一性を保つ
+                            const formattedStart = newStart ? formatDateJST(parseDateJST(newStart)) : newStart;
+                            
                             // 開始日が終了日より後の場合は、終了日も調整
                             let newEnd = dateRange.end;
-                            if (newStart && newEnd && newStart > newEnd) {
-                                newEnd = newStart;
+                            if (formattedStart && newEnd && formattedStart > newEnd) {
+                                newEnd = formattedStart;
                             }
                             
-                            const newRange = { start: newStart, end: newEnd };
+                            const newRange = { start: formattedStart, end: newEnd };
                             setDateRange(newRange);
                             // localStorageに保存（AnomalyDetectorと同期）
                             try {
@@ -3365,7 +3510,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
                         value={dateRange.end || ''}
                         min={dateRange.start || undefined}
                         onChange={(e) => {
-                            const newEnd = e.target.value;
+                            const newEnd = e.target.value; // YYYY-MM-DD形式の文字列
                             setIsInitialLoad(false); // ユーザーが手動で変更した場合は自動更新を無効化
                             
                             // 手動で日付を変更した場合は、選択された期間をクリア
@@ -3376,13 +3521,16 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
                                 // 無視
                             }
                             
+                            // JST基準（0時）で日付をパースして再フォーマットすることで統一性を保つ
+                            const formattedEnd = newEnd ? formatDateJST(parseDateJST(newEnd)) : newEnd;
+                            
                             // 終了日が開始日より前の場合は、開始日も調整
                             let newStart = dateRange.start;
-                            if (newStart && newEnd && newEnd < newStart) {
-                                newStart = newEnd;
+                            if (newStart && formattedEnd && formattedEnd < newStart) {
+                                newStart = formattedEnd;
                             }
                             
-                            const newRange = { start: newStart, end: newEnd };
+                            const newRange = { start: newStart, end: formattedEnd };
                             setDateRange(newRange);
                             // localStorageに保存（AnomalyDetectorと同期）
                             try {
