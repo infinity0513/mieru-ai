@@ -1025,19 +1025,38 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
         let apiStartDate: string | undefined;
         let apiEndDate: string | undefined;
         
+        // 期間に応じた日付範囲を計算（JST基準）
+        const now = new Date();
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const yesterday = new Date(today);
+        yesterday.setDate(today.getDate() - 1);
+        const yesterdayStr = formatDateJST(yesterday);
+        
         if (activePeriod === 7) {
-          // 7日間の場合は期間指定でAPIから取得
-          apiStartDate = dateRange.start;
-          apiEndDate = dateRange.end;
+          // 7日間：昨日から6日前まで
+          const sevenDaysAgo = new Date(yesterday);
+          sevenDaysAgo.setDate(yesterday.getDate() - 6);
+          apiStartDate = formatDateJST(sevenDaysAgo);
+          apiEndDate = yesterdayStr;
           console.log('[Dashboard] Fetching 7-day data:', { start: apiStartDate, end: apiEndDate });
         } else if (activePeriod === 30) {
-          // 30日間の場合は期間指定でAPIから取得
+          // 30日間：昨日から29日前まで
+          const thirtyDaysAgo = new Date(yesterday);
+          thirtyDaysAgo.setDate(yesterday.getDate() - 29);
+          apiStartDate = formatDateJST(thirtyDaysAgo);
+          apiEndDate = yesterdayStr;
+          console.log('[Dashboard] Fetching 30-day data:', { start: apiStartDate, end: apiEndDate });
+        } else if (activePeriod === 'all') {
+          // 全期間の場合はパラメータなし（全期間データを取得）
+          apiStartDate = undefined;
+          apiEndDate = undefined;
+          console.log('[Dashboard] Fetching all period data for other metrics (no date filter)');
+        } else {
+          // 日別データ全期間（selectedPeriod === null または getActiveQuickFilter === null）の場合
+          // dateRangeでフィルタリング
           apiStartDate = dateRange.start;
           apiEndDate = dateRange.end;
-          console.log('[Dashboard] Fetching 30-day data:', { start: apiStartDate, end: apiEndDate });
-        } else {
-          // 全期間の場合はパラメータなし（全期間データを取得）
-          console.log('[Dashboard] Fetching all period data for other metrics (no date filter)');
+          console.log('[Dashboard] Fetching daily data (all periods) with date range:', { start: apiStartDate, end: apiEndDate });
         }
         
         const periodSpecificResult = await Promise.allSettled([
@@ -1060,13 +1079,45 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
         
         // 期間指定で取得したデータは既に日付範囲でフィルタリングされているが、
         // 念のため再度フィルタリング（キャッシュやタイミングの問題を考慮）
-        // JST基準（0時）で日付をパースして比較
-        const startDate = parseDateJST(dateRange.start);
-        const endDate = parseDateJST(dateRange.end);
+        // 期間に応じた日付範囲を使用（データ取得時と同じロジック）
+        let filterStartDate: Date;
+        let filterEndDate: Date;
+        
+        if (activePeriod === 7) {
+          // 7日間：昨日から6日前まで
+          const now = new Date();
+          const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+          const yesterday = new Date(today);
+          yesterday.setDate(today.getDate() - 1);
+          const sevenDaysAgo = new Date(yesterday);
+          sevenDaysAgo.setDate(yesterday.getDate() - 6);
+          filterStartDate = parseDateJST(formatDateJST(sevenDaysAgo));
+          filterEndDate = parseDateJST(formatDateJST(yesterday));
+        } else if (activePeriod === 30) {
+          // 30日間：昨日から29日前まで
+          const now = new Date();
+          const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+          const yesterday = new Date(today);
+          yesterday.setDate(today.getDate() - 1);
+          const thirtyDaysAgo = new Date(yesterday);
+          thirtyDaysAgo.setDate(yesterday.getDate() - 29);
+          filterStartDate = parseDateJST(formatDateJST(thirtyDaysAgo));
+          filterEndDate = parseDateJST(formatDateJST(yesterday));
+        } else if (activePeriod === 'all') {
+          // 全期間の場合は、データの最小日から最大日まで
+          // フィルタリングしない（全期間データを使用）
+          filterStartDate = new Date(0); // 最小値
+          filterEndDate = new Date(8640000000000000); // 最大値
+        } else {
+          // 日別データ全期間の場合は、dateRangeを使用
+          filterStartDate = parseDateJST(dateRange.start);
+          filterEndDate = parseDateJST(dateRange.end);
+        }
+        
         const dateFilteredData = allCampaignsResponse.filter((d: CampaignData) => {
           if (!d.date) return false;
           const dataDate = parseDateJST(d.date);
-          return dataDate >= startDate && dataDate <= endDate;
+          return dataDate >= filterStartDate && dataDate <= filterEndDate;
         });
         
         // フィルタリング（キャンペーン/広告セット/広告）
@@ -1485,6 +1536,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
         lastPeriodSummaryParamsRef.current = { campaign: selectedCampaign, period };
         
         try {
+          // 認証トークンが存在するか確認
+          const token = localStorage.getItem('access_token');
+          if (!token) {
+            console.log(`[Dashboard] ⏭️ Skipping period summary load (no token): ${selectedCampaign} ${period}`);
+            setPeriodSummary(null);
+            return;
+          }
+          
           console.log(`[Dashboard] 📡 Loading period summary (useEffect): ${selectedCampaign} ${period}`);
           const summary = await Api.getCampaignSummaryByPeriod({
             campaign_name: selectedCampaign,
@@ -1492,7 +1551,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
           });
           console.log(`[Dashboard] ✅ Period summary loaded (useEffect):`, summary);
           setPeriodSummary(summary);
-        } catch (error) {
+        } catch (error: any) {
+          // 認証トークンがない場合はエラーを無視（ログイン前の状態）
+          if (error?.message?.includes('認証トークン') || error?.message?.includes('認証')) {
+            console.log(`[Dashboard] ⏭️ Skipping period summary load (auth error): ${selectedCampaign} ${period}`);
+            setPeriodSummary(null);
+            return;
+          }
           console.error(`[Dashboard] ❌ Failed to load period summary (useEffect):`, error);
           setPeriodSummary(null);
           // エラー時はパラメータをリセットして再試行可能にする
@@ -2087,9 +2152,22 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     
     // 期間選択（7日/30日/全期間）の場合は、period_unique_reachフィールドから直接取得
     // 期間指定（日別データ）の場合は、日付範囲でフィルタリング
-    const currentPeriod = selectedPeriod === 7 ? '7days' : selectedPeriod === 30 ? '30days' : selectedPeriod === 'all' || selectedPeriod === null ? 'all' : null;
+    // 日別データ全期間（selectedPeriod === null）と全期間（selectedPeriod === 'all'）を区別
+    const currentPeriod = selectedPeriod === 7 ? '7days' 
+                       : selectedPeriod === 30 ? '30days' 
+                       : selectedPeriod === 'all' ? 'all' 
+                       : null; // selectedPeriod === null の場合は null（日別データ全期間）
     
     let reachFilteredData: CampaignData[] = [];
+    
+    // キャンペーンで検索した結果を表示するため、キャンペーンレベルのデータのみを使用
+    // キャンペーンレベルのデータ: ad_set_nameとad_nameがNULLまたは空
+    // まずキャンペーンレベルでフィルタリング（日付範囲計算の前に実行）
+    const beforeCampaignLevelFilterCount = reachSourceData.length;
+    const campaignLevelData = reachSourceData.filter(d => 
+      (!d.ad_set_name || d.ad_set_name.trim() === '') && 
+      (!d.ad_name || d.ad_name.trim() === '')
+    );
     
     if (currentPeriod) {
       // 期間選択（7日/30日/全期間）の場合
@@ -2119,52 +2197,53 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
         thirtyDaysAgo.setDate(yesterday.getDate() - 29);
         periodStartDate = formatDateJST(thirtyDaysAgo);
       } else {
-        // 全期間：データの最小日から最大日まで
-        // JST基準（0時）で日付文字列をパース
-        const allDates = reachSourceData
-          .map(d => d.date)
-          .filter(date => date && typeof date === 'string')
-          .map(date => parseDateJST(date).getTime())
-          .filter(time => !isNaN(time));
-        
-        if (allDates.length > 0) {
-          const minDate = new Date(Math.min(...allDates));
-          periodStartDate = formatDateJST(minDate);
-          const maxDate = new Date(Math.max(...allDates));
-          periodEndDate = formatDateJST(maxDate);
-        } else {
-          periodStartDate = '2020-01-01';
-          periodEndDate = yesterdayStr;
-        }
+        // 全期間：日付範囲でフィルタリングしない
+        // 全期間のデータは各キャンペーンごとに1つのperiod_unique_reach_allの値のみ
+        // リーチ数（全体）は日次リーチの合計が必要なので、全期間の日次リーチを合計する
+        // そのため、全期間の日次データを取得する必要があるが、日付範囲でフィルタリングは不要
+        // （allApiDataには既に全期間の日次データが含まれている）
+        // 日付範囲の計算は不要（全期間のデータをそのまま使用）
+        periodStartDate = '2020-01-01'; // ダミー値（使用しない）
+        periodEndDate = yesterdayStr; // ダミー値（使用しない）
       }
       
-      // 期間に応じた日付範囲でフィルタリング
-      // JST基準（0時）で日付をパースして比較
-      const periodStart = parseDateJST(periodStartDate);
-      const periodEnd = parseDateJST(periodEndDate);
-      reachFilteredData = reachSourceData.filter((d: CampaignData) => {
-        if (!d.date) return false;
-        const dataDate = parseDateJST(d.date);
-        return dataDate >= periodStart && dataDate <= periodEnd;
-      });
+      // 期間に応じた日付範囲でフィルタリング（キャンペーンレベルでフィルタリング済みのデータを使用）
+      if (currentPeriod === 'all') {
+        // 全期間の場合は、日付範囲でフィルタリングしない（全期間のデータをそのまま使用）
+        // リーチ数（全体）は全期間の日次リーチを合計する必要があるため
+        reachFilteredData = campaignLevelData;
+      } else {
+        // 7日間/30日間の場合は、日付範囲でフィルタリング
+        // JST基準（0時）で日付をパースして比較
+        const periodStart = parseDateJST(periodStartDate);
+        const periodEnd = parseDateJST(periodEndDate);
+        reachFilteredData = campaignLevelData.filter((d: CampaignData) => {
+          if (!d.date) return false;
+          const dataDate = parseDateJST(d.date);
+          return dataDate >= periodStart && dataDate <= periodEnd;
+        });
+      }
     } else {
-      // 期間指定（日別データ）の場合、dateRangeでフィルタリング
+      // 期間指定（日別データ）の場合、dateRangeでフィルタリング（キャンペーンレベルでフィルタリング済みのデータを使用）
       // JST基準（0時）で日付をパースして比較
       const startDate = parseDateJST(dateRange.start);
       const endDate = parseDateJST(dateRange.end);
-      reachFilteredData = reachSourceData.filter((d: CampaignData) => {
+      reachFilteredData = campaignLevelData.filter((d: CampaignData) => {
         if (!d.date) return false;
         const dataDate = parseDateJST(d.date);
         return dataDate >= startDate && dataDate <= endDate;
       });
     }
     
-    // キャンペーンで検索した結果を表示するため、キャンペーンレベルのデータのみを使用
-    // キャンペーンレベルのデータ: ad_set_nameとad_nameがNULLまたは空
-    reachFilteredData = reachFilteredData.filter(d => 
-      (!d.ad_set_name || d.ad_set_name.trim() === '') && 
-      (!d.ad_name || d.ad_name.trim() === '')
-    );
+    // デバッグ: キャンペーンレベルのフィルタリング結果を確認（特定のキャンペーンのみ）
+    if ((selectedCampaign === 'ハイブリッドマーケティング' || selectedCampaign === 'ハイブリッドマーケティング１') && currentPeriod === 'all') {
+      console.log(`[Dashboard] 🔍 Campaign level filter applied (before date range filter):`, {
+        beforeFilter: beforeCampaignLevelFilterCount,
+        afterFilter: campaignLevelData.length,
+        removed: beforeCampaignLevelFilterCount - campaignLevelData.length,
+        note: 'キャンペーンレベルでフィルタリングした後、日付範囲でフィルタリング'
+      });
+    }
     
     // キャンペーン/広告セット/広告でフィルタリング
     if (campaignNameParam) {
@@ -2177,11 +2256,70 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
       reachFilteredData = reachFilteredData.filter(d => d.ad_name === adNameParam);
     }
     
+    // デバッグ: キャンペーンレベルのフィルタリング結果を確認
+    const beforeCampaignLevelFilter = reachFilteredData.length;
+    const nonCampaignLevelData = reachFilteredData.filter(d => 
+      (d.ad_set_name && d.ad_set_name.trim() !== '') || 
+      (d.ad_name && d.ad_name.trim() !== '')
+    );
+    
+    if (nonCampaignLevelData.length > 0 && (selectedCampaign === 'ハイブリッドマーケティング' || selectedCampaign === 'ハイブリッドマーケティング１')) {
+      console.warn(`[Dashboard] ⚠️ Non-campaign level data found in reachFilteredData:`, {
+        selectedCampaign,
+        selectedPeriod,
+        currentPeriod,
+        beforeFilter: beforeCampaignLevelFilter,
+        nonCampaignLevelCount: nonCampaignLevelData.length,
+        sampleNonCampaignLevel: nonCampaignLevelData.slice(0, 3).map(d => ({
+          campaign_name: d.campaign_name,
+          ad_set_name: d.ad_set_name || '(empty)',
+          ad_name: d.ad_name || '(empty)',
+          date: d.date,
+          reach: d.reach
+        }))
+      });
+    }
+    
     // キャンペーンで検索した結果を使用（reachFilteredDataは既にキャンペーンレベルのデータのみで、キャンペーン/広告セット/広告でフィルタリング済み）
     const current = reachFilteredData;
     
+    // デバッグ: 最終的なcurrentデータの詳細（特定のキャンペーンのみ）
+    if ((selectedCampaign === 'ハイブリッドマーケティング' || selectedCampaign === 'ハイブリッドマーケティング１') && currentPeriod === 'all') {
+      const currentByDate = current.reduce((acc, d) => {
+        const date = d.date || 'unknown';
+        if (!acc[date]) {
+          acc[date] = [];
+        }
+        acc[date].push({
+          campaign_name: d.campaign_name,
+          ad_set_name: d.ad_set_name || '(empty)',
+          ad_name: d.ad_name || '(empty)',
+          reach: d.reach,
+          meta_account_id: d.meta_account_id
+        });
+        return acc;
+      }, {} as Record<string, any[]>);
+      
+      console.log(`[Dashboard] 🔍 Final current data for "${selectedCampaign}":`, {
+        currentLength: current.length,
+        currentByDate: Object.entries(currentByDate).map(([date, records]) => ({
+          date,
+          recordCount: records.length,
+          totalReach: records.reduce((sum, r) => sum + (r.reach || 0), 0),
+          records: records
+        })),
+        totalReach: current.reduce((sum, d) => sum + (d.reach || 0), 0),
+        uniqueDates: Array.from(new Set(current.map(d => d.date))).sort(),
+        dataLevelBreakdown: {
+          campaignLevel: current.filter(d => (!d.ad_set_name || d.ad_set_name.trim() === '') && (!d.ad_name || d.ad_name.trim() === '')).length,
+          adSetLevel: current.filter(d => d.ad_set_name && d.ad_set_name.trim() !== '' && (!d.ad_name || d.ad_name.trim() === '')).length,
+          adLevel: current.filter(d => d.ad_name && d.ad_name.trim() !== '').length
+        }
+      });
+    }
+    
     // デバッグ: 使用しているデータを確認（重複ログを防ぐため、変更があった場合のみ出力）
-    if (current.length > 0 && (selectedCampaign === 'ハイブリッドマーケティング' || selectedCampaign === 'all' || !selectedCampaign)) {
+    if (current.length > 0 && (selectedCampaign === 'ハイブリッドマーケティング' || selectedCampaign === 'ハイブリッドマーケティング１' || selectedCampaign === 'all' || !selectedCampaign)) {
       const sampleData = current[0];
       const logKey = `${selectedCampaign}-${selectedPeriod}-${currentPeriod}-${current.length}-${sampleData?.period_unique_reach_30days}`;
       
@@ -2231,8 +2369,34 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     const totalValue = current.reduce((acc, curr) => acc + (curr.conversion_value || 0), 0);
     
     // ===== リーチ：データベースから集計したデータを直接使用 =====
-    // リーチ数（全体）: 日次リーチの合計（期間指定（日別データ）表示用）
+    // リーチ数（全体）: 常に日次リーチの合計（期間選択に関わらず、選択期間内の日次リーチを合計）
+    // 期間選択（7日/30日/全期間）の場合も、その期間内の日次リーチの合計を表示
     const totalReach = current.reduce((acc, curr) => acc + (curr.reach || 0), 0);
+    
+    // デバッグ: リーチ数の計算を詳細にログ出力（特定のキャンペーンのみ）
+    if ((selectedCampaign === 'ハイブリッドマーケティング' || selectedCampaign === 'ハイブリッドマーケティング１') && currentPeriod === 'all') {
+      console.log(`[Dashboard] 🔍 totalReach calculation for "${selectedCampaign}":`, {
+        currentLength: current.length,
+        totalReach,
+        reachByDate: current.reduce((acc, curr) => {
+          const date = curr.date || 'unknown';
+          acc[date] = (acc[date] || 0) + (curr.reach || 0);
+          return acc;
+        }, {} as Record<string, number>),
+        dataLevelBreakdown: {
+          campaignLevel: current.filter(d => (!d.ad_set_name || d.ad_set_name.trim() === '') && (!d.ad_name || d.ad_name.trim() === '')).length,
+          adSetLevel: current.filter(d => d.ad_set_name && d.ad_set_name.trim() !== '' && (!d.ad_name || d.ad_name.trim() === '')).length,
+          adLevel: current.filter(d => d.ad_name && d.ad_name.trim() !== '').length
+        },
+        sampleRecords: current.slice(0, 5).map(d => ({
+          campaign_name: d.campaign_name,
+          ad_set_name: d.ad_set_name || '(empty)',
+          ad_name: d.ad_name || '(empty)',
+          date: d.date,
+          reach: d.reach
+        }))
+      });
+    }
     
     // リーチ数（ユニーク）: 期間全体のユニークリーチ
     // 7日間/30日間/全期間選択時: period_unique_reachフィールドから直接取得（データベースから集計したデータ）
@@ -2303,16 +2467,30 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
             }
           }
           
-          // デバッグ: 使用しているデータを詳細にログ出力
-          console.log(`[Dashboard] 🔍 period_unique_reach calculation for campaign "${selectedCampaign}":`, {
-            campaignNameParam,
-            currentLength: current.length,
-            campaignFilteredDataLength: campaignFilteredData.length,
-            currentCampaigns: Array.from(new Set(current.map(d => d.campaign_name))),
-            reachValues: reachValues,
-            reachRecords: reachRecords,
-            totalReach: totalReach
-          });
+          // デバッグ: 使用しているデータを詳細にログ出力（特定のキャンペーンのみ）
+          if (selectedCampaign === 'ハイブリッドマーケティング' || selectedCampaign === 'ハイブリッドマーケティング１') {
+            console.log(`[Dashboard] 🔍 period_unique_reach calculation for campaign "${selectedCampaign}":`, {
+              campaignNameParam,
+              currentPeriod,
+              currentLength: current.length,
+              campaignFilteredDataLength: campaignFilteredData.length,
+              currentCampaigns: Array.from(new Set(current.map(d => d.campaign_name))),
+              reachValues: reachValues,
+              reachRecords: reachRecords,
+              totalReach: totalReach,
+              allRecords: campaignFilteredData.map(d => ({
+                campaign_name: d.campaign_name,
+                ad_set_name: d.ad_set_name || '(empty)',
+                ad_name: d.ad_name || '(empty)',
+                date: d.date,
+                reach: d.reach,
+                period_unique_reach_7days: d.period_unique_reach_7days,
+                period_unique_reach_30days: d.period_unique_reach_30days,
+                period_unique_reach_all: d.period_unique_reach_all,
+                period_unique_reach: d.period_unique_reach
+              }))
+            });
+          }
           
           if (reachValues.length > 0) {
             // 最大値を使用（同じキャンペーンの同じ期間のperiod_unique_reachは同じ値のはずだが、データの不整合を考慮）
@@ -2641,8 +2819,23 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
       stats[key].conversion_value += (d.conversion_value || 0);
       // リーチ数は後でperiodSummaryから取得するため、ここでは合計しない（7日間/30日間/全期間選択時）
       // 期間指定（日別データ）表示時のみ日次のreachを合計
-      if (selectedPeriod !== 7 && selectedPeriod !== 30 && selectedPeriod !== 'all' && selectedPeriod !== null) {
+      const shouldSumReach = selectedPeriod !== 7 && selectedPeriod !== 30 && selectedPeriod !== 'all' && selectedPeriod !== null;
+      if (shouldSumReach) {
         stats[key].reach += d.reach || 0;  // 日次のreachを合計（期間指定表示時のみ）
+      }
+      
+      // デバッグ: 全期間選択時のreach合計を確認（特定のキャンペーンのみ）
+      if ((selectedCampaign === 'ハイブリッドマーケティング' || selectedCampaign === 'ハイブリッドマーケティング１') && 
+          selectedPeriod === 'all' && 
+          (d.campaign_name === selectedCampaign || d.campaign_name?.trim() === selectedCampaign)) {
+        console.log(`[Dashboard] 🔍 campaignStats reach calculation for "${selectedCampaign}":`, {
+          date: d.date,
+          reach: d.reach,
+          shouldSumReach: shouldSumReach,
+          selectedPeriod: selectedPeriod,
+          currentReach: stats[key].reach,
+          note: '全期間選択時は日次のreachを合計しない（periodSummaryから取得するため）'
+        });
       }
       stats[key].engagements += (d.engagements || 0);
       stats[key].link_clicks += (d.link_clicks || 0);
@@ -2690,7 +2883,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     const statsArray = Object.values(stats);
     
     // 7日間/30日間/全期間選択時は、選択中のキャンペーンのreachをperiodSummaryから取得
-    const currentPeriod = selectedPeriod === 7 ? '7days' : selectedPeriod === 30 ? '30days' : selectedPeriod === 'all' || selectedPeriod === null ? 'all' : null;
+    // 日別データ全期間（selectedPeriod === null）と全期間（selectedPeriod === 'all'）を区別
+    const currentPeriod = selectedPeriod === 7 ? '7days' 
+                       : selectedPeriod === 30 ? '30days' 
+                       : selectedPeriod === 'all' ? 'all' 
+                       : null; // selectedPeriod === null の場合は null（日別データ全期間）
     
     if (currentPeriod &&
         selectedCampaign && 
@@ -2707,7 +2904,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
           period: selectedPeriod,
           reach: periodSummary.reach,
           previousReach: selectedStats.reach,
-          periodSummary: periodSummary
+          periodSummary: periodSummary,
+          note: 'campaignStatsのreachはperiodSummaryから取得したユニークリーチ（kpiDataのtotalReachとは異なる）'
         });
         selectedStats.reach = periodSummary.reach;
       } else {
@@ -2755,8 +2953,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
         periodStartDate = formatDateJST(thirtyDaysAgo);
         periodEndDate = yesterdayStr;
       } else {
-        // 全期間：データの最小日から最大日まで
-        // JST基準（0時）で日付文字列をパース
+        // 全期間：データベースの実際の最小日から昨日まで
+        // deduplicatedDataから最小日を取得し、最大日は昨日に固定
+        // これにより、取得できているデータの最大日ではなく、昨日までのデータで計算される
         const allDates = deduplicatedData
           .map(d => d.date)
           .filter(date => date && typeof date === 'string')
@@ -2766,8 +2965,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
         if (allDates.length > 0) {
           const minDate = new Date(Math.min(...allDates));
           periodStartDate = formatDateJST(minDate);
-          const maxDate = new Date(Math.max(...allDates));
-          periodEndDate = formatDateJST(maxDate);
+          // 最大日は昨日に固定（全期間の場合は、取得できているデータの最大日ではなく、昨日まで）
+          periodEndDate = yesterdayStr;
         } else {
           periodStartDate = '2020-01-01';
           periodEndDate = yesterdayStr;
@@ -2911,28 +3110,77 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     console.log('[Dashboard] ===== End campaignStats calculation =====');
 
     return statsArray.map(s => {
-      // DBから取得したリーチ数を使用（campaignReachMapへの依存を削除）
-      // summaryDataから直接リーチ数を取得するため、campaignReachMapは不要
-      const reach = s.reach || 0;
+      // 計算指標を再計算（期間に応じたデータで）
+      const dates = campaignDateMap.get(s.campaign_name) || [];
+      let dateData = deduplicatedData.filter(d => d.campaign_name === s.campaign_name);
+      
+      if (currentPeriod && periodStartDate && periodEndDate) {
+        const periodStart = parseDateJST(periodStartDate);
+        const periodEnd = parseDateJST(periodEndDate);
+        dateData = dateData.filter((d: CampaignData) => {
+          if (!d.date) return false;
+          const dataDate = parseDateJST(d.date);
+          return dataDate >= periodStart && dataDate <= periodEnd;
+        });
+      } else if (!currentPeriod) {
+        const startDate = parseDateJST(dateRange.start);
+        const endDate = parseDateJST(dateRange.end);
+        dateData = dateData.filter((d: CampaignData) => {
+          if (!d.date) return false;
+          const dataDate = parseDateJST(d.date);
+          return dataDate >= startDate && dataDate <= endDate;
+        });
+      }
+      
+      const totalReach = dateData.reduce((sum, d) => sum + (d.reach || 0), 0);
+      let totalUniqueReach = totalReach;
+      
+      if (currentPeriod) {
+        const reachValues: number[] = [];
+        for (const record of dateData) {
+          const reachValue = currentPeriod === '7days' ? record.period_unique_reach_7days :
+                            currentPeriod === '30days' ? record.period_unique_reach_30days :
+                            record.period_unique_reach_all || record.period_unique_reach;
+          if (reachValue && reachValue > 0) {
+            reachValues.push(reachValue);
+          }
+        }
+        if (reachValues.length > 0) {
+          totalUniqueReach = Math.max(...reachValues);
+        }
+        if (totalUniqueReach === 0 && totalReach > 0) {
+          totalUniqueReach = totalReach;
+        }
+      }
+      
+      // 計算指標
+      const ctr = s.impressions > 0 ? (s.clicks / s.impressions * 100) : 0;
+      const cpc = s.clicks > 0 ? s.cost / s.clicks : 0;
+      const cpa = s.conversions > 0 ? s.cost / s.conversions : 0;
+      const cpm = s.impressions > 0 ? (s.cost / s.impressions * 1000) : 0;
+      const cvr = s.clicks > 0 ? (s.conversions / s.clicks * 100) : 0;
+      const roas = s.cost > 0 ? (s.conversion_value / s.cost * 100) : 0;
+      const frequency = totalUniqueReach > 0 ? (s.impressions / totalUniqueReach) : 0;
+      const engagement_rate = s.impressions > 0 ? ((s.engagements || 0) / s.impressions * 100) : 0;
       
       return {
         ...s,
-        ctr: s.impressions > 0 ? (s.clicks / s.impressions * 100) : 0,
-        cpc: s.clicks > 0 ? s.cost / s.clicks : 0,
-        cpa: s.conversions > 0 ? s.cost / s.conversions : 0,
-        cpm: s.impressions > 0 ? (s.cost / s.impressions * 1000) : 0,
-        cvr: s.clicks > 0 ? (s.conversions / s.clicks * 100) : 0,
-        roas: s.cost > 0 ? (s.conversion_value / s.cost * 100) : 0,
+        ctr: ctr,
+        cpc: cpc,
+        cpa: cpa,
+        cpm: cpm,
+        cvr: cvr,
+        roas: roas,
         // Optional fields (will be 0 if not in data)
-        reach: reach,
-        frequency: reach > 0 ? (s.impressions / reach) : 0,
+        reach: totalUniqueReach,
+        frequency: frequency,
         engagements: s.engagements || 0,
-        engagementRate: s.impressions > 0 ? ((s.engagements || 0) / s.impressions * 100) : 0,
+        engagement_rate: engagement_rate,
         link_clicks: s.link_clicks || 0,
         landing_page_views: s.landing_page_views || 0
       };
     });
-  }, [filteredData, selectedCampaign, selectedAdSet, selectedAd, selectedMetaAccountId]);
+  }, [filteredData, selectedCampaign, selectedAdSet, selectedAd, selectedMetaAccountId, selectedPeriod, dateRange.start, dateRange.end, periodSummary]);
 
   // campaignStatsが空の場合、summaryDataもクリア
   useEffect(() => {
@@ -2994,8 +3242,17 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     let newRange: { start: string; end: string };
 
     if (days === 'all') {
-      // 全期間
-      const allData = [...(data || []), ...(propData || [])];
+      // 全期間：データベースの実際の最小日から昨日まで
+      // allApiDataを使用（全期間データが含まれている）
+      const allData = allApiData.length > 0 ? allApiData : [...(data || []), ...(propData || [])];
+      // JST基準で今日の日付を取得（ローカル時刻を使用）
+      const now = new Date();
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      // 昨日を計算
+      const yesterday = new Date(today);
+      yesterday.setDate(today.getDate() - 1);
+      const yesterdayStr = formatDateJST(yesterday);
+      
       if (allData.length > 0) {
         // dateが存在し、有効な日付であるデータのみをフィルタリング
         // JST基準（0時）で日付文字列をパース
@@ -3007,33 +3264,27 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
         
         if (validDates.length > 0) {
           const minDate = new Date(Math.min(...validDates));
-          const maxDate = new Date(Math.max(...validDates));
-        
-        newRange = {
-          start: formatDateJST(minDate),
-          end: formatDateJST(maxDate),
-        };
+          // 最大日は昨日に固定（全期間の場合は、取得できているデータの最大日ではなく、昨日まで）
+          newRange = {
+            start: formatDateJST(minDate),
+            end: yesterdayStr,
+          };
+          console.log(`[Dashboard] setQuickFilter('all'): Updated date range:`, newRange, 'from', validDates.length, 'valid dates');
         } else {
           // 有効な日付がない場合はデフォルト値を使用 - JST基準
-          const now = new Date();
-          const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-          const yesterday = new Date(today);
-          yesterday.setDate(today.getDate() - 1);
           newRange = {
             start: formatDateJST(new Date(2020, 0, 1)),
-            end: formatDateJST(yesterday),
+            end: yesterdayStr,
           };
+          console.log(`[Dashboard] setQuickFilter('all'): No valid dates, using default range:`, newRange);
         }
       } else {
-        // JST基準
-        const now = new Date();
-        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        const yesterday = new Date(today);
-        yesterday.setDate(today.getDate() - 1);
+        // データがない場合も昨日までに固定
         newRange = {
           start: formatDateJST(new Date(2020, 0, 1)),
-          end: formatDateJST(yesterday),
+          end: yesterdayStr,
         };
+        console.log(`[Dashboard] setQuickFilter('all'): No data available, using default range:`, newRange);
       }
     } else {
       // 7日間 or 30日間（昨日まで）- JST基準
@@ -3869,7 +4120,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
             <thead className="bg-gray-50 dark:bg-gray-700">
               <tr>
                 <th 
-                  className="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600"
+                  className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider sticky left-0 bg-gray-50 dark:bg-gray-700 z-10 whitespace-nowrap cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600"
                   onClick={() => requestSort('campaign_name')}
                 >
                   <div className="flex items-center">
@@ -3878,17 +4129,17 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
                   </div>
                 </th>
                 <th 
-                  className="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+                  className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap"
                 >
                   広告セット名
                 </th>
                 <th 
-                  className="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+                  className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap"
                 >
                   広告名
                 </th>
                 <th 
-                  className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600"
+                  className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600"
                   onClick={() => requestSort('impressions')}
                 >
                   <div className="flex items-center justify-end">
@@ -3897,16 +4148,16 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
                   </div>
                 </th>
                 <th 
-                  className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600"
+                  className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600"
                   onClick={() => requestSort('clicks')}
                 >
                   <div className="flex items-center justify-end">
-                    クリック
+                    クリック数
                     <SortIcon colKey="clicks" />
                   </div>
                 </th>
                 <th 
-                  className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600"
+                  className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600"
                   onClick={() => requestSort('cost')}
                 >
                   <div className="flex items-center justify-end">
@@ -3915,57 +4166,120 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
                   </div>
                 </th>
                 <th 
-                  className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600"
+                  className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600"
                   onClick={() => requestSort('conversions')}
                 >
                   <div className="flex items-center justify-end">
-                    CV
+                    コンバージョン
                     <SortIcon colKey="conversions" />
                   </div>
                 </th>
                 <th 
-                  className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600"
+                  className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600"
+                  onClick={() => requestSort('conversion_value')}
+                >
+                  <div className="flex items-center justify-end">
+                    コンバージョン価値
+                    <SortIcon colKey="conversion_value" />
+                  </div>
+                </th>
+                <th 
+                  className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600"
                   onClick={() => requestSort('roas')}
                 >
                   <div className="flex items-center justify-end">
-                    ROAS
+                    ROAS (%)
                     <SortIcon colKey="roas" />
                   </div>
                 </th>
                 <th 
-                  className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600"
+                  className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600"
                   onClick={() => requestSort('ctr')}
                 >
                   <div className="flex items-center justify-end">
-                    CTR
+                    CTR (%)
                     <SortIcon colKey="ctr" />
                   </div>
                 </th>
                 <th 
-                  className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600"
-                  onClick={() => requestSort('cpc')}
-                >
-                  <div className="flex items-center justify-end">
-                    CPC
-                    <SortIcon colKey="cpc" />
-                  </div>
-                </th>
-                <th 
-                  className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600"
+                  className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600"
                   onClick={() => requestSort('cvr')}
                 >
                   <div className="flex items-center justify-end">
-                    CVR
+                    CVR (%)
                     <SortIcon colKey="cvr" />
                   </div>
                 </th>
                 <th 
-                  className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600"
+                  className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600"
+                  onClick={() => requestSort('cpc')}
+                >
+                  <div className="flex items-center justify-end">
+                    CPC (¥)
+                    <SortIcon colKey="cpc" />
+                  </div>
+                </th>
+                <th 
+                  className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600"
                   onClick={() => requestSort('cpa')}
                 >
                   <div className="flex items-center justify-end">
-                    CPA
+                    CPA (¥)
                     <SortIcon colKey="cpa" />
+                  </div>
+                </th>
+                <th 
+                  className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600"
+                  onClick={() => requestSort('cpm')}
+                >
+                  <div className="flex items-center justify-end">
+                    CPM (¥)
+                    <SortIcon colKey="cpm" />
+                  </div>
+                </th>
+                <th 
+                  className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600"
+                  onClick={() => requestSort('reach')}
+                >
+                  <div className="flex items-center justify-end">
+                    リーチ数
+                    <SortIcon colKey="reach" />
+                  </div>
+                </th>
+                <th 
+                  className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600"
+                  onClick={() => requestSort('frequency')}
+                >
+                  <div className="flex items-center justify-end">
+                    フリークエンシー
+                    <SortIcon colKey="frequency" />
+                  </div>
+                </th>
+                <th 
+                  className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600"
+                  onClick={() => requestSort('engagement_rate')}
+                >
+                  <div className="flex items-center justify-end">
+                    エンゲージメント率 (%)
+                    <SortIcon colKey="engagement_rate" />
+                  </div>
+                </th>
+                <th 
+                  className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600"
+                  onClick={() => requestSort('link_clicks')}
+                >
+                  <div className="flex items-center justify-end">
+                    リンククリック数
+                    <SortIcon colKey="link_clicks" />
+                  </div>
+                </th>
+                <th 
+                  className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600"
+                  onClick={() => requestSort('landing_page_views')}
+                >
+                  <div className="flex items-center justify-end">
+                    LPビュー数
+                    <SortIcon colKey="landing_page_views" />
                   </div>
                 </th>
               </tr>
@@ -3983,43 +4297,62 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
                     setSelectedCampaignName(campaign.campaign_name);
                   }}
                 >
-                  <td className="px-4 py-2 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
+                  <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white sticky left-0 bg-white dark:bg-gray-800 z-10">
                     {campaign.campaign_name}
                   </td>
-                  <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                  <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white">
                     {campaign.ad_set_name || '-'}
                   </td>
-                  <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                  <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white">
                     {campaign.ad_name || '-'}
                   </td>
-                  <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400 text-right">
+                  <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
                     {campaign.impressions.toLocaleString()}
                   </td>
-                  <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400 text-right">
+                  <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
                     {campaign.clicks.toLocaleString()}
                   </td>
-                  <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right font-medium">
+                  <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
                     ¥{campaign.cost.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                   </td>
-                  <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400 text-right">
-                    {campaign.conversions}
+                  <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
+                    {campaign.conversions.toLocaleString()}
                   </td>
-                  <td className="px-4 py-2 whitespace-nowrap text-sm text-right">
-                    <span className={`font-medium ${campaign.roas >= 100 ? 'text-green-600 dark:text-green-400' : campaign.roas >= 50 ? 'text-yellow-600 dark:text-yellow-400' : 'text-red-600 dark:text-red-400'}`}>
-                      {campaign.roas.toFixed(0)}%
-                    </span>
+                  <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
+                    ¥{campaign.conversion_value ? campaign.conversion_value.toLocaleString(undefined, { maximumFractionDigits: 0 }) : '0'}
                   </td>
-                  <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400 text-right">
+                  <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
+                    {campaign.roas.toFixed(2)}%
+                  </td>
+                  <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
                     {campaign.ctr.toFixed(2)}%
                   </td>
-                  <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400 text-right">
-                    ¥{campaign.cpc.toFixed(0)}
+                  <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
+                    ¥{campaign.cpc.toFixed(2)}
                   </td>
-                  <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400 text-right">
+                  <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
                     {campaign.cvr ? campaign.cvr.toFixed(2) + '%' : '-'}
                   </td>
-                  <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400 text-right">
-                    ¥{campaign.cpa.toFixed(0)}
+                  <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
+                    ¥{campaign.cpa.toFixed(2)}
+                  </td>
+                  <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
+                    ¥{campaign.cpm ? campaign.cpm.toFixed(2) : '-'}
+                  </td>
+                  <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
+                    {campaign.reach > 0 ? campaign.reach.toLocaleString() : '-'}
+                  </td>
+                  <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
+                    {campaign.frequency > 0 ? campaign.frequency.toFixed(2) : '-'}
+                  </td>
+                  <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
+                    {campaign.engagement_rate > 0 ? `${campaign.engagement_rate.toFixed(2)}%` : (campaign.engagementRate > 0 ? `${campaign.engagementRate.toFixed(2)}%` : '-')}
+                  </td>
+                  <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
+                    {campaign.link_clicks > 0 ? campaign.link_clicks.toLocaleString() : '-'}
+                  </td>
+                  <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
+                    {campaign.landing_page_views > 0 ? campaign.landing_page_views.toLocaleString() : '-'}
                   </td>
                 </tr>
               ))}
