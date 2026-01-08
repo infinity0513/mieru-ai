@@ -2503,10 +2503,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
             }
           }
           
-          // period_unique_reachが0または存在しない場合は、日次リーチの合計を使用（フォールバック）
-          // ただし、データが存在する場合のみフォールバック（データが存在しない場合は0のまま）
+          // period_unique_reachが0の場合は0のまま表示（フォールバックしない）
+          // 日次リーチの合計にフォールバックすると、リーチ数（全体）とリーチ数（ユニーク）が同じ値になってしまうため
           if (totalUniqueReach === 0 && totalReach > 0) {
-            totalUniqueReach = totalReach;
+            console.warn(`[Dashboard] ⚠️ period_unique_reach is 0 for campaign "${selectedCampaign}" (${currentPeriod}). Data may need to be synced from Meta API.`);
+            // フォールバック処理を削除: totalUniqueReach = totalReach; を削除
           }
           
           console.log(`[Dashboard] 📊 Using period_unique_reach from DB (${currentPeriod}) for campaign "${selectedCampaign}":`, totalUniqueReach);
@@ -3049,10 +3050,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
             }
           }
           
-          // period_unique_reachが0または存在しない場合は、日次リーチの合計を使用（フォールバック）
-          // ただし、データが存在する場合のみフォールバック（データが存在しない場合は0のまま）
+          // period_unique_reachが0の場合は0のまま表示（フォールバックしない）
+          // 日次リーチの合計にフォールバックすると、リーチ数（全体）とリーチ数（ユニーク）が同じ値になってしまうため
           if (totalUniqueReach === 0 && totalReach > 0) {
-            totalUniqueReach = totalReach;
+            console.warn(`[Dashboard] ⚠️ period_unique_reach is 0 for campaign "${s.campaign_name}" (${currentPeriod}). Data may need to be synced from Meta API.`);
+            // フォールバック処理を削除: totalUniqueReach = totalReach; を削除
           }
           
           console.log(`[Dashboard] ✅ Using period_unique_reach from DB for ${s.campaign_name}:`, {
@@ -3148,8 +3150,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
         if (reachValues.length > 0) {
           totalUniqueReach = Math.max(...reachValues);
         }
+        // period_unique_reachが0の場合は0のまま表示（フォールバックしない）
+        // 日次リーチの合計にフォールバックすると、リーチ数（全体）とリーチ数（ユニーク）が同じ値になってしまうため
         if (totalUniqueReach === 0 && totalReach > 0) {
-          totalUniqueReach = totalReach;
+          console.warn(`[Dashboard] ⚠️ period_unique_reach is 0 for campaign (${currentPeriod}). Data may need to be synced from Meta API.`);
+          // フォールバック処理を削除: totalUniqueReach = totalReach; を削除
         }
       }
       
