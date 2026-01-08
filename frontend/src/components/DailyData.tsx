@@ -41,6 +41,7 @@ export const DailyData: React.FC<DailyDataProps> = ({ data: propData }) => {
     }
   });
   const [apiData, setApiData] = useState<CampaignData[]>([]);
+  const [allApiData, setAllApiData] = useState<CampaignData[]>([]); // 全期間データ（ダッシュボードと同じロジック）
   const [loading, setLoading] = useState(false);
 
   // キャンペーン別にスプレッドシートURLを読み込む
@@ -119,49 +120,137 @@ export const DailyData: React.FC<DailyDataProps> = ({ data: propData }) => {
     loadMetaAccounts();
   }, []);
 
-  // Load data from API when asset is selected
+  // Load data from API (ダッシュボードと同じロジック)
   useEffect(() => {
     const loadData = async () => {
-      if (selectedMetaAccountId) {
-        setLoading(true);
-        try {
-          const campaigns = await Api.fetchCampaignData(selectedMetaAccountId);
-          setApiData(campaigns);
-        } catch (error) {
-          console.error('[DailyData] Failed to load campaign data:', error);
-          setApiData([]);
-        } finally {
-          setLoading(false);
+      setLoading(true);
+      try {
+        // 1. 全期間データを取得（ダッシュボードと同じ）
+        const allPeriodResult = await Promise.allSettled([
+          Api.fetchCampaignData() // 全期間データを取得
+        ]);
+        
+        let allPeriodData: CampaignData[] = [];
+        if (allPeriodResult[0].status === 'fulfilled') {
+          allPeriodData = allPeriodResult[0].value || [];
+          console.log('[DailyData] All period data loaded:', allPeriodData.length, 'records');
+        } else {
+          console.error('[DailyData] Failed to load all period data:', allPeriodResult[0].reason);
         }
-      } else {
+        
+        // 全期間データをallApiDataに保存
+        setAllApiData(allPeriodData);
+        
+        // 2. アセット選択時はallApiDataをフィルタリング（ダッシュボードと同じ）
+        if (selectedMetaAccountId) {
+          // データベースには act_ プレフィックス付きで保存されているので、それに合わせて比較
+          const selectedAccountIdWithPrefix = selectedMetaAccountId.startsWith('act_') 
+            ? selectedMetaAccountId 
+            : `act_${selectedMetaAccountId}`;
+          const filteredByAsset = allPeriodData.filter((d: CampaignData) => {
+            const accountId = d.meta_account_id || (d as any).meta_account_id;
+            return accountId === selectedAccountIdWithPrefix || accountId === selectedMetaAccountId;
+          });
+          setApiData(filteredByAsset);
+          console.log('[DailyData] Filtered by asset:', filteredByAsset.length, 'records');
+        } else {
+          // 全アセット選択時はallApiDataを使用
+          setApiData(allPeriodData);
+        }
+      } catch (error) {
+        console.error('[DailyData] Failed to load campaign data:', error);
+        setAllApiData([]);
         setApiData([]);
+      } finally {
+        setLoading(false);
       }
     };
     loadData();
   }, [selectedMetaAccountId]);
 
-  // Determine which data source to use
+  // Determine which data source to use (ダッシュボードと同じロジック)
   const data = useMemo(() => {
-    if (selectedMetaAccountId) {
-      // Asset is selected: use apiData which is filtered by asset
-      // If apiData is empty, fallback to propData (user might have uploaded CSV data)
-      if (apiData && apiData.length > 0) {
-        return apiData;
-      } else {
-        // apiData is empty, fallback to propData
-        return propData;
-      }
+    // allApiDataを優先してデータソースを統一（ダッシュボードと同じ）
+    if (selectedMetaAccountId === 'all' || !selectedMetaAccountId) {
+      // 「すべてのアカウント」が選択されている場合、またはアカウントが選択されていない場合
+      // allApiDataを優先、なければapiData、それもなければpropData
+      return (allApiData && allApiData.length > 0) 
+        ? allApiData 
+        : (apiData && apiData.length > 0 
+          ? apiData 
+          : (propData && propData.length > 0 ? propData : []));
     } else {
-      // No asset selected: use propData
-      return propData;
+      // 特定のアカウントが選択されている場合
+      if (allApiData && allApiData.length > 0) {
+        // allApiDataをアセットでフィルタリング（既にapiDataに設定されているが、念のため）
+        return apiData && apiData.length > 0 ? apiData : allApiData;
+      } else {
+        // allApiDataがない場合、propDataをフォールバックとして使用
+        if (propData && propData.length > 0) {
+          // データベースには act_ プレフィックス付きで保存されているので、それに合わせて比較
+          const selectedAccountIdWithPrefix = selectedMetaAccountId.startsWith('act_') 
+            ? selectedMetaAccountId 
+            : `act_${selectedMetaAccountId}`;
+          const propDataFiltered = propData.filter(d => {
+            const accountId = d.meta_account_id || (d as any).meta_account_id;
+            return accountId === selectedAccountIdWithPrefix || accountId === selectedMetaAccountId;
+          });
+          return propDataFiltered.length > 0 ? propDataFiltered : propData;
+        }
+        return apiData && apiData.length > 0 ? apiData : [];
+      }
     }
-  }, [propData, apiData, selectedMetaAccountId]);
+  }, [propData, apiData, allApiData, selectedMetaAccountId]);
 
   // Get unique campaigns
   const availableCampaigns = useMemo(() => {
     const campaigns = new Set(data.map(d => d.campaign_name).filter(Boolean));
     return Array.from(campaigns).sort();
   }, [data]);
+
+  // 全アセット選択時はキャンペーン選択を「すべて」に、特定アセット選択時は最初のキャンペーンを選択
+  useEffect(() => {
+    if (availableCampaigns.length > 0 && !selectedCampaign) {
+      // 全アセットを選択している場合は「すべて」のまま（null）
+      if (!selectedMetaAccountId) {
+        // 全アセット選択時はキャンペーン選択を「すべて」のまま
+        return;
+      }
+      
+      // 特定アセット選択時は、ローカルストレージから保存された選択を確認
+      try {
+        const saved = localStorage.getItem(`dailydata_selectedCampaign_${selectedMetaAccountId}`);
+        if (saved && availableCampaigns.includes(saved)) {
+          setSelectedCampaign(saved);
+        } else {
+          // 保存された選択がない、または無効な場合は最初のキャンペーンを選択
+          setSelectedCampaign(availableCampaigns[0]);
+        }
+      } catch (e) {
+        // エラーが発生した場合は最初のキャンペーンを選択
+        setSelectedCampaign(availableCampaigns[0]);
+      }
+    }
+  }, [availableCampaigns, selectedCampaign, selectedMetaAccountId]);
+
+  // アセット選択が変更されたときに、キャンペーン選択をリセット
+  useEffect(() => {
+    if (selectedMetaAccountId) {
+      // 特定アセット選択時は、そのアセットの最初のキャンペーンを選択
+      if (availableCampaigns.length > 0 && !selectedCampaign) {
+        setSelectedCampaign(availableCampaigns[0]);
+      }
+    } else {
+      // 全アセット選択時は必ずキャンペーン選択を「すべて」（null）に
+      setSelectedCampaign(null);
+      // ローカルストレージからも削除
+      try {
+        localStorage.removeItem('dailydata_selectedCampaign_all');
+      } catch (e) {
+        // エラーは無視
+      }
+    }
+  }, [selectedMetaAccountId, availableCampaigns]);
 
   // Filter data by date range and campaign
   const filteredData = useMemo(() => {
@@ -282,21 +371,38 @@ export const DailyData: React.FC<DailyDataProps> = ({ data: propData }) => {
       day.engagement_rate = day.impressions > 0 ? (day.engagements / day.impressions * 100) : 0;
     });
 
+    // 全アセット選択時はキャンペーン毎にまとめてから日付順、特定アセット選択時は日付順
     return Array.from(grouped.values()).sort((a, b) => {
-      // 日付でソート、同じ日付の場合はキャンペーン名、広告セット名、広告名でソート
-      // JST基準（0時）で日付文字列をパース
-      const dateCompare = parseDateJST(b.date).getTime() - parseDateJST(a.date).getTime();
-      if (dateCompare !== 0) return dateCompare;
-      
-      const campaignCompare = (a.campaign_name || '').localeCompare(b.campaign_name || '');
-      if (campaignCompare !== 0) return campaignCompare;
-      
-      const adSetCompare = (a.ad_set_name || '').localeCompare(b.ad_set_name || '');
-      if (adSetCompare !== 0) return adSetCompare;
-      
-      return (a.ad_name || '').localeCompare(b.ad_name || '');
+      // 全アセット選択時（selectedMetaAccountIdがnull）は、キャンペーン名でグループ化してから日付順
+      if (!selectedMetaAccountId) {
+        // まずキャンペーン名でソート
+        const campaignCompare = (a.campaign_name || '').localeCompare(b.campaign_name || '');
+        if (campaignCompare !== 0) return campaignCompare;
+        
+        // 同じキャンペーンの場合は日付でソート（新しい日付が上）
+        const dateCompare = parseDateJST(b.date).getTime() - parseDateJST(a.date).getTime();
+        if (dateCompare !== 0) return dateCompare;
+        
+        // 同じ日付の場合は広告セット名、広告名でソート
+        const adSetCompare = (a.ad_set_name || '').localeCompare(b.ad_set_name || '');
+        if (adSetCompare !== 0) return adSetCompare;
+        
+        return (a.ad_name || '').localeCompare(b.ad_name || '');
+      } else {
+        // 特定アセット選択時は日付順（従来通り）
+        const dateCompare = parseDateJST(b.date).getTime() - parseDateJST(a.date).getTime();
+        if (dateCompare !== 0) return dateCompare;
+        
+        const campaignCompare = (a.campaign_name || '').localeCompare(b.campaign_name || '');
+        if (campaignCompare !== 0) return campaignCompare;
+        
+        const adSetCompare = (a.ad_set_name || '').localeCompare(b.ad_set_name || '');
+        if (adSetCompare !== 0) return adSetCompare;
+        
+        return (a.ad_name || '').localeCompare(b.ad_name || '');
+      }
     });
-  }, [filteredData]);
+  }, [filteredData, selectedMetaAccountId]);
 
   // Set default date range (last 30 days or all data)
   const setDefaultDateRange = () => {
@@ -652,7 +758,7 @@ export const DailyData: React.FC<DailyDataProps> = ({ data: propData }) => {
 
       {/* Filters */}
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-4">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               開始日
@@ -688,12 +794,32 @@ export const DailyData: React.FC<DailyDataProps> = ({ data: propData }) => {
             <select
               className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-700 dark:text-white"
               value={selectedCampaign || ''}
-              onChange={(e) => setSelectedCampaign(e.target.value || null)}
+              onChange={(e) => {
+                const newCampaign = e.target.value || null;
+                setSelectedCampaign(newCampaign);
+                // 選択をローカルストレージに保存（アセット別に保存）
+                try {
+                  const storageKey = selectedMetaAccountId 
+                    ? `dailydata_selectedCampaign_${selectedMetaAccountId}`
+                    : 'dailydata_selectedCampaign_all';
+                  if (newCampaign) {
+                    localStorage.setItem(storageKey, newCampaign);
+                  } else {
+                    localStorage.removeItem(storageKey);
+                  }
+                } catch (err) {
+                  console.error('[DailyData] Failed to save campaign selection to localStorage:', err);
+                }
+              }}
             >
               <option value="">すべて</option>
-              {availableCampaigns.map(campaign => (
-                <option key={campaign} value={campaign}>{campaign}</option>
-              ))}
+              {availableCampaigns.length > 0 ? (
+                availableCampaigns.map(campaign => (
+                  <option key={campaign} value={campaign}>{campaign}</option>
+                ))
+              ) : (
+                <option value="" disabled>キャンペーンがありません</option>
+              )}
             </select>
           </div>
         </div>
