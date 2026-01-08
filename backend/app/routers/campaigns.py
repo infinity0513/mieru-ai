@@ -1638,7 +1638,8 @@ def debug_reach_comparison(
                 "is_match": is_match,
                 "warning": is_match and period_unique_reach_all > 0,  # 一致している場合は警告
                 "record_count": stats["record_count"],
-                "sample_dates": sorted(set([r["date"] for r in stats["daily_reach_records"]]))[:10]  # 最初の10日付
+                "sample_dates": sorted(set([r["date"] for r in stats["daily_reach_records"]]))[:10],  # 最初の10日付
+                "daily_reach_records": stats["daily_reach_records"]  # 日次リーチの詳細を追加
             })
         
         return {

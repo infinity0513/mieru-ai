@@ -1224,6 +1224,8 @@ class ApiClient {
         if (metaAccountId) params.append('meta_account_id', metaAccountId);
         if (startDate) params.append('start_date', startDate);
         if (endDate) params.append('end_date', endDate);
+        // キャンペーンレベルのみを明示的に指定（広告セット/広告レベルのデータを除外）
+        params.append('level', 'campaign');
         params.append('limit', String(limit));
         params.append('offset', String(offset));
         // キャッシュを防ぐためにタイムスタンプを追加
@@ -3838,6 +3840,12 @@ const apiClient = new ApiClient(API_BASE_URL);
 
 // Export Api object
 export const Api = apiClient;
+
+// デバッグ用: Apiをwindowオブジェクトに公開（ブラウザのコンソールから使用可能にする）
+if (typeof window !== 'undefined') {
+  (window as any).Api = apiClient;
+  console.log('[Api] Api object exposed to window.Api for debugging');
+}
 
 // 期間別サマリー取得関数（エクスポート）
 export const getCampaignSummary = async (params: {
