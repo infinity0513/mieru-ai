@@ -2514,9 +2514,36 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
         }
       }
     } else {
-      // 期間指定（日別データ）表示時は、日次リーチの合計を使用
-      totalUniqueReach = totalReach;
-      console.log(`[Dashboard] 📊 Using daily data sum (date range):`, totalUniqueReach);
+      // 日別（全期間）選択時: period_unique_reach_allを使用
+      // リーチ数（全体）は日次リーチの合計、リーチ数（ユニーク）は全期間のユニークリーチ
+      if (selectedCampaign === 'all' || selectedCampaign === '全体' || !selectedCampaign) {
+        // 全キャンペーンの場合、各キャンペーンのperiod_unique_reach_allを合計
+        const campaignReachMap = new Map<string, number>();
+        for (const record of current) {
+          const campaignName = record.campaign_name || '';
+          const reachValue = record.period_unique_reach_all || record.period_unique_reach;
+          if (campaignName && reachValue && reachValue > 0) {
+            if (!campaignReachMap.has(campaignName)) {
+              campaignReachMap.set(campaignName, reachValue);
+            }
+          }
+        }
+        totalUniqueReach = Array.from(campaignReachMap.values()).reduce((sum, reach) => sum + reach, 0);
+        console.log(`[Dashboard] 📊 Using period_unique_reach_all for daily (all periods, all campaigns):`, totalUniqueReach, 'campaigns:', Array.from(campaignReachMap.keys()));
+      } else {
+        // 特定キャンペーンの場合、そのキャンペーンのperiod_unique_reach_allを取得
+        const reachValues: number[] = [];
+        for (const record of current) {
+          const reachValue = record.period_unique_reach_all || record.period_unique_reach;
+          if (reachValue && reachValue > 0) {
+            reachValues.push(reachValue);
+          }
+        }
+        if (reachValues.length > 0) {
+          totalUniqueReach = Math.max(...reachValues);
+        }
+        console.log(`[Dashboard] 📊 Using period_unique_reach_all for daily (all periods) for campaign "${selectedCampaign}":`, totalUniqueReach);
+      }
     }
 
     // デバッグログは削除（パフォーマンス向上のため）
