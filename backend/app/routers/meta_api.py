@@ -240,7 +240,8 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                     # time_rangeは{"since":"2022-11-26","until":"2025-12-22"}の形式
                     time_range_encoded = urllib.parse.quote(time_range_json, safe='')
                     # time_incrementパラメータを追加（日次データを取得するために必須）
-                    relative_url = f"{campaign_id}/insights?fields={campaign_fields}&time_range={time_range_encoded}&time_increment={time_increment}&limit=100"
+                    # level=campaignを明示的に指定（キャンペーンレベルのデータのみを取得）
+                    relative_url = f"{campaign_id}/insights?fields={campaign_fields}&time_range={time_range_encoded}&time_increment={time_increment}&level=campaign&limit=100"
                     
                     # デバッグログ（最初のバッチの最初のキャンペーンのみ）
                     if batch_start == 0 and len(batch_requests) == 0:
@@ -552,9 +553,15 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
             campaign_period_reach_map = campaign_period_reach_all_map.copy()
             
             # ===== 広告セットレベルのinsights取得 =====
-            print(f"[Meta API] Fetching adset-level insights for account {account_id}...")
+            # 注意: キャンペーンレベルのデータのみを取得するため、広告セット・広告レベルのデータ取得はスキップ
+            # キャンペーンレベルのデータ取得が正しく行われているか確認するため、広告セット・広告レベルのデータは取得しない
+            all_adset_insights = []  # 空のリストを設定（統合処理で使用）
+            all_ad_insights = []      # 空のリストを設定（統合処理で使用）
+            
+            # 以下の広告セット・広告レベルのデータ取得処理はスキップ（キャンペーンレベルのデータのみを取得）
+            """
+            # 広告セットレベルのデータ取得処理（スキップ）
             adset_fields = "campaign_id,campaign_name,adset_name,date_start,spend,impressions,clicks,inline_link_clicks,reach,actions,conversions,action_values,frequency"
-            all_adset_insights = []
             
             for batch_start in range(0, len(all_campaigns), batch_size):
                 batch_end = min(batch_start + batch_size, len(all_campaigns))
@@ -621,11 +628,13 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                     continue
             
             print(f"[Meta API] Adset-level insights retrieved: {len(all_adset_insights)}")
+            """
             
             # ===== 広告レベルのinsights取得 =====
+            # 広告レベルのデータ取得処理もスキップ（キャンペーンレベルのデータのみを取得）
+            """
             print(f"[Meta API] Fetching ad-level insights for account {account_id}...")
             ad_fields = "campaign_id,campaign_name,adset_name,ad_name,date_start,spend,impressions,clicks,inline_link_clicks,reach,actions,conversions,action_values,frequency"
-            all_ad_insights = []
             
             for batch_start in range(0, len(all_campaigns), batch_size):
                 batch_end = min(batch_start + batch_size, len(all_campaigns))
@@ -692,10 +701,12 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                     continue
             
             print(f"[Meta API] Ad-level insights retrieved: {len(all_ad_insights)}")
+            """
             
             # すべてのレベルのinsightsを統合
+            # 注意: キャンペーンレベルのデータのみを使用（広告セット・広告レベルのデータは空のリスト）
             all_insights = all_insights + all_adset_insights + all_ad_insights
-            print(f"[Meta API] Total insights (all levels): {len(all_insights)} (campaign: {len(all_insights) - len(all_adset_insights) - len(all_ad_insights)}, adset: {len(all_adset_insights)}, ad: {len(all_ad_insights)})")
+            print(f"[Meta API] Total insights (campaign-level only): {len(all_insights)} (adset: {len(all_adset_insights)}, ad: {len(all_ad_insights)})")
             
             # 数値の安全なパース関数（Noneや空文字列を0に変換）
             def safe_float(value, default=0.0):
