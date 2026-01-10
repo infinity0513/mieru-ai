@@ -123,8 +123,8 @@ export const DailyData: React.FC<DailyDataProps> = ({ data: propData }) => {
   // Load data from API (ダッシュボードと同じロジック)
   useEffect(() => {
     const loadData = async () => {
-      setLoading(true);
-      try {
+        setLoading(true);
+        try {
         // 1. 全期間データを取得（ダッシュボードと同じ）
         const allPeriodResult = await Promise.allSettled([
           Api.fetchCampaignData() // 全期間データを取得
@@ -157,12 +157,12 @@ export const DailyData: React.FC<DailyDataProps> = ({ data: propData }) => {
           // 全アセット選択時はallApiDataを使用
           setApiData(allPeriodData);
         }
-      } catch (error) {
-        console.error('[DailyData] Failed to load campaign data:', error);
+        } catch (error) {
+          console.error('[DailyData] Failed to load campaign data:', error);
         setAllApiData([]);
-        setApiData([]);
-      } finally {
-        setLoading(false);
+          setApiData([]);
+        } finally {
+          setLoading(false);
       }
     };
     loadData();
@@ -179,12 +179,12 @@ export const DailyData: React.FC<DailyDataProps> = ({ data: propData }) => {
         : (apiData && apiData.length > 0 
           ? apiData 
           : (propData && propData.length > 0 ? propData : []));
-    } else {
+      } else {
       // 特定のアカウントが選択されている場合
       if (allApiData && allApiData.length > 0) {
         // allApiDataをアセットでフィルタリング（既にapiDataに設定されているが、念のため）
         return apiData && apiData.length > 0 ? apiData : allApiData;
-      } else {
+    } else {
         // allApiDataがない場合、propDataをフォールバックとして使用
         if (propData && propData.length > 0) {
           // データベースには act_ プレフィックス付きで保存されているので、それに合わせて比較
@@ -390,16 +390,16 @@ export const DailyData: React.FC<DailyDataProps> = ({ data: propData }) => {
         return (a.ad_name || '').localeCompare(b.ad_name || '');
       } else {
         // 特定アセット選択時は日付順（従来通り）
-        const dateCompare = parseDateJST(b.date).getTime() - parseDateJST(a.date).getTime();
-        if (dateCompare !== 0) return dateCompare;
-        
-        const campaignCompare = (a.campaign_name || '').localeCompare(b.campaign_name || '');
-        if (campaignCompare !== 0) return campaignCompare;
-        
-        const adSetCompare = (a.ad_set_name || '').localeCompare(b.ad_set_name || '');
-        if (adSetCompare !== 0) return adSetCompare;
-        
-        return (a.ad_name || '').localeCompare(b.ad_name || '');
+      const dateCompare = parseDateJST(b.date).getTime() - parseDateJST(a.date).getTime();
+      if (dateCompare !== 0) return dateCompare;
+      
+      const campaignCompare = (a.campaign_name || '').localeCompare(b.campaign_name || '');
+      if (campaignCompare !== 0) return campaignCompare;
+      
+      const adSetCompare = (a.ad_set_name || '').localeCompare(b.ad_set_name || '');
+      if (adSetCompare !== 0) return adSetCompare;
+      
+      return (a.ad_name || '').localeCompare(b.ad_name || '');
       }
     });
   }, [filteredData, selectedMetaAccountId]);
@@ -815,7 +815,7 @@ export const DailyData: React.FC<DailyDataProps> = ({ data: propData }) => {
               <option value="">すべて</option>
               {availableCampaigns.length > 0 ? (
                 availableCampaigns.map(campaign => (
-                  <option key={campaign} value={campaign}>{campaign}</option>
+                <option key={campaign} value={campaign}>{campaign}</option>
                 ))
               ) : (
                 <option value="" disabled>キャンペーンがありません</option>

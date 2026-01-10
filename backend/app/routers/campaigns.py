@@ -822,8 +822,10 @@ def get_date_range(
                     "days": (account.max_date - account.min_date).days + 1
                 })
         
-        # 今日から何日前までのデータがあるか
-        today = datetime.now().date()
+        # 今日から何日前までのデータがあるか（JST基準）
+        from datetime import timezone
+        jst = timezone(timedelta(hours=9))  # JST = UTC+9
+        today = datetime.now(jst).date()
         if max_date:
             days_from_today = (today - max_date).days
             result["days_from_today"] = days_from_today
@@ -868,11 +870,14 @@ async def get_summary(
     if meta_account_id:
         query = query.filter(Campaign.meta_account_id == meta_account_id)
     
-    # Default to last 30 days if no dates provided
+    # Default to last 30 days if no dates provided (JST基準)
+    from datetime import timezone
+    jst = timezone(timedelta(hours=9))  # JST = UTC+9
+    today_jst = datetime.now(jst).date()
     if not start_date:
-        start_date = date.today() - timedelta(days=30)
+        start_date = today_jst - timedelta(days=30)
     if not end_date:
-        end_date = date.today()
+        end_date = today_jst
     
     query = query.filter(
         Campaign.date >= start_date,
@@ -1019,10 +1024,14 @@ def get_trends(
     if meta_account_id:
         query = query.filter(Campaign.meta_account_id == meta_account_id)
     
+    # JST基準でデフォルト日付範囲を設定
+    from datetime import timezone
+    jst = timezone(timedelta(hours=9))  # JST = UTC+9
+    today_jst = datetime.now(jst).date()
     if not start_date:
-        start_date = date.today() - timedelta(days=30)
+        start_date = today_jst - timedelta(days=30)
     if not end_date:
-        end_date = date.today()
+        end_date = today_jst
     
     query = query.filter(
         Campaign.date >= start_date,
@@ -1070,10 +1079,14 @@ def get_by_campaign(
     """Get metrics grouped by campaign"""
     query = db.query(Campaign).filter(Campaign.user_id == current_user.id)
     
+    # JST基準でデフォルト日付範囲を設定
+    from datetime import timezone
+    jst = timezone(timedelta(hours=9))  # JST = UTC+9
+    today_jst = datetime.now(jst).date()
     if not start_date:
-        start_date = date.today() - timedelta(days=30)
+        start_date = today_jst - timedelta(days=30)
     if not end_date:
-        end_date = date.today()
+        end_date = today_jst
     
     query = query.filter(
         Campaign.date >= start_date,
@@ -1138,8 +1151,11 @@ def get_top_performers(
     db: Session = Depends(get_db)
 ):
     """Get top performing campaigns by specified metric"""
-    # Get last 30 days
-    start_date = date.today() - timedelta(days=30)
+    # Get last 30 days (JST基準)
+    from datetime import timezone
+    jst = timezone(timedelta(hours=9))  # JST = UTC+9
+    today_jst = datetime.now(jst).date()
+    start_date = today_jst - timedelta(days=30)
     
     query = db.query(Campaign).filter(
         Campaign.user_id == current_user.id,
@@ -1203,8 +1219,11 @@ def get_bottom_performers(
     db: Session = Depends(get_db)
 ):
     """Get bottom performing campaigns"""
-    # Get last 30 days
-    start_date = date.today() - timedelta(days=30)
+    # Get last 30 days (JST基準)
+    from datetime import timezone
+    jst = timezone(timedelta(hours=9))  # JST = UTC+9
+    today_jst = datetime.now(jst).date()
+    start_date = today_jst - timedelta(days=30)
     
     query = db.query(Campaign).filter(
         Campaign.user_id == current_user.id,
