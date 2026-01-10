@@ -21,7 +21,7 @@ router = APIRouter()
 
 def normalize_campaign_name(name: str) -> str:
     """
-    キャンペーン名を正規化（前後のスペース削除、全角・半角の統一）
+    キャンペーン名を正規化（前後のスペース削除、全角・半角の統一、全角数字の半角化）
     
     Args:
         name: 正規化するキャンペーン名
@@ -40,6 +40,10 @@ def normalize_campaign_name(name: str) -> str:
     
     # 連続するスペースを1つに統一
     name = re.sub(r'\s+', ' ', name)
+    
+    # 全角数字を半角数字に変換（例: 「１」→「1」）
+    import unicodedata
+    name = ''.join([unicodedata.normalize('NFKC', char) if unicodedata.category(char) == 'Nd' else char for char in name])
     
     # 再度前後のスペースを削除（連続スペース削除後のため）
     name = name.strip()
@@ -930,7 +934,9 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                     campaign_date = datetime.strptime(date_str, '%Y-%m-%d').date()
                     
                     # データを取得（キャンペーン/広告セット/広告レベル）
-                    campaign_name = insight.get('campaign_name', 'Unknown')
+                    # キャンペーン名を正規化してから保存（期間別ユニークリーチ取得時のキャンペーン名と一致させるため）
+                    campaign_name_raw = insight.get('campaign_name', 'Unknown')
+                    campaign_name = normalize_campaign_name(campaign_name_raw)
                     # ad_set_name と ad_name を Meta API のレスポンスから取得
                     ad_set_name = insight.get('adset_name')  # 広告セット名（あれば）
                     ad_name = insight.get('ad_name')          # 広告名（あれば）
@@ -944,35 +950,37 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                     
                     if (not ad_set_name or ad_set_name == '') and (not ad_name or ad_name == ''):
                         # 期間別のマップから取得（マイグレーション実行後に有効化）
-                        # キャンペーン名を正規化してからマップから取得
-                        normalized_campaign_name = normalize_campaign_name(campaign_name)
+                        # campaign_nameは既に正規化されているので、そのまま使用
                         try:
-                            period_unique_reach_7days = campaign_period_reach_7days_map.get(normalized_campaign_name, 0)
-                            period_unique_reach_30days = campaign_period_reach_30days_map.get(normalized_campaign_name, 0)
-                            period_unique_reach_all = campaign_period_reach_all_map.get(normalized_campaign_name, 0)
+                            period_unique_reach_7days = campaign_period_reach_7days_map.get(campaign_name, 0)
+                            period_unique_reach_30days = campaign_period_reach_30days_map.get(campaign_name, 0)
+                            period_unique_reach_all = campaign_period_reach_all_map.get(campaign_name, 0)
                             
                             # デバッグ: マッピングが見つからない場合の警告（特定のキャンペーンのみ）
-                            if period_unique_reach_all == 0 and normalized_campaign_name != campaign_name:
+                            if period_unique_reach_all == 0 and ('ハイブリッドマーケティング' in campaign_name or 'ハイブリッドマーケティング' in campaign_name_raw):
+                                print(f"[Meta API] ⚠️ No period_unique_reach_all found for normalized campaign name: '{campaign_name}' (original: '{campaign_name_raw}')")
+                                print(f"[Meta API]   Available keys in map (first 10): {list(campaign_period_reach_all_map.keys())[:10]}")
                                 # 正規化前の名前でも試す（後方互換性のため）
-                                period_unique_reach_all = campaign_period_reach_all_map.get(campaign_name, 0)
+                                period_unique_reach_all = campaign_period_reach_all_map.get(campaign_name_raw, 0)
                                 if period_unique_reach_all > 0:
-                                    print(f"[Meta API] ⚠️ Found reach using original campaign name (not normalized): '{campaign_name}'")
-                        except:
+                                    print(f"[Meta API] ⚠️ Found reach using original campaign name (not normalized): '{campaign_name_raw}'")
+                        except Exception as e:
+                            print(f"[Meta API] Error getting period_unique_reach from map: {str(e)}")
                             # マップが存在しない場合は、全期間のマップから取得
-                            period_unique_reach_all = campaign_period_reach_map.get(normalized_campaign_name, 0)
+                            period_unique_reach_all = campaign_period_reach_map.get(campaign_name, 0)
                             if period_unique_reach_all == 0:
                                 # 正規化前の名前でも試す（後方互換性のため）
-                                period_unique_reach_all = campaign_period_reach_map.get(campaign_name, 0)
+                                period_unique_reach_all = campaign_period_reach_map.get(campaign_name_raw, 0)
                         
                         # 後方互換性のため、全期間の値をperiod_unique_reachにも設定
                         if period_unique_reach_all > 0:
                             period_unique_reach = period_unique_reach_all
                         else:
                             # 正規化された名前で検索
-                            period_unique_reach = campaign_period_reach_map.get(normalized_campaign_name, 0)
+                            period_unique_reach = campaign_period_reach_map.get(campaign_name, 0)
                             if period_unique_reach == 0:
                                 # 正規化前の名前でも試す（後方互換性のため）
-                                period_unique_reach = campaign_period_reach_map.get(campaign_name, 0)
+                                period_unique_reach = campaign_period_reach_map.get(campaign_name_raw, 0)
                     
                     # デバッグログ（最初の数件のみ）
                     if saved_count < 3:
@@ -1218,35 +1226,37 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                     
                     if not ad_set_name and not ad_name:  # キャンペーンレベルのデータのみ
                         # 期間別のマップから取得（マイグレーション実行後に有効化）
-                        # キャンペーン名を正規化してからマップから取得
-                        normalized_campaign_name = normalize_campaign_name(campaign_name)
+                        # campaign_nameは既に正規化されているので、そのまま使用
                         try:
-                            period_unique_reach_7days = campaign_period_reach_7days_map.get(normalized_campaign_name, 0)
-                            period_unique_reach_30days = campaign_period_reach_30days_map.get(normalized_campaign_name, 0)
-                            period_unique_reach_all = campaign_period_reach_all_map.get(normalized_campaign_name, 0)
+                            period_unique_reach_7days = campaign_period_reach_7days_map.get(campaign_name, 0)
+                            period_unique_reach_30days = campaign_period_reach_30days_map.get(campaign_name, 0)
+                            period_unique_reach_all = campaign_period_reach_all_map.get(campaign_name, 0)
                             
                             # デバッグ: マッピングが見つからない場合の警告（特定のキャンペーンのみ）
-                            if period_unique_reach_all == 0 and normalized_campaign_name != campaign_name:
+                            if period_unique_reach_all == 0 and ('ハイブリッドマーケティング' in campaign_name or 'ハイブリッドマーケティング' in campaign_name_raw):
+                                print(f"[Meta API] ⚠️ No period_unique_reach_all found for normalized campaign name: '{campaign_name}' (original: '{campaign_name_raw}')")
+                                print(f"[Meta API]   Available keys in map (first 10): {list(campaign_period_reach_all_map.keys())[:10]}")
                                 # 正規化前の名前でも試す（後方互換性のため）
-                                period_unique_reach_all = campaign_period_reach_all_map.get(campaign_name, 0)
+                                period_unique_reach_all = campaign_period_reach_all_map.get(campaign_name_raw, 0)
                                 if period_unique_reach_all > 0:
-                                    print(f"[Meta API] ⚠️ Found reach using original campaign name (not normalized): '{campaign_name}'")
-                        except:
+                                    print(f"[Meta API] ⚠️ Found reach using original campaign name (not normalized): '{campaign_name_raw}'")
+                        except Exception as e:
+                            print(f"[Meta API] Error getting period_unique_reach from map: {str(e)}")
                             # マップが存在しない場合は、全期間のマップから取得
-                            period_unique_reach_all = campaign_period_reach_map.get(normalized_campaign_name, 0)
+                            period_unique_reach_all = campaign_period_reach_map.get(campaign_name, 0)
                             if period_unique_reach_all == 0:
                                 # 正規化前の名前でも試す（後方互換性のため）
-                                period_unique_reach_all = campaign_period_reach_map.get(campaign_name, 0)
+                                period_unique_reach_all = campaign_period_reach_map.get(campaign_name_raw, 0)
                         
                         # 後方互換性のため、全期間の値をperiod_unique_reachにも設定
                         if period_unique_reach_all > 0:
                             period_unique_reach = period_unique_reach_all
                         else:
                             # 正規化された名前で検索
-                            period_unique_reach = campaign_period_reach_map.get(normalized_campaign_name, 0)
+                            period_unique_reach = campaign_period_reach_map.get(campaign_name, 0)
                             if period_unique_reach == 0:
                                 # 正規化前の名前でも試す（後方互換性のため）
-                                period_unique_reach = campaign_period_reach_map.get(campaign_name, 0)
+                                period_unique_reach = campaign_period_reach_map.get(campaign_name_raw, 0)
                         
                         # フォールバック: 期間別の値が0の場合、日次のreachを使用（ただし、これは本来の動作ではない）
                         if period_unique_reach == 0 and reach > 0:
