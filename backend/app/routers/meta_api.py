@@ -166,15 +166,16 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
             
             # 日付範囲の決定: days=Noneの場合は既に設定されたsince/untilを使用
             # daysが指定されている場合のみ、current_untilを再計算
+            # since_dtとuntil_dtは既にJST基準で計算されている（date型）ので、そのまま使用
             if days is None:
-                # 全期間取得: 既に設定されたsince/untilを使用
-                current_since = datetime.strptime(since, '%Y-%m-%d')
-                current_until = datetime.strptime(until, '%Y-%m-%d')
+                # 全期間取得: 既に設定されたsince_dt/until_dtを使用
+                current_since_dt = since_dt
+                current_until_dt = until_dt
                 print(f"[Meta API] Full period sync: Using pre-calculated date range (days=None)")
             else:
                 # 部分取得: 昨日までのデータを取得（JSTを使用して未来の日付を避ける）
-                current_until = yesterday
-                current_since = datetime.strptime(since, '%Y-%m-%d')
+                current_until_dt = yesterday
+                current_since_dt = since_dt
             
             # Meta APIの期間制限を確認
             # - Reachフィールドを使用しているが、Breakdownは使用していないため、37ヶ月（1,095日）が可能
@@ -196,17 +197,17 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
             # 総期間を制限（37ヶ月または13ヶ月）
             # days=None（全期間取得）の場合は、既に正しく設定されているため制限不要
             # daysが指定されている場合のみ制限を適用
-            if days is not None and (current_until - current_since).days > max_days_total:
-                current_since = current_until - timedelta(days=max_days_total)
-                print(f"[Meta API] Date range limited to {max_days_total} days: {current_since.strftime('%Y-%m-%d')} to {current_until.strftime('%Y-%m-%d')}")
+            if days is not None and (current_until_dt - current_since_dt).days > max_days_total:
+                current_since_dt = current_until_dt - timedelta(days=max_days_total)
+                print(f"[Meta API] Date range limited to {max_days_total} days: {current_since_dt.strftime('%Y-%m-%d')} to {current_until_dt.strftime('%Y-%m-%d')}")
             elif days is None:
-                actual_days = (current_until - current_since).days
+                actual_days = (current_until_dt - current_since_dt).days
                 print(f"[Meta API] Full period sync: Using full {actual_days} days range (days=None, since={since}, until={until})")
             
-            # 日付範囲を文字列に変換
-            start_date_str = current_since.strftime('%Y-%m-%d')
-            end_date_str = current_until.strftime('%Y-%m-%d')
-            actual_days = (current_until - current_since).days
+            # 日付範囲を文字列に変換（since_dtとuntil_dtは既にJST基準で計算されているdate型）
+            start_date_str = current_since_dt.strftime('%Y-%m-%d')
+            end_date_str = current_until_dt.strftime('%Y-%m-%d')
+            actual_days = (current_until_dt - current_since_dt).days
             print(f"[Meta API] Final date range: {start_date_str} to {end_date_str} ({actual_days} days)")
             
             # バッチリクエストでキャンペーンレベルInsightsを取得（最大50件/バッチ）
@@ -414,18 +415,17 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
             campaign_level_campaigns = [c for c in all_campaigns]
             
             # 期間別のtime_rangeを計算
-            # 昨日までの日付を使用
-            yesterday_dt = until_dt
-            yesterday_str = yesterday_dt.strftime('%Y-%m-%d')
+            # 昨日までの日付を使用（until_dtは既にJST基準で計算されているdate型）
+            yesterday_str = until_dt.strftime('%Y-%m-%d')
             
             # 7日間: 昨日から6日前まで
-            seven_days_ago_dt = yesterday_dt - timedelta(days=6)
+            seven_days_ago_dt = until_dt - timedelta(days=6)
             seven_days_ago_str = seven_days_ago_dt.strftime('%Y-%m-%d')
             time_range_7days_json = json.dumps({"since": seven_days_ago_str, "until": yesterday_str}, separators=(',', ':'))
             time_range_7days_encoded = urllib.parse.quote(time_range_7days_json, safe='')
             
             # 30日間: 昨日から29日前まで
-            thirty_days_ago_dt = yesterday_dt - timedelta(days=29)
+            thirty_days_ago_dt = until_dt - timedelta(days=29)
             thirty_days_ago_str = thirty_days_ago_dt.strftime('%Y-%m-%d')
             time_range_30days_json = json.dumps({"since": thirty_days_ago_str, "until": yesterday_str}, separators=(',', ':'))
             time_range_30days_encoded = urllib.parse.quote(time_range_30days_json, safe='')
@@ -435,8 +435,8 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
             # 昨日までの日付を使用して計算
             # ただし、Meta APIの最大取得期間（37ヶ月）を考慮
             max_days_total = 1095  # 37ヶ月（1,095日）
-            since_dt = yesterday_dt - timedelta(days=max_days_total)
-            since_str = since_dt.strftime('%Y-%m-%d')
+            since_dt_period = until_dt - timedelta(days=max_days_total)
+            since_str = since_dt_period.strftime('%Y-%m-%d')
             time_range_all_json = json.dumps({"since": since_str, "until": yesterday_str}, separators=(',', ':'))
             time_range_all_encoded = urllib.parse.quote(time_range_all_json, safe='')
             
@@ -755,18 +755,17 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
             campaign_level_campaigns = [c for c in all_campaigns]
             
             # 期間別のtime_rangeを計算
-            # 昨日までの日付を使用
-            yesterday_dt = until_dt
-            yesterday_str = yesterday_dt.strftime('%Y-%m-%d')
+            # 昨日までの日付を使用（until_dtは既にJST基準で計算されているdate型）
+            yesterday_str = until_dt.strftime('%Y-%m-%d')
             
             # 7日間: 昨日から6日前まで
-            seven_days_ago_dt = yesterday_dt - timedelta(days=6)
+            seven_days_ago_dt = until_dt - timedelta(days=6)
             seven_days_ago_str = seven_days_ago_dt.strftime('%Y-%m-%d')
             time_range_7days_json = json.dumps({"since": seven_days_ago_str, "until": yesterday_str}, separators=(',', ':'))
             time_range_7days_encoded = urllib.parse.quote(time_range_7days_json, safe='')
             
             # 30日間: 昨日から29日前まで
-            thirty_days_ago_dt = yesterday_dt - timedelta(days=29)
+            thirty_days_ago_dt = until_dt - timedelta(days=29)
             thirty_days_ago_str = thirty_days_ago_dt.strftime('%Y-%m-%d')
             time_range_30days_json = json.dumps({"since": thirty_days_ago_str, "until": yesterday_str}, separators=(',', ':'))
             time_range_30days_encoded = urllib.parse.quote(time_range_30days_json, safe='')
@@ -776,8 +775,8 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
             # 昨日までの日付を使用して計算
             # ただし、Meta APIの最大取得期間（37ヶ月）を考慮
             max_days_total = 1095  # 37ヶ月（1,095日）
-            since_dt = yesterday_dt - timedelta(days=max_days_total)
-            since_str = since_dt.strftime('%Y-%m-%d')
+            since_dt_period = until_dt - timedelta(days=max_days_total)
+            since_str = since_dt_period.strftime('%Y-%m-%d')
             time_range_all_json = json.dumps({"since": since_str, "until": yesterday_str}, separators=(',', ':'))
             time_range_all_encoded = urllib.parse.quote(time_range_all_json, safe='')
             
