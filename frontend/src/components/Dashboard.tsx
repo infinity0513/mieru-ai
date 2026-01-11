@@ -2458,13 +2458,38 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
             : campaignLevelData;
           
           // 期間に応じたフィールドから値を取得（日付範囲でフィルタリングしない）
+          // ===== データフロー可視化: フロントエンドでのDB取得時 =====
+          console.log(`[Dashboard] 📥 DATA FLOW - Frontend DB Retrieval:`);
+          console.log(`[Dashboard]   Campaign: "${selectedCampaign}"`);
+          console.log(`[Dashboard]   Period: ${currentPeriod}`);
+          console.log(`[Dashboard]   campaignLevelData length: ${campaignLevelData.length}`);
+          console.log(`[Dashboard]   campaignFilteredData length: ${campaignFilteredData.length}`);
+          console.log(`[Dashboard]   Sample records (first 3):`, campaignFilteredData.slice(0, 3).map(r => ({
+            date: r.date,
+            campaign_name: r.campaign_name,
+            period_unique_reach_7days: r.period_unique_reach_7days,
+            period_unique_reach_30days: r.period_unique_reach_30days,
+            period_unique_reach_all: r.period_unique_reach_all,
+            period_unique_reach: r.period_unique_reach
+          })));
+          
           for (const record of campaignFilteredData) {
             const reachValue = currentPeriod === '7days' ? record.period_unique_reach_7days :
                               currentPeriod === '30days' ? record.period_unique_reach_30days :
                               record.period_unique_reach_all || record.period_unique_reach;  // 後方互換性
             
+            console.log(`[Dashboard]   Checking record: date=${record.date}, campaign_name="${record.campaign_name}"`);
+            console.log(`[Dashboard]     period_unique_reach_7days: ${record.period_unique_reach_7days}`);
+            console.log(`[Dashboard]     period_unique_reach_30days: ${record.period_unique_reach_30days}`);
+            console.log(`[Dashboard]     period_unique_reach_all: ${record.period_unique_reach_all}`);
+            console.log(`[Dashboard]     period_unique_reach: ${record.period_unique_reach}`);
+            console.log(`[Dashboard]     Selected reachValue (${currentPeriod}): ${reachValue}`);
+            
             if (reachValue && reachValue > 0) {
               totalUniqueReach = reachValue; // 最初の値を使用（最大値ではなく）
+              
+              console.log(`[Dashboard]   ✅ Found valid reachValue: ${reachValue}`);
+              console.log(`[Dashboard]   ✅ Setting totalUniqueReach: ${totalUniqueReach}`);
               
               // デバッグ: 使用しているデータを詳細にログ出力（特定のキャンペーンのみ）
               if (selectedCampaign === 'ハイブリッドマーケティング' || selectedCampaign === 'ハイブリッドマーケティング１') {
@@ -2479,7 +2504,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
                 });
               }
               break; // 同じ値のはずなので、最初の値が見つかったら終了
+            } else {
+              console.log(`[Dashboard]   ⚠️ Skipping record: reachValue is 0 or undefined`);
             }
+          }
+          
+          if (totalUniqueReach === 0) {
+            console.log(`[Dashboard]   ⚠️ WARNING: No valid reachValue found! totalUniqueReach remains 0`);
           }
           
           // デバッグ: 値が見つからなかった場合の警告
