@@ -432,6 +432,7 @@ export const DailyData: React.FC<DailyDataProps> = ({ data: propData }) => {
       '広告セット名',
       '広告名',
       'インプレッション',
+      'リーチ数',
       'クリック数',
       '費用',
       'コンバージョン',
@@ -442,7 +443,6 @@ export const DailyData: React.FC<DailyDataProps> = ({ data: propData }) => {
       'CPC (¥)',
       'CPA (¥)',
       'CPM (¥)',
-      'リーチ数',
       'フリークエンシー',
       'エンゲージメント率 (%)',
       'リンククリック数',
@@ -455,6 +455,7 @@ export const DailyData: React.FC<DailyDataProps> = ({ data: propData }) => {
       d.ad_set_name || '',
       d.ad_name || '',
       d.impressions,
+      d.reach,
       d.clicks,
       d.cost,
       d.conversions,
@@ -465,7 +466,6 @@ export const DailyData: React.FC<DailyDataProps> = ({ data: propData }) => {
       d.cpc.toFixed(2),
       d.cpa.toFixed(2),
       d.cpm.toFixed(2),
-      d.reach,
       d.frequency.toFixed(2),
       d.engagement_rate.toFixed(2),
       d.link_clicks,
@@ -532,6 +532,7 @@ export const DailyData: React.FC<DailyDataProps> = ({ data: propData }) => {
         '広告セット名',
         '広告名',
         'インプレッション',
+        'リーチ数',
         'クリック数',
         '費用',
         'コンバージョン',
@@ -542,7 +543,6 @@ export const DailyData: React.FC<DailyDataProps> = ({ data: propData }) => {
         'CPC (¥)',
         'CPA (¥)',
         'CPM (¥)',
-        'リーチ数',
         'フリークエンシー',
         'エンゲージメント率 (%)',
         'リンククリック数',
@@ -555,6 +555,7 @@ export const DailyData: React.FC<DailyDataProps> = ({ data: propData }) => {
         d.ad_set_name || '',
         d.ad_name || '',
         d.impressions.toString(),
+        d.reach.toString(),
         d.clicks.toString(),
         d.cost.toString(),
         d.conversions.toString(),
@@ -565,7 +566,6 @@ export const DailyData: React.FC<DailyDataProps> = ({ data: propData }) => {
         d.cpc.toFixed(2),
         d.cpa.toFixed(2),
         d.cpm.toFixed(2),
-        d.reach.toString(),
         d.frequency.toFixed(2),
         d.engagement_rate.toFixed(2),
         d.link_clicks.toString(),
@@ -900,6 +900,9 @@ export const DailyData: React.FC<DailyDataProps> = ({ data: propData }) => {
                   インプレッション
                 </th>
                 <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">
+                  リーチ数
+                </th>
+                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">
                   クリック数
                 </th>
                 <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">
@@ -928,9 +931,6 @@ export const DailyData: React.FC<DailyDataProps> = ({ data: propData }) => {
                 </th>
                 <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">
                   CPM (¥)
-                </th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">
-                  リーチ数
                 </th>
                 <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">
                   フリークエンシー
@@ -981,6 +981,9 @@ export const DailyData: React.FC<DailyDataProps> = ({ data: propData }) => {
                       {row.impressions.toLocaleString()}
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
+                      {row.reach > 0 ? row.reach.toLocaleString() : '-'}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
                       {row.clicks.toLocaleString()}
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
@@ -1011,9 +1014,6 @@ export const DailyData: React.FC<DailyDataProps> = ({ data: propData }) => {
                       ¥{row.cpm.toFixed(2)}
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
-                      {row.reach > 0 ? row.reach.toLocaleString() : '-'}
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
                       {row.frequency > 0 ? row.frequency.toFixed(2) : '-'}
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white text-right">
@@ -1037,7 +1037,7 @@ export const DailyData: React.FC<DailyDataProps> = ({ data: propData }) => {
       {dailyData.length > 0 && (
         <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-4">
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">合計</h3>
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
             <div>
               <div className="text-xs text-gray-500 dark:text-gray-400">インプレッション</div>
               <div className="text-lg font-bold text-gray-900 dark:text-white">
@@ -1066,6 +1066,12 @@ export const DailyData: React.FC<DailyDataProps> = ({ data: propData }) => {
               <div className="text-xs text-gray-500 dark:text-gray-400">コンバージョン価値</div>
               <div className="text-lg font-bold text-gray-900 dark:text-white">
                 ¥{dailyData.reduce((sum, d) => sum + d.conversion_value, 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+              </div>
+            </div>
+            <div>
+              <div className="text-xs text-gray-500 dark:text-gray-400">リーチ数</div>
+              <div className="text-lg font-bold text-gray-900 dark:text-white">
+                {dailyData.reduce((sum, d) => sum + d.reach, 0).toLocaleString()}
               </div>
             </div>
             <div>
