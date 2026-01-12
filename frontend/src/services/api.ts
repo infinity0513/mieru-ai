@@ -347,6 +347,43 @@ class ApiClient {
     console.log('[Api] requestLoginCode baseURL:', this.baseURL);
     console.log('[Api] requestLoginCode URL:', `${this.baseURL}/auth/login/request-code`);
     
+    // バックエンドサーバーのヘルスチェック（開発環境のみ）
+    const isLocalhost = this.baseURL.includes('localhost') || this.baseURL.includes('127.0.0.1');
+    if (isLocalhost) {
+      try {
+        const healthURL = this.baseURL.replace(/\/api\/?$/, '') + '/health';
+        console.log('[Api] requestLoginCode: Checking backend health at:', healthURL);
+        const healthController = new AbortController();
+        const healthTimeout = setTimeout(() => healthController.abort(), 3000); // 3秒でタイムアウト
+        
+        try {
+          const healthResponse = await fetch(healthURL, {
+            method: 'GET',
+            signal: healthController.signal,
+            cache: 'no-store',
+          });
+          clearTimeout(healthTimeout);
+          
+          if (healthResponse.ok) {
+            console.log('[Api] requestLoginCode: Backend server is running');
+          } else {
+            console.warn('[Api] requestLoginCode: Backend health check failed:', healthResponse.status);
+          }
+        } catch (healthError: any) {
+          clearTimeout(healthTimeout);
+          if (healthError.name === 'AbortError') {
+            console.warn('[Api] requestLoginCode: Backend health check timeout (server may be slow)');
+          } else {
+            console.warn('[Api] requestLoginCode: Backend health check failed:', healthError.message);
+            // ヘルスチェックが失敗してもログインリクエストは続行（サーバーが起動中かもしれない）
+          }
+        }
+      } catch (e) {
+        // ヘルスチェックエラーは無視して続行
+        console.warn('[Api] requestLoginCode: Health check error (continuing anyway):', e);
+      }
+    }
+    
     // タイムアウト処理を追加
     let controller: AbortController | null = null;
     let timeoutId: NodeJS.Timeout | null = null;
@@ -359,7 +396,7 @@ class ApiClient {
         if (controller) {
           controller.abort();
         }
-      }, 15000); // 15秒でタイムアウト（接続できない場合は早めにエラーを出す）
+      }, 30000); // 30秒でタイムアウト（バックエンドの処理時間を考慮）
       
       console.log('[Api] requestLoginCode: Starting fetch...');
       console.log('[Api] requestLoginCode: Request body:', { email, password: '***' });
@@ -439,7 +476,7 @@ class ApiClient {
         const serverURL = this.baseURL.includes('localhost') || this.baseURL.includes('127.0.0.1') 
           ? 'http://localhost:8000' 
           : this.baseURL;
-        throw new Error(`リクエストがタイムアウトしました（15秒）。バックエンドサーバー（${serverURL}）が起動しているか確認してください。`);
+        throw new Error(`リクエストがタイムアウトしました（30秒）。バックエンドサーバー（${serverURL}）が起動しているか確認してください。`);
       }
       
       // ネットワークエラーの場合（接続できない、CORSエラーなど）
