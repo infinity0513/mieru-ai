@@ -787,9 +787,9 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                     ad_name = insight.get('ad_name')          # 広告名（あれば）
                     
                     # 期間別のユニークリーチ数を取得（正規化されたキャンペーン名でマップから取得）
-                        period_unique_reach_7days = campaign_period_reach_7days_map.get(campaign_name, 0)
-                        period_unique_reach_30days = campaign_period_reach_30days_map.get(campaign_name, 0)
-                        period_unique_reach_all = campaign_period_reach_all_map.get(campaign_name, 0)
+                    period_unique_reach_7days = campaign_period_reach_7days_map.get(campaign_name, 0)
+                    period_unique_reach_30days = campaign_period_reach_30days_map.get(campaign_name, 0)
+                    period_unique_reach_all = campaign_period_reach_all_map.get(campaign_name, 0)
                     period_unique_reach = period_unique_reach_all  # 後方互換性（全期間の値）
                     
                     # デバッグログ（最初の数件のみ）
