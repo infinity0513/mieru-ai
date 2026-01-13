@@ -18,7 +18,10 @@ class CampaignResponse(BaseModel):
     conversions: int
     conversion_value: float
     reach: Optional[int] = 0
-    period_unique_reach: Optional[int] = 0  # 期間全体のユニークリーチ数
+    period_unique_reach: Optional[int] = 0  # 期間全体のユニークリーチ数（後方互換性）
+    period_unique_reach_7days: Optional[int] = 0  # 7日間のユニークリーチ数
+    period_unique_reach_30days: Optional[int] = 0  # 30日間のユニークリーチ数
+    period_unique_reach_all: Optional[int] = 0  # 全期間のユニークリーチ数
     engagements: Optional[int] = 0
     link_clicks: Optional[int] = 0
     landing_page_views: Optional[int] = 0
