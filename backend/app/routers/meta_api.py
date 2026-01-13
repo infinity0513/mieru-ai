@@ -732,8 +732,8 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                     # 広告セット・広告レベルのデータも削除対象に含める（Meta APIから取得しているため）
                 ).delete(synchronize_session=False)
                 print(f"[Meta API] Deleted {delete_count} existing records for account {account_id} (all levels) before sync")
-                        except Exception as e:
-                            import traceback
+            except Exception as e:
+                import traceback
                 error_msg = f"[Meta API] Error deleting existing data for account {account_id}: {str(e)}"
                 print(error_msg)
                 print(f"[Meta API] Error details: {traceback.format_exc()}")
