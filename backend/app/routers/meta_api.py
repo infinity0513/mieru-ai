@@ -732,8 +732,8 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                     # 広告セット・広告レベルのデータも削除対象に含める（Meta APIから取得しているため）
                 ).delete(synchronize_session=False)
                 print(f"[Meta API] Deleted {delete_count} existing records for account {account_id} (all levels) before sync")
-            except Exception as e:
-                import traceback
+                        except Exception as e:
+                            import traceback
                 error_msg = f"[Meta API] Error deleting existing data for account {account_id}: {str(e)}"
                 print(error_msg)
                 print(f"[Meta API] Error details: {traceback.format_exc()}")
@@ -787,9 +787,9 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                     ad_name = insight.get('ad_name')          # 広告名（あれば）
                     
                     # 期間別のユニークリーチ数を取得（正規化されたキャンペーン名でマップから取得）
-                    period_unique_reach_7days = campaign_period_reach_7days_map.get(campaign_name, 0)
-                    period_unique_reach_30days = campaign_period_reach_30days_map.get(campaign_name, 0)
-                    period_unique_reach_all = campaign_period_reach_all_map.get(campaign_name, 0)
+                            period_unique_reach_7days = campaign_period_reach_7days_map.get(campaign_name, 0)
+                            period_unique_reach_30days = campaign_period_reach_30days_map.get(campaign_name, 0)
+                            period_unique_reach_all = campaign_period_reach_all_map.get(campaign_name, 0)
                     period_unique_reach = period_unique_reach_all  # 後方互換性（全期間の値）
                     
                     # デバッグログ（最初の数件のみ）
@@ -1028,10 +1028,23 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                     seen_records.add(record_key)
                     
                     # 期間別のユニークリーチ数を取得（正規化されたキャンペーン名でマップから取得）
-                    period_unique_reach_7days = campaign_period_reach_7days_map.get(campaign_name, 0)
-                    period_unique_reach_30days = campaign_period_reach_30days_map.get(campaign_name, 0)
-                    period_unique_reach_all = campaign_period_reach_all_map.get(campaign_name, 0)
+                            period_unique_reach_7days = campaign_period_reach_7days_map.get(campaign_name, 0)
+                            period_unique_reach_30days = campaign_period_reach_30days_map.get(campaign_name, 0)
+                            period_unique_reach_all = campaign_period_reach_all_map.get(campaign_name, 0)
                     period_unique_reach = period_unique_reach_all  # 後方互換性（全期間の値）
+                    
+                    # デバッグ: マップから取得した値をログ出力（最初の数件のみ）
+                    if saved_count < 3:
+                        print(f"[Meta API] 📊 Period unique reach for '{campaign_name}':")
+                        print(f"[Meta API]   7days: {period_unique_reach_7days:,} (map size: {len(campaign_period_reach_7days_map)})")
+                        print(f"[Meta API]   30days: {period_unique_reach_30days:,} (map size: {len(campaign_period_reach_30days_map)})")
+                        print(f"[Meta API]   all: {period_unique_reach_all:,} (map size: {len(campaign_period_reach_all_map)})")
+                        if period_unique_reach_7days == 0 and period_unique_reach_30days == 0 and period_unique_reach_all == 0:
+                            print(f"[Meta API]   ⚠️ WARNING: All period unique reach values are 0!")
+                            print(f"[Meta API]   Available keys in maps:")
+                            print(f"[Meta API]     7days: {list(campaign_period_reach_7days_map.keys())[:5]}")
+                            print(f"[Meta API]     30days: {list(campaign_period_reach_30days_map.keys())[:5]}")
+                            print(f"[Meta API]     all: {list(campaign_period_reach_all_map.keys())[:5]}")
                     
                     # 全上書き方式のため、既存データの更新処理は不要（すべて新規作成）
                     campaign = Campaign(
