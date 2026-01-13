@@ -1,5 +1,6 @@
 // Netlifyデプロイ用の変更検知 - 2025-12-30
 // Fix: リーチ数をMeta APIから期間全体のユニーク数として取得
+// Fix: 期間別ユニークリーチ取得処理復活対応 - 2026-01-13
 import React, { useState, useMemo, useEffect, useContext } from 'react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer,
