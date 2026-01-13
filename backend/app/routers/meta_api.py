@@ -1081,13 +1081,13 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                         print(f"[Meta API]   Campaign Name: '{campaign_name}' (normalized from '{campaign_name_raw}')")
                         print(f"[Meta API]   Date: {campaign_date}")
                         print(f"[Meta API]   Values to save:")
-                    print(f"[Meta API]     period_unique_reach_7days: {period_unique_reach_7days:,}")
-                    print(f"[Meta API]     period_unique_reach_30days: {period_unique_reach_30days:,}")
-                    print(f"[Meta API]     period_unique_reach_all: {period_unique_reach_all:,}")
-                    
-                    campaign.period_unique_reach_7days = period_unique_reach_7days
-                    campaign.period_unique_reach_30days = period_unique_reach_30days
-                    campaign.period_unique_reach_all = period_unique_reach_all
+                        print(f"[Meta API]     period_unique_reach_7days: {period_unique_reach_7days:,}")
+                        print(f"[Meta API]     period_unique_reach_30days: {period_unique_reach_30days:,}")
+                        print(f"[Meta API]     period_unique_reach_all: {period_unique_reach_all:,}")
+                        
+                        campaign.period_unique_reach_7days = period_unique_reach_7days
+                        campaign.period_unique_reach_30days = period_unique_reach_30days
+                        campaign.period_unique_reach_all = period_unique_reach_all
                         
                         # 保存後の確認
                         saved_7days = campaign.period_unique_reach_7days
