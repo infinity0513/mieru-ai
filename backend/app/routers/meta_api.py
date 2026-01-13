@@ -1036,10 +1036,10 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                     # デバッグ: マップから取得した値をログ出力（最初の数件のみ）
                     if saved_count < 3:
                         print(f"[Meta API] 📊 Period unique reach for '{campaign_name}':")
-                        print(f"[Meta API]   7days: {period_unique_reach_7days:,} (map size: {len(campaign_period_reach_7days_map)})")
-                        print(f"[Meta API]   30days: {period_unique_reach_30days:,} (map size: {len(campaign_period_reach_30days_map)})")
-                        print(f"[Meta API]   all: {period_unique_reach_all:,} (map size: {len(campaign_period_reach_all_map)})")
-                        if period_unique_reach_7days == 0 and period_unique_reach_30days == 0 and period_unique_reach_all == 0:
+                    print(f"[Meta API]   7days: {period_unique_reach_7days:,} (map size: {len(campaign_period_reach_7days_map)})")
+                    print(f"[Meta API]   30days: {period_unique_reach_30days:,} (map size: {len(campaign_period_reach_30days_map)})")
+                    print(f"[Meta API]   all: {period_unique_reach_all:,} (map size: {len(campaign_period_reach_all_map)})")
+                    if period_unique_reach_7days == 0 and period_unique_reach_30days == 0 and period_unique_reach_all == 0:
                             print(f"[Meta API]   ⚠️ WARNING: All period unique reach values are 0!")
                             print(f"[Meta API]   Available keys in maps:")
                             print(f"[Meta API]     7days: {list(campaign_period_reach_7days_map.keys())[:5]}")
@@ -1081,13 +1081,13 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                         print(f"[Meta API]   Campaign Name: '{campaign_name}' (normalized from '{campaign_name_raw}')")
                         print(f"[Meta API]   Date: {campaign_date}")
                         print(f"[Meta API]   Values to save:")
-                        print(f"[Meta API]     period_unique_reach_7days: {period_unique_reach_7days:,}")
-                        print(f"[Meta API]     period_unique_reach_30days: {period_unique_reach_30days:,}")
-                        print(f"[Meta API]     period_unique_reach_all: {period_unique_reach_all:,}")
-                        
-                        campaign.period_unique_reach_7days = period_unique_reach_7days
-                        campaign.period_unique_reach_30days = period_unique_reach_30days
-                        campaign.period_unique_reach_all = period_unique_reach_all
+                    print(f"[Meta API]     period_unique_reach_7days: {period_unique_reach_7days:,}")
+                    print(f"[Meta API]     period_unique_reach_30days: {period_unique_reach_30days:,}")
+                    print(f"[Meta API]     period_unique_reach_all: {period_unique_reach_all:,}")
+                    
+                    campaign.period_unique_reach_7days = period_unique_reach_7days
+                    campaign.period_unique_reach_30days = period_unique_reach_30days
+                    campaign.period_unique_reach_all = period_unique_reach_all
                         
                         # 保存後の確認
                         saved_7days = campaign.period_unique_reach_7days
