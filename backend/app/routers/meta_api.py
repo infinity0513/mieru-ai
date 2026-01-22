@@ -71,46 +71,67 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
     db.add(upload)
     db.flush()  # upload.idを取得するためにflush
     
-    # JST（日本時間）で昨日を計算
+    # Meta広告アカウントのタイムゾーンで昨日を計算
     from datetime import timezone
-    jst = timezone(timedelta(hours=9))  # JST = UTC+9
-    current_jst = datetime.now(jst)
-    today_jst = current_jst.date()
-    yesterday = today_jst - timedelta(days=1)
-    
-    print(f"[Meta API] Current JST time: {current_jst.strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"[Meta API] Today (JST): {today_jst}")
-    print(f"[Meta API] Yesterday (JST): {yesterday}")
-    
-    # 昨日までのデータを取得（未来の日付を指定すると400エラーになるため）
-    until_dt = yesterday
-    until = until_dt.strftime('%Y-%m-%d')
-    
-    # 取得期間の決定
-    if days is None:
-        # 全期間のデータを取得（Meta APIの最大範囲：過去37ヶ月間）
-        # Meta APIの仕様:
-        # - 基本的な最大取得期間: 37ヶ月（1,095日）
-        # - Reach + Breakdown使用時: 13ヶ月（394日）のみ
-        # - 現在の実装ではReachフィールドを使用しているが、Breakdownは使用していないため、37ヶ月が可能
-        max_days_total = 1095  # 37ヶ月（1,095日）
-        since_dt = until_dt - timedelta(days=max_days_total)
-        since = since_dt.strftime('%Y-%m-%d')
-        print(f"[Meta API] Full period sync: {since} to {until} (max {max_days_total} days / 37 months)")
-        print(f"[Meta API] Date validation: since={since} (year={since_dt.year}), until={until} (year={until_dt.year})")
-    else:
-        # 指定された日数分のデータを取得（例: 90日 = 3ヶ月）
-        since_dt = until_dt - timedelta(days=days)
-        since = since_dt.strftime('%Y-%m-%d')
-        print(f"[Meta API] Partial sync: {since} to {until} ({days} days)")
-        print(f"[Meta API] Date validation: since={since} (year={since_dt.year}), until={until} (year={until_dt.year})")
-        
-        # 未来の日付が含まれている場合は警告
-        if since_dt > today_jst or until_dt > today_jst:
-            print(f"[Meta API] WARNING: Date range includes future dates! Today (JST): {today_jst}, Since: {since}, Until: {until}")
+    account_tz = timezone(timedelta(hours=9))  # フォールバック: JST
+    account_tz_label = "JST"
+    async def get_account_timezone():
+        try:
+            account_url = f"https://graph.facebook.com/v24.0/{account_id}"
+            account_params = {
+                "access_token": access_token,
+                "fields": "timezone_offset_hours_utc"
+            }
+            account_response = await client.get(account_url, params=account_params)
+            account_response.raise_for_status()
+            account_data = account_response.json()
+            tz_offset = account_data.get("timezone_offset_hours_utc")
+            if tz_offset is not None:
+                return float(tz_offset)
+        except Exception as e:
+            print(f"[Meta API] ⚠️ Failed to get account timezone, fallback to JST: {str(e)}")
+        return None
     
     try:
         async with httpx.AsyncClient() as client:
+            tz_offset = await get_account_timezone()
+            if tz_offset is not None:
+                account_tz = timezone(timedelta(hours=tz_offset))
+                account_tz_label = f"UTC{tz_offset:+}"
+            current_tz = datetime.now(account_tz)
+            today_tz = current_tz.date()
+            yesterday = today_tz - timedelta(days=1)
+            
+            print(f"[Meta API] Current time ({account_tz_label}): {current_tz.strftime('%Y-%m-%d %H:%M:%S')}")
+            print(f"[Meta API] Today ({account_tz_label}): {today_tz}")
+            print(f"[Meta API] Yesterday ({account_tz_label}): {yesterday}")
+    
+            # 昨日までのデータを取得（未来の日付を指定すると400エラーになるため）
+            until_dt = yesterday
+            until = until_dt.strftime('%Y-%m-%d')
+            
+            # 取得期間の決定
+            if days is None:
+                # 全期間のデータを取得（Meta APIの最大範囲：過去37ヶ月間）
+                # Meta APIの仕様:
+                # - 基本的な最大取得期間: 37ヶ月（1,095日）
+                # - Reach + Breakdown使用時: 13ヶ月（394日）のみ
+                # - 現在の実装ではReachフィールドを使用しているが、Breakdownは使用していないため、37ヶ月が可能
+                max_days_total = 1095  # 37ヶ月（1,095日）
+                since_dt = until_dt - timedelta(days=max_days_total)
+                since = since_dt.strftime('%Y-%m-%d')
+                print(f"[Meta API] Full period sync: {since} to {until} (max {max_days_total} days / 37 months)")
+                print(f"[Meta API] Date validation: since={since} (year={since_dt.year}), until={until} (year={until_dt.year})")
+            else:
+                # 指定された日数分のデータを取得（例: 90日 = 3ヶ月）
+                since_dt = until_dt - timedelta(days=days)
+                since = since_dt.strftime('%Y-%m-%d')
+                print(f"[Meta API] Partial sync: {since} to {until} ({days} days)")
+                print(f"[Meta API] Date validation: since={since} (year={since_dt.year}), until={until} (year={until_dt.year})")
+                
+                # 未来の日付が含まれている場合は警告
+                if since_dt > today_tz or until_dt > today_tz:
+                    print(f"[Meta API] WARNING: Date range includes future dates! Today ({account_tz_label}): {today_tz}, Since: {since}, Until: {until}")
             all_insights = []
             all_campaigns = []
             
@@ -511,6 +532,8 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                                         # time_incrementなしの場合、期間全体のデータは1件のみ
                                         unique_reach = safe_int(period_insights[0].get('reach'), 0)
                                         campaign_name = normalize_campaign_name(campaign_name_raw)
+                                        if campaign_id:
+                                            period_map[campaign_id] = unique_reach
                                         period_map[campaign_name] = unique_reach
                                         if idx < 3:
                                             print(f"[Meta API] {period_name} unique reach for '{campaign_name}' (normalized from '{campaign_name_raw}'): {unique_reach:,}")
@@ -780,10 +803,17 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                     ad_set_name = insight.get('adset_name')  # 広告セット名（あれば）
                     ad_name = insight.get('ad_name')          # 広告名（あれば）
                     
-                    # 期間別のユニークリーチ数を取得（正規化されたキャンペーン名でマップから取得）
-                    period_unique_reach_7days = campaign_period_reach_7days_map.get(campaign_name, 0)
-                    period_unique_reach_30days = campaign_period_reach_30days_map.get(campaign_name, 0)
-                    period_unique_reach_all = campaign_period_reach_all_map.get(campaign_name, 0)
+                    # 期間別のユニークリーチ数を取得（キャンペーンID優先、なければ名前で取得）
+                    campaign_id = insight.get('campaign_id')
+                    period_unique_reach_7days = campaign_period_reach_7days_map.get(campaign_id) if campaign_id else None
+                    period_unique_reach_30days = campaign_period_reach_30days_map.get(campaign_id) if campaign_id else None
+                    period_unique_reach_all = campaign_period_reach_all_map.get(campaign_id) if campaign_id else None
+                    if period_unique_reach_7days is None:
+                        period_unique_reach_7days = campaign_period_reach_7days_map.get(campaign_name, 0)
+                    if period_unique_reach_30days is None:
+                        period_unique_reach_30days = campaign_period_reach_30days_map.get(campaign_name, 0)
+                    if period_unique_reach_all is None:
+                        period_unique_reach_all = campaign_period_reach_all_map.get(campaign_name, 0)
                     period_unique_reach = period_unique_reach_all  # 後方互換性（全期間の値）
                     
                     # デバッグログ（最初の数件のみ）

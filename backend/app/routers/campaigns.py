@@ -1500,11 +1500,51 @@ async def get_campaign_summary(
     logger.info(f"[Summary] 🗄️ DB records found: {len(db_records)}")
     
     if not db_records:
-        logger.error(f"[Summary] ❌ No DB records found")
-        raise HTTPException(
-            status_code=404, 
-            detail=f"No data found for campaign '{campaign_name}' in period {period} ({start_date} ~ {end_date})"
-        )
+        logger.warning(f"[Summary] ⚠️ No DB records found for date range, trying period_unique_reach from any record")
+        fallback_record = db.query(Campaign).filter(
+            Campaign.campaign_name == campaign_name,
+            Campaign.user_id == current_user.id
+        ).order_by(Campaign.date.desc()).first()
+        if not fallback_record:
+            logger.error(f"[Summary] ❌ No DB records found at all for campaign")
+            raise HTTPException(
+                status_code=404, 
+                detail=f"No data found for campaign '{campaign_name}'"
+            )
+        # 期間別のユニークリーチを取得（期間に応じたフィールドを使用）
+        if period == "7days":
+            db_reach = fallback_record.period_unique_reach_7days or fallback_record.period_unique_reach or 0
+        elif period == "30days":
+            db_reach = fallback_record.period_unique_reach_30days or fallback_record.period_unique_reach or 0
+        else:
+            db_reach = fallback_record.period_unique_reach_all or fallback_record.period_unique_reach or 0
+        logger.info(f"[Summary] ✅ Returning reach from fallback record: {db_reach}")
+        start_date_str = start_date.strftime("%Y-%m-%d")
+        end_date_str = end_date.strftime("%Y-%m-%d")
+        return {
+            "campaign_name": campaign_name,
+            "period": period,
+            "start_date": start_date_str,
+            "end_date": end_date_str,
+            "data_source": "database",
+            "reach": db_reach,
+            "impressions": 0,
+            "clicks": 0,
+            "cost": 0,
+            "conversions": 0,
+            "conversion_value": 0,
+            "engagements": 0,
+            "link_clicks": 0,
+            "landing_page_views": 0,
+            "ctr": 0,
+            "cpc": 0,
+            "cpm": 0,
+            "cvr": 0,
+            "cpa": 0,
+            "roas": 0,
+            "frequency": 0,
+            "engagement_rate": 0
+        }
     
     # 日付のリストを表示
     db_dates = sorted(set(r.date for r in db_records))
@@ -1524,8 +1564,14 @@ async def get_campaign_summary(
     # 同じキャンペーンの複数日付データではperiod_unique_reachは同じ値のはずなので、最初に見つかった値を使用
     db_reach = 0
     for r in db_records:
-        if r.period_unique_reach and r.period_unique_reach > 0:
-            db_reach = r.period_unique_reach
+        if period == "7days":
+            reach_value = r.period_unique_reach_7days or r.period_unique_reach
+        elif period == "30days":
+            reach_value = r.period_unique_reach_30days or r.period_unique_reach
+        else:
+            reach_value = r.period_unique_reach_all or r.period_unique_reach
+        if reach_value and reach_value > 0:
+            db_reach = reach_value
             break
     
     # period_unique_reachが0または存在しない場合は、日次データの最大値を使用（フォールバック）

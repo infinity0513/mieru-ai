@@ -103,14 +103,14 @@ const CampaignDetailModal = ({ campaignName, allData, onClose }: { campaignName:
     const totalConversions = campaignHistory.reduce((acc, curr) => acc + (curr.conversions || 0), 0);
     const totalValue = campaignHistory.reduce((acc, curr) => acc + (curr.conversion_value || 0), 0);
     const totalReach = campaignHistory.reduce((acc, curr) => acc + (curr.reach || 0), 0);
-    // ユニークリーチ数: 各期間のreachをそのまま使用（reach = 期間全体のユニークリーチ）
-    // キャンペーンごとにreachを取得し、複数キャンペーンの場合は合計
+    // ユニークリーチ数: 期間別ユニークリーチを使用
+    // キャンペーンごとにユニークリーチを取得し、複数キャンペーンの場合は合計
     const campaignReachMap = new Map<string, number>();
     campaignHistory.forEach(curr => {
       const campaignKey = curr.campaign_name || 'unknown';
-      // 各期間のreachをそのまま使用（最初に見つかった値を使用）
+      // 各期間のユニークリーチを使用（最初に見つかった値を使用）
       if (!campaignReachMap.has(campaignKey)) {
-        campaignReachMap.set(campaignKey, curr.reach || 0);
+        campaignReachMap.set(campaignKey, curr.period_unique_reach_all || curr.period_unique_reach || 0);
       }
     });
     const totalUniqueReach = Array.from(campaignReachMap.values()).reduce((sum, reach) => sum + reach, 0);
@@ -819,13 +819,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ data: propData }) => {
     // リーチ数（全体）: フィルタリングされた期間の日次reachの合計（他の指標と同じ）
     const totalReach = filteredData.reduce((sum, d) => sum + (d.reach || 0), 0);
     
-    // ユニークリーチ数: 各期間のreachをそのまま使用（キャンペーンごとに最初に見つかった値を使用）
+    // ユニークリーチ数: 期間別ユニークリーチを使用（キャンペーンごとに最初に見つかった値を使用）
     const campaignReachMap = new Map<string, number>();
     filteredData.forEach(d => {
       const campaignKey = d.campaign_name || 'unknown';
-      // 各期間のreachをそのまま使用（最初に見つかった値を使用）
+      // 各期間のユニークリーチを使用（最初に見つかった値を使用）
       if (!campaignReachMap.has(campaignKey)) {
-        campaignReachMap.set(campaignKey, d.reach || 0);
+        campaignReachMap.set(campaignKey, d.period_unique_reach_all || d.period_unique_reach || 0);
       }
     });
     const totalUniqueReach = Array.from(campaignReachMap.values()).reduce((sum, reach) => sum + reach, 0);
