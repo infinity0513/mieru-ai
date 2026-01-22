@@ -105,6 +105,20 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
             print(f"[Meta API] Current time ({account_tz_label}): {current_tz.strftime('%Y-%m-%d %H:%M:%S')}")
             print(f"[Meta API] Today ({account_tz_label}): {today_tz}")
             print(f"[Meta API] Yesterday ({account_tz_label}): {yesterday}")
+            
+            def raise_for_status_with_body(response: httpx.Response, context: str):
+                try:
+                    response.raise_for_status()
+                except httpx.HTTPStatusError:
+                    body = None
+                    try:
+                        body = response.text
+                    except Exception:
+                        pass
+                    print(f"[Meta API] HTTP error in {context}: {response.status_code} {response.reason_phrase}")
+                    if body:
+                        print(f"[Meta API] Response body ({context}): {body}")
+                    raise
     
             # 昨日までのデータを取得（未来の日付を指定すると400エラーになるため）
             until_dt = yesterday
@@ -150,7 +164,7 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                 campaigns_page_count += 1
                 print(f"[Meta API] Fetching campaigns page {campaigns_page_count}...")
                 campaigns_response = await client.get(campaigns_url, params=campaigns_params)
-                campaigns_response.raise_for_status()
+                raise_for_status_with_body(campaigns_response, "fetch_campaigns")
                 campaigns_data = campaigns_response.json()
                 
                 # 取得したキャンペーンを追加
@@ -308,7 +322,7 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                         print(f"[Meta API] ==============================================")
                     
                     batch_response = await client.post(batch_url, params=batch_params)
-                    batch_response.raise_for_status()
+                    raise_for_status_with_body(batch_response, "daily_insights_batch")
                     batch_data = batch_response.json()
                     
                     # デバッグ: バッチレスポンスの内容を確認（最初のバッチの最初のレスポンスのみ）
@@ -515,7 +529,7 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                         }
                         
                         batch_response = await client.post(batch_url, params=batch_params)
-                        batch_response.raise_for_status()
+                        raise_for_status_with_body(batch_response, "period_unique_reach_batch")
                         batch_data = batch_response.json()
                         
                         for idx, batch_item in enumerate(batch_data):
