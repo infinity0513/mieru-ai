@@ -35,6 +35,10 @@ class Settings(BaseSettings):
     def cors_origins_list(self) -> List[str]:
         """Parse CORS_ORIGINS string into list"""
         origins = [origin.strip() for origin in self.CORS_ORIGINS.split(",") if origin.strip()]
+        # 常に許可するフロントエンド（環境変数の上書き漏れ対策）
+        for origin in ["https://mieru.netlify.app"]:
+            if origin not in origins:
+                origins.append(origin)
         # Debug: Print CORS origins for troubleshooting
         print(f"[Config] CORS origins configured: {origins}")
         return origins
