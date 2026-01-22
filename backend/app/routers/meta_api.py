@@ -278,9 +278,15 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                     # URLエンコードが必要だが、{}や:などの文字もエンコードする必要がある
                     # time_rangeは{"since":"2022-11-26","until":"2025-12-22"}の形式
                     time_range_encoded = urllib.parse.quote(time_range_json, safe='')
+                    filtering_json = json.dumps([{
+                        "field": "campaign.id",
+                        "operator": "IN",
+                        "value": [campaign_id]
+                    }], separators=(',', ':'))
+                    filtering_encoded = urllib.parse.quote(filtering_json, safe='')
                     # time_incrementパラメータを追加（日次データを取得するために必須）
                     # level=campaignを明示的に指定（キャンペーンレベルのデータのみを取得）
-                    relative_url = f"{campaign_id}/insights?fields={campaign_fields}&time_range={time_range_encoded}&time_increment={time_increment}&level=campaign&limit=100"
+                    relative_url = f"{account_id_for_api}/insights?fields={campaign_fields}&time_range={time_range_encoded}&time_increment={time_increment}&level=campaign&filtering={filtering_encoded}&limit=100"
                     
                     # デバッグログ（最初のバッチの最初のキャンペーンのみ）
                     if batch_start == 0 and len(batch_requests) == 0:
@@ -518,7 +524,13 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                     for campaign in batch_campaigns:
                         campaign_id = campaign.get('id')
                         # time_incrementなしで期間全体の集計データ（1件）を取得
-                        relative_url = f"{campaign_id}/insights?fields={period_reach_fields}&time_range={time_range_encoded}&level=campaign&limit=100"
+                        filtering_json = json.dumps([{
+                            "field": "campaign.id",
+                            "operator": "IN",
+                            "value": [campaign_id]
+                        }], separators=(',', ':'))
+                        filtering_encoded = urllib.parse.quote(filtering_json, safe='')
+                        relative_url = f"{account_id_for_api}/insights?fields={period_reach_fields}&time_range={time_range_encoded}&level=campaign&filtering={filtering_encoded}&limit=100"
                         batch_requests.append({
                             "method": "GET",
                             "relative_url": relative_url
