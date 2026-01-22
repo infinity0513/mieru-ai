@@ -75,9 +75,11 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
     from datetime import timezone
     account_tz = timezone(timedelta(hours=9))  # フォールバック: JST
     account_tz_label = "JST"
+    # Meta APIのアカウントIDは act_ プレフィックスが必要
+    account_id_for_api = account_id if account_id.startswith("act_") else f"act_{account_id}"
     async def get_account_timezone():
         try:
-            account_url = f"https://graph.facebook.com/v24.0/{account_id}"
+            account_url = f"https://graph.facebook.com/v24.0/{account_id_for_api}"
             account_params = {
                 "access_token": access_token,
                 "fields": "timezone_offset_hours_utc"
@@ -150,8 +152,8 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
             all_campaigns = []
             
             # キャンペーン一覧を取得（ページネーション対応）
-            print(f"[Meta API] Fetching campaigns from account: {account_id}")
-            campaigns_url = f"https://graph.facebook.com/v24.0/{account_id}/campaigns"
+            print(f"[Meta API] Fetching campaigns from account: {account_id_for_api}")
+            campaigns_url = f"https://graph.facebook.com/v24.0/{account_id_for_api}/campaigns"
             campaigns_params = {
                 "access_token": access_token,
                 "fields": "id,name,status,objective,created_time,updated_time",
