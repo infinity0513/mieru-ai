@@ -479,6 +479,16 @@ export const Settings: React.FC<SettingsProps> = ({ user }) => {
                         const result = await Api.syncAllMetaData();
                         addToast(`データ同期が完了しました: ${result.synced_accounts}/${result.total_accounts}アカウント`, 'success');
                         
+                        // 同期後はローカルキャッシュを破棄して最新データを再取得させる
+                        try {
+                          localStorage.removeItem('campaignData');
+                          localStorage.removeItem('campaignData_time');
+                          localStorage.removeItem('dashboard_metaAccounts');
+                          localStorage.removeItem('dashboard_metaAccounts_time');
+                        } catch (cacheError) {
+                          console.error('[Settings] Failed to clear cache after sync:', cacheError);
+                        }
+
                         // データ同期完了イベントを発火
                         window.dispatchEvent(new CustomEvent('dataSyncComplete'));
                         console.log('[Settings] dataSyncComplete event dispatched');
