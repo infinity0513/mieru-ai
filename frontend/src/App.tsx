@@ -259,7 +259,7 @@ const AppContent: React.FC = () => {
   const hasLoadedInitialDataRef = useRef(false);
 
   // loadInitialDataを先に定義（useEffectで使用するため）
-  const loadInitialData = useCallback(async () => {
+  const loadInitialData = useCallback(async (forceRefresh = false) => {
     console.log('[App] loadInitialData called');
     
     try {
@@ -269,7 +269,7 @@ const AppContent: React.FC = () => {
       const CACHE_VALIDITY_MS = 24 * 60 * 60 * 1000; // 24時間キャッシュ有効
       const isCacheValid = cacheTime && (Date.now() - parseInt(cacheTime)) < CACHE_VALIDITY_MS;
       
-      if (cachedData && cachedData !== '[]' && isCacheValid) {  // 空配列チェック追加
+      if (!forceRefresh && cachedData && cachedData !== '[]' && isCacheValid) {  // 空配列チェック追加
         try {
           const parsedData = JSON.parse(cachedData);
           if (parsedData && parsedData.length > 0) {  // データ存在チェック
@@ -376,7 +376,7 @@ const AppContent: React.FC = () => {
   useEffect(() => {
     const handleDataSyncComplete = () => {
       console.log('[App] Data sync complete event received, reloading data...');
-      loadInitialData();
+      loadInitialData(true);
     };
 
     window.addEventListener('dataSyncComplete', handleDataSyncComplete);
