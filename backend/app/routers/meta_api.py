@@ -77,6 +77,7 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
     account_tz_label = "JST"
     # Meta APIのアカウントIDは act_ プレフィックスが必要
     account_id_for_api = account_id if account_id.startswith("act_") else f"act_{account_id}"
+    account_id_for_db = account_id_for_api
     async def get_account_timezone():
         try:
             account_url = f"https://graph.facebook.com/v24.0/{account_id_for_api}"
@@ -753,7 +754,7 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
             
             # InsightsデータをCampaignテーブルに保存（キャンペーン/広告セット/広告レベル）
             # 全上書き方式：既存データを削除してから新規作成（データの一貫性を保つため）
-            print(f"[Meta API] Starting data sync for account {account_id} (full overwrite mode: deleting existing data before sync)")
+            print(f"[Meta API] Starting data sync for account {account_id_for_db} (full overwrite mode: deleting existing data before sync)")
             
             # 既存データを削除（このアカウントの全レベルのデータ: キャンペーン/広告セット/広告）
             # 削除と保存を同一トランザクションで実行（データの一貫性を保つため）
@@ -761,10 +762,10 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
             try:
                 delete_count = db.query(Campaign).filter(
                     Campaign.user_id == user.id,
-                    Campaign.meta_account_id == account_id
+                    Campaign.meta_account_id.in_([account_id_for_db, account_id_for_db.replace("act_", "")])
                     # 広告セット・広告レベルのデータも削除対象に含める（Meta APIから取得しているため）
                 ).delete(synchronize_session=False)
-                print(f"[Meta API] Deleted {delete_count} existing records for account {account_id} (all levels) before sync")
+                print(f"[Meta API] Deleted {delete_count} existing records for account {account_id_for_db} (all levels) before sync")
             except Exception as e:
                 import traceback
                 error_msg = f"[Meta API] Error deleting existing data for account {account_id}: {str(e)}"
@@ -1094,7 +1095,7 @@ async def sync_meta_data_to_campaigns(user: User, access_token: str, account_id:
                     campaign = Campaign(
                         user_id=user.id,
                         upload_id=upload.id,
-                        meta_account_id=account_id,
+                        meta_account_id=account_id_for_db,
                         date=campaign_date,
                         campaign_name=campaign_name,
                         ad_set_name=ad_set_name,  # 広告セット名（あれば）
@@ -1633,11 +1634,12 @@ async def sync_all_meta_data(
         
         for idx, acc_id in enumerate(account_ids):
             try:
-                print(f"[Meta Sync All] Syncing account {idx + 1}/{len(account_ids)}: {acc_id}")
+                acc_id_for_db = acc_id if acc_id.startswith("act_") else f"act_{acc_id}"
+                print(f"[Meta Sync All] Syncing account {idx + 1}/{len(account_ids)}: {acc_id_for_db}")
                 await sync_meta_data_to_campaigns(
                     current_user,
                     current_user.meta_access_token,
-                    acc_id,
+                    acc_id_for_db,
                     db,
                     days=None  # 全期間（37ヶ月）
                 )
